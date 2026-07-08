@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
+  import { makeTauriWindowDraggable } from "$lib/window-docking.svelte.js";
 
   let playlists = $state([]);
   let loading = $state(true);
@@ -80,14 +81,11 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  const startDrag = (e) => {
-    if (e.button === 0) getCurrentWindow().startDragging();
-  };
   const close = () => getCurrentWindow().hide();
 </script>
 
 <div class="lib-window">
-  <div class="lib-titlebar" onpointerdown={startDrag}>
+  <div class="lib-titlebar" use:makeTauriWindowDraggable>
     <span class="lib-title">SPOTAMP LIBRARY</span>
     <button
       class="lib-close"
