@@ -38,6 +38,34 @@
   applyInitialWindowSize();
   const playlist = createInitialPlaylist();
 
+  // --- "my playlists" library browser (our addition) ---
+  let showLibrary = $state(false);
+  let libraryLoading = $state(false);
+  let libraryError = $state("");
+  let libraryPlaylists = $state([]);
+
+  async function openLibrary() {
+    showLibrary = true;
+    if (libraryPlaylists.length > 0) return;
+    libraryLoading = true;
+    libraryError = "";
+    try {
+      libraryPlaylists = await invoke("get_user_playlists");
+    } catch (e) {
+      libraryError = String(e);
+    } finally {
+      libraryLoading = false;
+    }
+  }
+
+  async function loadPlaylist(uri) {
+    showLibrary = false;
+    await playlist.clear();
+    // uri is "spotify:playlist:ID" but addUrls expects an open.spotify.com URL
+    const id = uri.split(":").pop();
+    await playlist.addUrls([`https://open.spotify.com/playlist/${id}`]);
+  }
+
   /**
    * @param {DocumentEventMap["keydown"]} e
    */
@@ -439,6 +467,40 @@
   style:--playlist-h={playlist.height}
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
 >
+  <!-- our "my playlists" browser (opens a list of the user's Spotify playlists) -->
+  <button class="my-playlists-btn" onclick={openLibrary}>♪ my playlists</button>
+  {#if showLibrary}
+    <div class="library-overlay">
+      <div class="library-head">
+        <span>MY PLAYLISTS</span>
+        <button class="library-close" onclick={() => (showLibrary = false)}>×</button>
+      </div>
+      <div class="library-list">
+        {#if libraryLoading}
+          <div class="library-msg">
+            loading your playlists…<br />
+            (first open fetches each playlist's name — can take a few seconds;
+            it's instant after that)
+          </div>
+        {:else if libraryError}
+          <div class="library-msg err">
+            in-app browsing isn't wired up yet — Spotify blocks the permission
+            this needs (work in progress). for now: drag a playlist straight from
+            the Spotify app onto this window and it loads.
+          </div>
+        {:else if libraryPlaylists.length === 0}
+          <div class="library-msg">no playlists found</div>
+        {:else}
+          {#each libraryPlaylists as pl}
+            <button class="library-item" onclick={() => loadPlaylist(pl.uri)}>
+              <span class="library-name">{pl.name}</span>
+              <span class="library-count">{pl.track_count}</span>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    </div>
+  {/if}
   <div
     class="tracks-container"
     onkeydown={preventKeyboardScrolling}
@@ -772,4 +834,88 @@
     background-position: 154px -72px;
   }
   /* ------ /PLAYLIST ------ */
+
+  /* ------ MY PLAYLISTS browser (our addition) ------ */
+  .my-playlists-btn {
+    position: absolute;
+    top: 3px;
+    left: 44px;
+    z-index: 40;
+    padding: 0 6px;
+    font-family: monospace;
+    font-size: 9px;
+    line-height: 12px;
+    color: #00ff41;
+    background: linear-gradient(#2a2f3a, #12151c);
+    border: 1px solid #000;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.15);
+    cursor: pointer;
+  }
+  .my-playlists-btn:active {
+    box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.15);
+  }
+  .library-overlay {
+    position: absolute;
+    inset: 20px 12px 30px 12px;
+    z-index: 50;
+    background: #0a0d12;
+    border: 1px solid #00ff41;
+    box-shadow: 0 0 12px -2px rgba(0, 255, 65, 0.5);
+    display: flex;
+    flex-direction: column;
+    font-family: monospace;
+  }
+  .library-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 8px;
+    color: #050805;
+    background: #00cc22;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .library-close {
+    background: none;
+    border: none;
+    color: #050805;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .library-list {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .library-item {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 3px 10px;
+    background: none;
+    border: none;
+    color: #00ff41;
+    font-family: monospace;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .library-item:hover {
+    background: #163a1e;
+  }
+  .library-count {
+    color: #5c9e6b;
+    padding-left: 10px;
+  }
+  .library-msg {
+    padding: 12px 10px;
+    color: #8fbf9f;
+    font-size: 12px;
+  }
+  .library-msg.err {
+    color: #ff6b6b;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 </style>

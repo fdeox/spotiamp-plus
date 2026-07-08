@@ -28,6 +28,16 @@ use thiserror::Error;
 
 use crate::settings::get_config_dir;
 pub type SharedPlayer = Arc<tokio::sync::Mutex<SpotifyPlayer>>;
+
+/// A playlist from the current user's library (sent to the frontend).
+#[derive(serde::Serialize, Clone)]
+pub struct UserPlaylist {
+    pub name: String,
+    pub uri: String,
+    pub track_count: u32,
+    pub image: Option<String>,
+}
+
 pub struct SpotifySession {
     inner: Session,
     cache: Cache,
@@ -237,6 +247,58 @@ impl SpotifyPlayer {
                 Ok(vec![])
             }
         }
+    }
+
+    /// Fetch the current user's playlists via librespot's internal rootlist
+    /// (uses the same session auth that plays music — no Web API scope needed,
+    /// which the keymaster refuses to grant). We pull the raw rootlist, scan it
+    /// for playlist URIs, then resolve each playlist's name + length via the
+    /// metadata API (Playlist::get, the same call get_track_ids uses).
+    pub async fn get_user_playlists(&self) -> Result<Vec<UserPlaylist>, String> {
+        let bytes = self
+            .session
+            .inner
+            .spclient()
+            .get_rootlist(0, Some(500))
+            .await
+            .map_err(|e| format!("Failed to fetch rootlist: {e:?}"))?;
+
+        // rootlist is protobuf; the playlist URIs appear as literal strings.
+        let text = String::from_utf8_lossy(bytes.as_ref());
+        let pat = "spotify:playlist:";
+        let mut uris: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut search_from = 0usize;
+        while let Some(rel) = text[search_from..].find(pat) {
+            let id_start = search_from + rel + pat.len();
+            let id: String = text[id_start..].chars().take(22).collect();
+            search_from = id_start;
+            if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+                let uri = format!("{pat}{id}");
+                if seen.insert(uri.clone()) {
+                    uris.push(uri);
+                }
+            }
+        }
+
+        // resolve names + lengths (skip any that fail to load)
+        let mut playlists = Vec::new();
+        for uri in uris {
+            let spuri = match SpotifyUri::from_uri(&uri) {
+                Ok(u) => u,
+                Err(_) => continue,
+            };
+            match Playlist::get(&self.session.inner, &spuri).await {
+                Ok(pl) => playlists.push(UserPlaylist {
+                    name: pl.attributes.name.clone(),
+                    uri,
+                    track_count: pl.length.max(0) as u32,
+                    image: None,
+                }),
+                Err(e) => log::debug!("Skipping playlist {uri}: {e:?}"),
+            }
+        }
+        Ok(playlists)
     }
 
     pub async fn get_track(&mut self, track_uri: SpotifyUri) -> Result<Track, PlayError> {

@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use crate::{
     app_window, playlist_window,
     settings::{PlayerSettings, Settings},
-    spotify::SharedPlayer,
+    spotify::{SharedPlayer, UserPlaylist},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,6 +147,13 @@ pub async fn get_track_ids(
         .iter()
         .map(|track_uri| track_uri.to_uri().expect("a valid uri"))
         .collect())
+}
+
+#[tauri::command]
+pub async fn get_user_playlists(
+    player: State<'_, SharedPlayer>,
+) -> Result<Vec<UserPlaylist>, String> {
+    player.lock().await.get_user_playlists().await
 }
 
 #[tauri::command]

@@ -136,6 +136,7 @@ pub fn run() {
             player_window::get_track_metadata,
             player_window::load_track,
             player_window::get_track_ids,
+            player_window::get_user_playlists,
             player_window::play,
             player_window::pause,
             player_window::stop,
