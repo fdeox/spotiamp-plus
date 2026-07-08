@@ -74,6 +74,17 @@
     await playlist.addUrls([`https://open.spotify.com/playlist/${id}`]);
   }
 
+  // --- mini-transport (bottom-right of the playlist window) ---
+  // prev/next reuse the same window events the main player emits, so the
+  // playlist's own subscription handles track navigation. play/pause/stop
+  // drive the shared backend player directly.
+  const miniPrev = () =>
+    emitWindowEvent("playerWindow", { PreviousPressed: null });
+  const miniNext = () => emitWindowEvent("playerWindow", { NextPressed: null });
+  const miniPlay = () => invoke("play").catch(() => {});
+  const miniPause = () => invoke("pause").catch(() => {});
+  const miniStop = () => invoke("stop").catch(() => {});
+
   /**
    * @param {DocumentEventMap["keydown"]} e
    */
@@ -644,6 +655,44 @@
     title="clear playlist"
   ></button>
 
+  <!-- transparent click overlays over the baked-in mini-transport buttons
+       (bottom-right). Anchored from the right edge so they track window resize. -->
+  <button
+    class="mini-btn"
+    style:--mini-right="134px"
+    onclick={miniPrev}
+    aria-label="Previous"
+    title="previous"
+  ></button>
+  <button
+    class="mini-btn"
+    style:--mini-right="124px"
+    onclick={miniPlay}
+    aria-label="Play"
+    title="play"
+  ></button>
+  <button
+    class="mini-btn"
+    style:--mini-right="114px"
+    onclick={miniPause}
+    aria-label="Pause"
+    title="pause"
+  ></button>
+  <button
+    class="mini-btn"
+    style:--mini-right="104px"
+    onclick={miniStop}
+    aria-label="Stop"
+    title="stop"
+  ></button>
+  <button
+    class="mini-btn"
+    style:--mini-right="94px"
+    onclick={miniNext}
+    aria-label="Next"
+    title="next"
+  ></button>
+
   <div class="draggable-corner" use:makeResizable></div>
 </span>
 
@@ -899,6 +948,19 @@
     z-index: 60;
   }
 
+  /* transparent click targets over the baked-in mini-transport sprites */
+  .mini-btn {
+    position: absolute;
+    right: calc(var(--mini-right) * var(--zoom));
+    top: calc(((var(--playlist-h) - 1) * 29px + 3px) * var(--zoom));
+    width: calc(10px * var(--zoom));
+    height: calc(9px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 60;
+  }
   /* ------ MY PLAYLISTS browser (our addition) ------ */
   .my-playlists-btn {
     position: absolute;
