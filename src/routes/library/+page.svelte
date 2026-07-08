@@ -1,6 +1,5 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
@@ -13,6 +12,9 @@
 
   let selectedUri = $state(null);
   let tracks = $state([]);
+  // every track uri of the selected playlist (from get_track_ids, arrives in
+  // one call) — used so playing a track loads the rest of the list after it
+  let trackUris = $state([]);
   let tracksLoading = $state(false);
   let tracksError = $state("");
   // bumped every time we switch playlists so a slow in-flight load bails out
@@ -46,12 +48,14 @@
   async function selectPlaylist(pl) {
     selectedUri = pl.uri;
     tracks = [];
+    trackUris = [];
     tracksError = "";
     tracksLoading = true;
     const token = ++loadToken;
     try {
       const ids = await invoke("get_track_ids", { uri: pl.uri });
       if (token !== loadToken) return;
+      trackUris = ids;
       for (const uri of ids) {
         if (token !== loadToken) return; // switched playlist, abandon
         try {
@@ -73,20 +77,26 @@
   // listens for (clear + load). Works cross-window via Tauri's global emit.
   const loadPlaylistIntoMain = (pl) =>
     emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
-  const loadTrackIntoMain = (t) =>
-    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(t.uri)] });
+  // Play a track *and* queue the rest of the playlist after it, so playback
+  // keeps going instead of stopping on that one song.
+  const loadTrackIntoMain = (index) =>
+    emitWindowEvent("playerWindow", {
+      UrlsDropped: trackUris.slice(index).map(trackUrl),
+    });
 
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  const close = () => getCurrentWindow().hide();
+  // hide via the Rust command (app commands aren't capability-gated, so this is
+  // reliable regardless of window permissions)
+  const close = () => invoke("set_library_window_visible", { visible: false });
 </script>
 
 <div class="lib-window">
   <div class="lib-titlebar" use:makeTauriWindowDraggable>
-    <span class="lib-title">SPOTAMP LIBRARY</span>
+    <span class="lib-title">LIBRARY</span>
     <button
       class="lib-close"
       onpointerdown={(e) => e.stopPropagation()}
@@ -134,8 +144,8 @@
           {#each tracks as t, i}
             <button
               class="lib-row"
-              ondblclick={() => loadTrackIntoMain(t)}
-              title="double-click to play"
+              ondblclick={() => loadTrackIntoMain(i)}
+              title="double-click to play from here"
             >
               <span class="lib-row-idx">{i + 1}.</span>
               <span class="lib-row-name">{t.artist} - {t.name}</span>
