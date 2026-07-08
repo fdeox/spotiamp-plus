@@ -43,6 +43,14 @@
   let libraryLoading = $state(false);
   let libraryError = $state("");
   let libraryPlaylists = $state([]);
+  let librarySearch = $state("");
+  const filteredPlaylists = $derived(
+    librarySearch.trim()
+      ? libraryPlaylists.filter((p) =>
+          p.name.toLowerCase().includes(librarySearch.toLowerCase()),
+        )
+      : libraryPlaylists,
+  );
 
   async function openLibrary() {
     showLibrary = true;
@@ -475,6 +483,14 @@
         <span>MY PLAYLISTS</span>
         <button class="library-close" onclick={() => (showLibrary = false)}>×</button>
       </div>
+      {#if libraryPlaylists.length > 0}
+        <input
+          class="library-search"
+          type="text"
+          placeholder="search playlists…"
+          bind:value={librarySearch}
+        />
+      {/if}
       <div class="library-list">
         {#if libraryLoading}
           <div class="library-msg">
@@ -490,8 +506,10 @@
           </div>
         {:else if libraryPlaylists.length === 0}
           <div class="library-msg">no playlists found</div>
+        {:else if filteredPlaylists.length === 0}
+          <div class="library-msg">no matches for "{librarySearch}"</div>
         {:else}
-          {#each libraryPlaylists as pl}
+          {#each filteredPlaylists as pl}
             <button class="library-item" onclick={() => loadPlaylist(pl.uri)}>
               <span class="library-name">{pl.name}</span>
               <span class="library-count">{pl.track_count}</span>
@@ -929,6 +947,19 @@
     font-size: 13px;
     cursor: pointer;
     line-height: 1;
+  }
+  .library-search {
+    margin: 4px 6px;
+    padding: 2px 6px;
+    background: #05170a;
+    border: 1px solid #1e6b32;
+    color: #00ff41;
+    font-family: monospace;
+    font-size: 11px;
+    outline: none;
+  }
+  .library-search::placeholder {
+    color: #3f7a4e;
   }
   .library-list {
     flex: 1;
