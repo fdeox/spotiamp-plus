@@ -625,11 +625,13 @@
   }
   /* ------ TRACKS ------ */
   .tracks-container {
-    margin-top: calc(20px * var(--zoom));
+    /* pushed down 14px to make room for the "my playlists" button strip */
+    margin-top: calc(34px * var(--zoom));
     margin-left: calc(10px * var(--zoom));
     width: calc((var(--playlist-w) * 25px - 29px) * var(--zoom));
     height: calc(
-      (var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom)
+      (var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom) -
+        14px * var(--zoom)
     );
     overflow-x: hidden;
     overflow-y: scroll;
@@ -838,8 +840,8 @@
   /* ------ MY PLAYLISTS browser (our addition) ------ */
   .my-playlists-btn {
     position: absolute;
-    top: 3px;
-    left: 44px;
+    top: calc(21px * var(--zoom));
+    left: calc(11px * var(--zoom));
     z-index: 40;
     padding: 0 6px;
     font-family: monospace;

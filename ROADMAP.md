@@ -19,7 +19,21 @@ Tools 2022 + node) already installed on this machine.
 
 ## Roadmap (priority order)
 
-### 1. Browse my playlists  ← biggest want  (IN PROGRESS — Web API path BLOCKED)
+### 1. Browse my playlists  ← ✅ WORKING (2026-07-08)
+DONE & verified: rootlist-based browser works end to end. `get_user_playlists`
+uses `spclient().get_rootlist(0, Some(500))`, scans the bytes for
+`spotify:playlist:` URIs, resolves name + length via `Playlist::get`. Frontend
+"♪ my playlists" button opens the overlay; clicking a playlist converts
+`spotify:playlist:ID` → `https://open.spotify.com/playlist/ID` and calls
+`playlist.addUrls([url])` (addUrls expects a URL, not a URI — that was the bug).
+Results cached per session (only first open is slow).
+Future polish: parallelize the per-playlist `Playlist::get` name resolution (add
+`futures-util` dep, chunked `join_all`) — first open is currently sequential and
+can take several seconds for many playlists. Also: playlist images (image: None
+now), and moving the button out of the track area (done: moved into title bar).
+
+--- original notes below (history) ---
+### 1b. (history) Web API path — BLOCKED
 DONE: UI is built — a green "♪ my playlists" button in the playlist window opens
 an overlay list (`src/routes/playlist/+page.svelte`), click → `playlist.clear()`
 + `playlist.addUrls([uri])`. Backend command `get_user_playlists` exists

@@ -51,7 +51,9 @@ export class TrackRow extends PlaylistRow {
      */
     constructor(uri, playlist) {
         super(uri, playlist);
-        this.loadingMessage = `${this.uri.asString}`;
+        // shown until the track's metadata loads (lazily, as the row scrolls in);
+        // a raw "spotify:track:..." uri looks ugly, so use a subtle placeholder
+        this.loadingMessage = "loading…";
     }
 
     populateTrack() {
