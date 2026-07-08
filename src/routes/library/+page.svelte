@@ -233,6 +233,9 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    /* without min-width:0 the long (nowrap) playlist names force this flex
+       item wider than its basis, collapsing the tracks pane to zero width */
+    min-width: 0;
     background: #000;
     border: 1px solid #10121a;
     box-shadow: inset 1px 1px 0 #171922;
