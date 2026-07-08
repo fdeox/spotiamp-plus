@@ -33,6 +33,7 @@ oauth2 = "5.0"
 rustls = "0.23"
 axum = { version = "0.8", default-features = false, features = ["http1", "query", "tokio"] }
 tokio = { version = "1.48", default-features = false, features = ["net", "sync"] }
+futures-util = { version = "0.3", default-features = false }
 url = "2.5"
 directories = "6.0"
 tauri-plugin-dialog = "2.7"

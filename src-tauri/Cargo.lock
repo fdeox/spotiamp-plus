@@ -4698,6 +4698,7 @@ dependencies = [
  "axum",
  "directories",
  "env_logger",
+ "futures-util",
  "librespot",
  "log",
  "oauth2",

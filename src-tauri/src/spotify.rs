@@ -9,6 +9,7 @@ use crate::{
     sink::SpotiampSink,
     visualizer::Visualizer,
 };
+use futures_util::{StreamExt, stream};
 use librespot::{
     core::{
         Error, SpotifyUri, authentication::Credentials, cache::Cache, config::SessionConfig,
@@ -281,23 +282,31 @@ impl SpotifyPlayer {
             }
         }
 
-        // resolve names + lengths (skip any that fail to load)
-        let mut playlists = Vec::new();
-        for uri in uris {
-            let spuri = match SpotifyUri::from_uri(&uri) {
-                Ok(u) => u,
-                Err(_) => continue,
-            };
-            match Playlist::get(&self.session.inner, &spuri).await {
-                Ok(pl) => playlists.push(UserPlaylist {
-                    name: pl.attributes.name.clone(),
-                    uri,
-                    track_count: pl.length.max(0) as u32,
-                    image: None,
-                }),
-                Err(e) => log::debug!("Skipping playlist {uri}: {e:?}"),
-            }
-        }
+        // resolve names + lengths concurrently (bounded), keeping rootlist
+        // order. buffered(N) runs up to N Playlist::get calls at once, which
+        // turns a slow one-by-one wait into a few fast batches.
+        const CONCURRENCY: usize = 16;
+        let session = &self.session.inner;
+        let playlists: Vec<UserPlaylist> = stream::iter(uris)
+            .map(|uri| async move {
+                let spuri = SpotifyUri::from_uri(&uri).ok()?;
+                match Playlist::get(session, &spuri).await {
+                    Ok(pl) => Some(UserPlaylist {
+                        name: pl.attributes.name.clone(),
+                        uri,
+                        track_count: pl.length.max(0) as u32,
+                        image: None,
+                    }),
+                    Err(e) => {
+                        log::debug!("Skipping playlist {uri}: {e:?}");
+                        None
+                    }
+                }
+            })
+            .buffered(CONCURRENCY)
+            .filter_map(|maybe| async move { maybe })
+            .collect()
+            .await;
         Ok(playlists)
     }
 
