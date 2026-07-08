@@ -52,6 +52,10 @@
       : libraryPlaylists,
   );
 
+  // Opens the standalone Library window (built on demand in Rust).
+  const openLibraryWindow = () =>
+    invoke("set_library_window_visible", { visible: true });
+
   async function openLibrary() {
     showLibrary = true;
     if (libraryPlaylists.length > 0) return;
@@ -477,7 +481,7 @@
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
 >
   <!-- our "my playlists" browser (opens a list of the user's Spotify playlists) -->
-  <button class="my-playlists-btn" onclick={openLibrary}>♪ my playlists</button>
+  <button class="my-playlists-btn" onclick={openLibraryWindow}>♪ library</button>
   {#if showLibrary}
     <div class="library-overlay">
       <div class="library-head">
@@ -619,9 +623,9 @@
   <button
     class="pl-btn"
     style:--pl-btn-x="11px"
-    onclick={openLibrary}
-    aria-label="Add — my playlists"
-    title="my playlists"
+    onclick={openLibraryWindow}
+    aria-label="Add — open library"
+    title="open library"
   ></button>
   <button
     class="pl-btn"

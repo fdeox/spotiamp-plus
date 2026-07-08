@@ -1,0 +1,353 @@
+<script>
+  import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { onMount } from "svelte";
+  import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
+  import { emitWindowEvent } from "$lib/events.svelte.js";
+
+  let playlists = $state([]);
+  let loading = $state(true);
+  let error = $state("");
+  let search = $state("");
+
+  let selectedUri = $state(null);
+  let tracks = $state([]);
+  let tracksLoading = $state(false);
+  let tracksError = $state("");
+  // bumped every time we switch playlists so a slow in-flight load bails out
+  let loadToken = 0;
+
+  const filtered = $derived(
+    search.trim()
+      ? playlists.filter((p) =>
+          p.name.toLowerCase().includes(search.toLowerCase()),
+        )
+      : playlists,
+  );
+
+  onMount(async () => {
+    REACTIVE_WINDOW_SIZE.setSize(360, 420);
+    REACTIVE_WINDOW_SIZE.setZoom(1);
+    try {
+      playlists = await invoke("get_user_playlists");
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loading = false;
+    }
+  });
+
+  const playlistUrl = (uri) =>
+    `https://open.spotify.com/playlist/${uri.split(":").pop()}`;
+  const trackUrl = (uri) =>
+    `https://open.spotify.com/track/${uri.split(":").pop()}`;
+
+  async function selectPlaylist(pl) {
+    selectedUri = pl.uri;
+    tracks = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      const ids = await invoke("get_track_ids", { uri: pl.uri });
+      if (token !== loadToken) return;
+      for (const uri of ids) {
+        if (token !== loadToken) return; // switched playlist, abandon
+        try {
+          const meta = await invoke("get_track_metadata", { uri });
+          if (token !== loadToken) return;
+          tracks = [...tracks, meta];
+        } catch (e) {
+          /* skip a track we can't read */
+        }
+      }
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+
+  // Reuse the existing "UrlsDropped" event the main playlist window already
+  // listens for (clear + load). Works cross-window via Tauri's global emit.
+  const loadPlaylistIntoMain = (pl) =>
+    emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
+  const loadTrackIntoMain = (t) =>
+    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(t.uri)] });
+
+  function fmt(ms) {
+    const s = Math.round(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  const startDrag = (e) => {
+    if (e.button === 0) getCurrentWindow().startDragging();
+  };
+  const close = () => getCurrentWindow().hide();
+</script>
+
+<div class="lib-window">
+  <div class="lib-titlebar" onpointerdown={startDrag}>
+    <span class="lib-title">SPOTAMP LIBRARY</span>
+    <button
+      class="lib-close"
+      onpointerdown={(e) => e.stopPropagation()}
+      onclick={close}
+      aria-label="Close">×</button
+    >
+  </div>
+
+  <div class="lib-body">
+    <!-- left: playlists -->
+    <div class="lib-pane lib-playlists">
+      <div class="lib-pane-head">PLAYLISTS</div>
+      <input class="lib-search" placeholder="search…" bind:value={search} />
+      <div class="lib-list">
+        {#if loading}
+          <div class="lib-msg">loading playlists…</div>
+        {:else if error}
+          <div class="lib-msg lib-err">{error}</div>
+        {:else if filtered.length === 0}
+          <div class="lib-msg">no playlists</div>
+        {:else}
+          {#each filtered as pl}
+            <button
+              class="lib-row"
+              class:selected={selectedUri === pl.uri}
+              onclick={() => selectPlaylist(pl)}
+              ondblclick={() => loadPlaylistIntoMain(pl)}
+              title="double-click to load &amp; play"
+            >
+              <span class="lib-row-name">{pl.name}</span>
+              <span class="lib-row-count">{pl.track_count}</span>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    </div>
+
+    <!-- right: tracks of the selected playlist -->
+    <div class="lib-pane lib-tracks">
+      <div class="lib-pane-head">TRACKS</div>
+      <div class="lib-list">
+        {#if !selectedUri}
+          <div class="lib-msg">← select a playlist</div>
+        {:else}
+          {#each tracks as t, i}
+            <button
+              class="lib-row"
+              ondblclick={() => loadTrackIntoMain(t)}
+              title="double-click to play"
+            >
+              <span class="lib-row-idx">{i + 1}.</span>
+              <span class="lib-row-name">{t.artist} - {t.name}</span>
+              <span class="lib-row-count">{fmt(t.duration)}</span>
+            </button>
+          {/each}
+          {#if tracksLoading}
+            <div class="lib-msg">loading tracks…</div>
+          {:else if tracksError}
+            <div class="lib-msg lib-err">{tracksError}</div>
+          {:else if tracks.length === 0}
+            <div class="lib-msg">empty</div>
+          {/if}
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <div class="lib-footer">
+    double-click a playlist to load · a track to play it
+  </div>
+</div>
+
+<style>
+  :global(body) {
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .lib-window {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: #2b2f3a;
+    border: 1px solid #10121a;
+    box-shadow: inset 1px 1px 0 #4a5266, inset -1px -1px 0 #171922;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    color: #c9d2e0;
+    user-select: none;
+  }
+
+  /* ---- title bar ---- */
+  .lib-titlebar {
+    height: 20px;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    background: linear-gradient(
+      90deg,
+      #10131c 0%,
+      #2e3550 25%,
+      #4b5a86 50%,
+      #2e3550 75%,
+      #10131c 100%
+    );
+    border-bottom: 1px solid #10121a;
+    cursor: default;
+  }
+  .lib-title {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #dfe6f2;
+    text-shadow: 0 1px 0 #000;
+  }
+  .lib-close {
+    width: 14px;
+    height: 13px;
+    line-height: 11px;
+    font-size: 12px;
+    color: #dfe6f2;
+    background: #3a4260;
+    border: 1px solid #10121a;
+    box-shadow: inset 1px 1px 0 #5b6a90;
+    cursor: pointer;
+    padding: 0;
+  }
+  .lib-close:active {
+    box-shadow: inset 1px 1px 0 #10121a;
+  }
+
+  /* ---- body: two panes ---- */
+  .lib-body {
+    flex: 1;
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    min-height: 0;
+  }
+  .lib-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #000;
+    border: 1px solid #10121a;
+    box-shadow: inset 1px 1px 0 #171922;
+  }
+  .lib-playlists {
+    flex: 0 0 45%;
+  }
+  .lib-tracks {
+    flex: 1;
+  }
+  .lib-pane-head {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: #7f8aa3;
+    padding: 2px 5px;
+    background: #1a1d27;
+    border-bottom: 1px solid #10121a;
+  }
+
+  .lib-search {
+    margin: 3px 4px;
+    padding: 2px 5px;
+    background: #05170a;
+    border: 1px solid #1e6b32;
+    color: #00ff41;
+    font-family: monospace;
+    font-size: 11px;
+    outline: none;
+  }
+  .lib-search::placeholder {
+    color: #3f7a4e;
+  }
+
+  .lib-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .lib-row {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    width: 100%;
+    text-align: left;
+    padding: 1px 5px;
+    background: transparent;
+    border: none;
+    color: #12d012;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 15px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .lib-row:hover {
+    background: #0a1f0f;
+  }
+  .lib-row.selected {
+    background: #0b2f6b;
+    color: #d8e4ff;
+  }
+  .lib-row-idx {
+    color: #0a7a0a;
+    flex: 0 0 auto;
+  }
+  .lib-row-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lib-row-count {
+    flex: 0 0 auto;
+    color: #0a7a0a;
+  }
+  .lib-row.selected .lib-row-idx,
+  .lib-row.selected .lib-row-count {
+    color: #9fb6e6;
+  }
+
+  .lib-msg {
+    padding: 6px 8px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #6a7488;
+  }
+  .lib-err {
+    color: #d06a6a;
+    white-space: normal;
+  }
+
+  /* ---- footer ---- */
+  .lib-footer {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 9px;
+    color: #7f8aa3;
+    background: #1a1d27;
+    border-top: 1px solid #10121a;
+  }
+
+  /* chunky Winamp-ish scrollbars */
+  .lib-list::-webkit-scrollbar {
+    width: 8px;
+  }
+  .lib-list::-webkit-scrollbar-track {
+    background: #0a0c12;
+  }
+  .lib-list::-webkit-scrollbar-thumb {
+    background: #3a4260;
+    border: 1px solid #10121a;
+  }
+</style>

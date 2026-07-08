@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::spotify::SpotifySession;
 mod app_window;
+mod library_window;
 mod oauth;
 mod player_window;
 mod playlist_window;
@@ -149,6 +150,7 @@ pub fn run() {
             playlist_window::get_playlist_settings,
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
+            library_window::set_library_window_visible,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
