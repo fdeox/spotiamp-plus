@@ -596,6 +596,36 @@
     style:--x={playlist.width - 9}
   ></div>
 
+  <!-- transparent click overlays over the baked-in ADD/REM/SEL/MISC buttons -->
+  <button
+    class="pl-btn"
+    style:--pl-btn-x="11px"
+    onclick={openLibrary}
+    aria-label="Add — my playlists"
+    title="my playlists"
+  ></button>
+  <button
+    class="pl-btn"
+    style:--pl-btn-x="40px"
+    onclick={() => playlist.removeSelected()}
+    aria-label="Remove selected"
+    title="remove selected"
+  ></button>
+  <button
+    class="pl-btn"
+    style:--pl-btn-x="69px"
+    onclick={() => (playlist.selectedRows = [...playlist.rows])}
+    aria-label="Select all"
+    title="select all"
+  ></button>
+  <button
+    class="pl-btn"
+    style:--pl-btn-x="98px"
+    onclick={() => playlist.clear()}
+    aria-label="Clear playlist"
+    title="clear playlist"
+  ></button>
+
   <div class="draggable-corner" use:makeResizable></div>
 </span>
 
@@ -836,6 +866,20 @@
     background-position: 154px -72px;
   }
   /* ------ /PLAYLIST ------ */
+
+  /* transparent click targets over the baked-in ADD/REM/SEL/MISC sprites */
+  .pl-btn {
+    position: absolute;
+    left: calc(var(--pl-btn-x) * var(--zoom));
+    top: calc(((var(--playlist-h) - 1) * 29px - 5px) * var(--zoom));
+    width: calc(22px * var(--zoom));
+    height: calc(18px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 60;
+  }
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
   .my-playlists-btn {

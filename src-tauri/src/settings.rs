@@ -169,9 +169,8 @@ impl Settings {
         //eprintln!("Failed to load config ({err}), falling back to default settings");
         settings.unwrap_or_else(|e| {
             log::info!("Could not load a settings file ({e:?}, creating a new one");
-            let mut new_settings = Settings::default();
-            new_settings.playlist.uris = vec!["spotify:track:0DiWol3AO6WpXZgp0goxAV".to_string()];
-            new_settings
+            // start with an empty playlist (was a hardcoded "One More Time" demo track)
+            Settings::default()
         })
     }
 
