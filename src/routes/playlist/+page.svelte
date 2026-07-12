@@ -657,12 +657,8 @@
 
   <!-- bottom-right LCD readouts over the two black areas:
        total playlist time (wide, upper) + current track elapsed (small row) -->
-  <div class="pl-time pl-time-total pl-time-debug">
-    {fmtTime(playlist.totalDurationMs)}
-  </div>
-  <div class="pl-time pl-time-elapsed pl-time-debug">
-    {fmtTime(playlist.positionMs)}
-  </div>
+  <div class="pl-time pl-time-total">{fmtTime(playlist.totalDurationMs)}</div>
+  <div class="pl-time pl-time-elapsed">{fmtTime(playlist.positionMs)}</div>
 
   <div class="draggable-corner" use:makeResizable></div>
 </span>
@@ -932,20 +928,17 @@
     pointer-events: none;
     z-index: 55;
   }
+  /* positioned from the window's bottom-right corner (plain px = easy to tweak
+     in devtools; stays put on resize). Adjust right / bottom / width. */
   .pl-time-elapsed {
-    right: calc(78px * var(--zoom));
+    right: calc(58px * var(--zoom));
     width: calc(26px * var(--zoom));
-    top: calc(((var(--playlist-h) - 1) * 29px + 8px) * var(--zoom));
+    bottom: calc(7px * var(--zoom));
   }
   .pl-time-total {
-    right: calc(82px * var(--zoom));
+    right: calc(120px * var(--zoom));
     width: calc(76px * var(--zoom));
-    top: calc(((var(--playlist-h) - 1) * 29px - 4px) * var(--zoom));
-  }
-  /* temporary alignment aid — removed once positions are dialed in */
-  .pl-time-debug {
-    background: rgba(255, 0, 0, 0.4);
-    outline: 1px solid yellow;
+    bottom: calc(21px * var(--zoom));
   }
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
