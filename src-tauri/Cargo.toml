@@ -34,6 +34,7 @@ rustls = "0.23"
 axum = { version = "0.8", default-features = false, features = ["http1", "query", "tokio"] }
 tokio = { version = "1.48", default-features = false, features = ["net", "sync", "time"] }
 futures-util = { version = "0.3", default-features = false }
+http = "1"
 url = "2.5"
 directories = "6.0"
 tauri-plugin-dialog = "2.7"

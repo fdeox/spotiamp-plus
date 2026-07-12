@@ -19,6 +19,9 @@
   let search = $state("");
 
   let selectedUri = $state(null);
+  // when true the right pane shows Spotify search results instead of a playlist
+  let searchMode = $state(false);
+  let searchQuery = $state("");
   let tracks = $state([]);
   // every track uri of the selected playlist (from get_track_ids, arrives in
   // one call) — used so playing a track loads the rest of the list after it
@@ -53,7 +56,22 @@
   const trackUrl = (uri) =>
     `https://open.spotify.com/track/${uri.split(":").pop()}`;
 
+  // Resolve names for a list of track uris, filling the right pane top-down.
+  async function loadTrackMetas(ids, token) {
+    for (const uri of ids) {
+      if (token !== loadToken) return; // switched away, abandon
+      try {
+        const meta = await invoke("get_track_metadata", { uri });
+        if (token !== loadToken) return;
+        tracks = [...tracks, meta];
+      } catch (e) {
+        /* skip a track we can't read */
+      }
+    }
+  }
+
   async function selectPlaylist(pl) {
+    searchMode = false;
     selectedUri = pl.uri;
     tracks = [];
     trackUris = [];
@@ -64,16 +82,32 @@
       const ids = await invoke("get_track_ids", { uri: pl.uri });
       if (token !== loadToken) return;
       trackUris = ids;
-      for (const uri of ids) {
-        if (token !== loadToken) return; // switched playlist, abandon
-        try {
-          const meta = await invoke("get_track_metadata", { uri });
-          if (token !== loadToken) return;
-          tracks = [...tracks, meta];
-        } catch (e) {
-          /* skip a track we can't read */
-        }
-      }
+      await loadTrackMetas(ids, token);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+
+  // Search the Spotify catalogue (Enter in the search box); results land in the
+  // right pane and play like any other track.
+  async function doSearch() {
+    const q = search.trim();
+    if (!q) return;
+    searchMode = true;
+    searchQuery = q;
+    selectedUri = null;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      const ids = await invoke("search", { query: q });
+      if (token !== loadToken) return;
+      trackUris = ids;
+      await loadTrackMetas(ids, token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -185,7 +219,12 @@
     <!-- left: playlists -->
     <div class="lib-pane lib-playlists">
       <div class="lib-pane-head">PLAYLISTS</div>
-      <input class="lib-search" placeholder="search…" bind:value={search} />
+      <input
+        class="lib-search"
+        placeholder="filter · Enter = search Spotify"
+        bind:value={search}
+        onkeydown={(e) => e.key === "Enter" && doSearch()}
+      />
       <div class="lib-list">
         {#if loading}
           <div class="lib-msg">loading playlists…</div>
@@ -210,12 +249,14 @@
       </div>
     </div>
 
-    <!-- right: tracks of the selected playlist -->
+    <!-- right: tracks of the selected playlist, or search results -->
     <div class="lib-pane lib-tracks">
-      <div class="lib-pane-head">TRACKS</div>
+      <div class="lib-pane-head">
+        {searchMode ? `SEARCH: ${searchQuery}` : "TRACKS"}
+      </div>
       <div class="lib-list">
-        {#if !selectedUri}
-          <div class="lib-msg">← select a playlist</div>
+        {#if !selectedUri && !searchMode}
+          <div class="lib-msg">← select a playlist<br />or search Spotify ↑</div>
         {:else}
           {#each tracks as t, i}
             <button
@@ -229,11 +270,13 @@
             </button>
           {/each}
           {#if tracksLoading}
-            <div class="lib-msg">loading tracks…</div>
+            <div class="lib-msg">
+              {searchMode ? "searching…" : "loading tracks…"}
+            </div>
           {:else if tracksError}
             <div class="lib-msg lib-err">{tracksError}</div>
           {:else if tracks.length === 0}
-            <div class="lib-msg">empty</div>
+            <div class="lib-msg">{searchMode ? "no results" : "empty"}</div>
           {/if}
         {/if}
       </div>

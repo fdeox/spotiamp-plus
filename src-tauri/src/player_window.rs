@@ -157,6 +157,11 @@ pub async fn get_user_playlists(
 }
 
 #[tauri::command]
+pub async fn search(query: &str, player: State<'_, SharedPlayer>) -> Result<Vec<String>, String> {
+    player.lock().await.search(query).await
+}
+
+#[tauri::command]
 pub async fn seek(position_ms: u32, player: State<'_, SharedPlayer>) -> Result<(), String> {
     player.lock().await.seek(position_ms);
     Ok(())

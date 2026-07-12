@@ -4699,6 +4699,7 @@ dependencies = [
  "directories",
  "env_logger",
  "futures-util",
+ "http",
  "librespot",
  "log",
  "oauth2",

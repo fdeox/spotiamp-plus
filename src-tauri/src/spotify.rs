@@ -344,6 +344,49 @@ impl SpotifyPlayer {
         Ok(playlists)
     }
 
+    /// Search the Spotify catalogue. Uses the internal context-resolve endpoint
+    /// (the same one the desktop client uses for `spotify:search:<query>`),
+    /// which returns JSON we scan for track URIs — no extra protobuf deps.
+    /// Returns track URIs; the frontend resolves names via get_track_metadata.
+    pub async fn search(&self, query: &str) -> Result<Vec<String>, String> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        // spotify:search:<query> expects '+' between words
+        let encoded = query.split_whitespace().collect::<Vec<_>>().join("+");
+        let endpoint = format!("/context-resolve/v1/spotify:search:{encoded}");
+
+        let bytes = self
+            .session
+            .inner
+            .spclient()
+            .request_as_json(&http::Method::GET, &endpoint, None, None)
+            .await
+            .map_err(|e| format!("Search failed: {e:?}"))?;
+
+        let text = String::from_utf8_lossy(bytes.as_ref());
+        let pat = "spotify:track:";
+        let mut uris: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut search_from = 0usize;
+        while let Some(rel) = text[search_from..].find(pat) {
+            let id_start = search_from + rel + pat.len();
+            let id: String = text[id_start..].chars().take(22).collect();
+            search_from = id_start;
+            if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+                let uri = format!("{pat}{id}");
+                if seen.insert(uri.clone()) {
+                    uris.push(uri);
+                }
+            }
+            if uris.len() >= 50 {
+                break;
+            }
+        }
+        Ok(uris)
+    }
+
     pub async fn get_track(&mut self, track_uri: SpotifyUri) -> Result<Track, PlayError> {
         match track_uri {
             SpotifyUri::Track { .. } => {
