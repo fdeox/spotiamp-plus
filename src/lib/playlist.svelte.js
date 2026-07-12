@@ -143,6 +143,11 @@ export class Playlist {
      */
     selectionAnchor = $state();
 
+    /** Play in random order (toggled from the player's shuffle button). */
+    shuffle = false;
+    /** Loop back to the start when the end is reached (repeat all). */
+    repeat = false;
+
     /**
      * @argument {string[]} uris
      */
@@ -198,6 +203,10 @@ export class Playlist {
                     this.next(true);
                 } else if (event.PreviousPressed !== undefined) {
                     this.previous(true);
+                } else if (event.ShuffleChanged !== undefined) {
+                    this.shuffle = event.ShuffleChanged;
+                } else if (event.RepeatChanged !== undefined) {
+                    this.repeat = event.RepeatChanged;
                 } else if (event.UrlsDropped) {
                     const urls = event.UrlsDropped;
                     this.clear().then(() => {
@@ -439,8 +448,31 @@ export class Playlist {
      * @returns {Promise<boolean>} true if the end in that direction has been reached
      */
     async move(offset, skipUnavailable) {
-        const currRowIndex = this.loadedRow ? this.rows.indexOf(this.loadedRow) : 0;
-        const row = this.rows[currRowIndex + offset];
+        if (this.rows.length === 0) {
+            return true;
+        }
+        const currRowIndex = this.loadedRow
+            ? this.rows.indexOf(this.loadedRow)
+            : 0;
+
+        let nextIndex;
+        if (this.shuffle && offset > 0) {
+            // shuffle only drives forward playback; previous stays sequential
+            nextIndex = this.pickRandomIndex(currRowIndex);
+        } else {
+            nextIndex = currRowIndex + offset;
+            if (nextIndex < 0 || nextIndex >= this.rows.length) {
+                if (this.repeat) {
+                    nextIndex =
+                        ((nextIndex % this.rows.length) + this.rows.length) %
+                        this.rows.length;
+                } else {
+                    return true; // end (or top) reached
+                }
+            }
+        }
+
+        const row = this.rows[nextIndex];
         if (!row) {
             return true;
         }
@@ -453,6 +485,18 @@ export class Playlist {
         }
 
         return false;
+    }
+
+    /** Pick a random row index, avoiding `exclude` when there's a choice. */
+    pickRandomIndex(exclude) {
+        if (this.rows.length <= 1) {
+            return 0;
+        }
+        let index;
+        do {
+            index = Math.floor(Math.random() * this.rows.length);
+        } while (index === exclude);
+        return index;
     }
 
     /**

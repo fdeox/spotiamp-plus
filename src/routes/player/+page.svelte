@@ -74,6 +74,8 @@
   }
   let showPlaylist = $state(initialShowPlaylist());
   let doubleSizeActive = $state(initialDoubleSizeActive());
+  let shuffle = $state(false);
+  let repeat = $state(false);
   /**
    * @type {'nothing' | 'seeking' | 'volume-change'}
    */
@@ -211,6 +213,15 @@
   $effect(() => {
     invoke("set_double_size", { active: doubleSizeActive });
     REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
+  });
+
+  // The playlist window owns the actual next/previous navigation, so push the
+  // shuffle/repeat toggles over to it whenever they change.
+  $effect(() => {
+    emitWindowEvent("playerWindow", { ShuffleChanged: shuffle });
+  });
+  $effect(() => {
+    emitWindowEvent("playerWindow", { RepeatChanged: repeat });
   });
 
   onMount(() => {
@@ -386,6 +397,18 @@
     class:playlist-btn-enabled={showPlaylist}
     onclick={() => (showPlaylist = !showPlaylist)}
     aria-label="Toggle playlist"
+  ></button>
+  <button
+    class="sprite shuffle-btn"
+    class:active={shuffle}
+    onclick={() => (shuffle = !shuffle)}
+    aria-label="Shuffle"
+  ></button>
+  <button
+    class="sprite repeat-btn"
+    class:active={repeat}
+    onclick={() => (repeat = !repeat)}
+    aria-label="Repeat"
   ></button>
   <div class="sprite playpause-sprite playpause-{playerState}"></div>
 
@@ -563,6 +586,44 @@
 
   button.playlist-btn-enabled {
     background-position-y: -73px;
+  }
+
+  /* SHUFREP.BMP: shuffle (47x15) + repeat (28x15), 4 states each
+     (off / off-pressed / on / on-pressed stacked every 15px) */
+  button.shuffle-btn {
+    --sprite-url: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --sprite-x: 164px;
+    --sprite-y: 89px;
+    width: 47px;
+    height: 15px;
+    background-position: -28px 0px;
+  }
+  button.shuffle-btn:active {
+    background-position: -28px -15px;
+  }
+  button.shuffle-btn.active {
+    background-position: -28px -30px;
+  }
+  button.shuffle-btn.active:active {
+    background-position: -28px -45px;
+  }
+
+  button.repeat-btn {
+    --sprite-url: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --sprite-x: 211px;
+    --sprite-y: 89px;
+    width: 28px;
+    height: 15px;
+    background-position: 0px 0px;
+  }
+  button.repeat-btn:active {
+    background-position: 0px -15px;
+  }
+  button.repeat-btn.active {
+    background-position: 0px -30px;
+  }
+  button.repeat-btn.active:active {
+    background-position: 0px -45px;
   }
 
   .stereo-mono-sprite {
