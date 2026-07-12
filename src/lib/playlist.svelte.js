@@ -182,6 +182,16 @@ export class Playlist {
         * @param {DocumentEventMap["keydown"]} e
         */
         const playlistKeyDownListener = (e) => {
+            const t = /** @type {HTMLElement} */ (e.target);
+            if (
+                t &&
+                (t.tagName == "INPUT" ||
+                    t.tagName == "TEXTAREA" ||
+                    t.isContentEditable)
+            ) {
+                return;
+            }
+            const ctrl = e.ctrlKey || e.metaKey;
             if (e.key == "ArrowDown") {
                 e.preventDefault();
                 if (e.altKey) {
@@ -202,6 +212,28 @@ export class Playlist {
             } else if (e.key == "Enter") {
                 e.preventDefault();
                 this.playSelected();
+            } else if (ctrl && e.key.toLowerCase() == "a") {
+                e.preventDefault();
+                this.selectedRows = [...this.rows];
+            } else if (!ctrl && !e.altKey) {
+                // Winamp transport keys, forwarded to the player
+                const k = e.key.toLowerCase();
+                if (k == "z") {
+                    e.preventDefault();
+                    this.previous(true);
+                } else if (k == "b") {
+                    e.preventDefault();
+                    this.next(true);
+                } else if (k == "x") {
+                    e.preventDefault();
+                    emitWindowEvent("playlistWindow", { PlayRequested: null });
+                } else if (k == "c") {
+                    e.preventDefault();
+                    emitWindowEvent("playlistWindow", { PauseRequested: null });
+                } else if (k == "v") {
+                    e.preventDefault();
+                    emitWindowEvent("playlistWindow", { StopRequested: null });
+                }
             }
         }
         document.addEventListener("keydown", playlistKeyDownListener);

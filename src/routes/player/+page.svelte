@@ -244,6 +244,10 @@
           loadTrack(track);
         } else if (event.PlayRequested !== undefined) {
           play();
+        } else if (event.PauseRequested !== undefined) {
+          pause();
+        } else if (event.StopRequested !== undefined) {
+          stop();
         } else if (event.EndReached !== undefined) {
           stop();
         }
@@ -280,11 +284,53 @@
       emitWindowEvent("playerWindow", { UrlsDropped: urls });
     });
 
+    // Classic Winamp keyboard shortcuts (main window)
+    const onPlayerKeyDown = (e) => {
+      const t = e.target;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      )
+        return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const acted = () => e.preventDefault();
+      switch (k) {
+        case "z": acted(); emitPreviousPressed(); break;
+        case "x": acted(); play(); break;
+        case "c": acted(); pause(); break;
+        case "v": acted(); stop(); break;
+        case "b": acted(); emitNextPressed(); break;
+        case " ": acted(); playerState === "playing" ? pause() : play(); break;
+        case "s": acted(); shuffle = !shuffle; break;
+        case "r": acted(); repeat = (repeat + 1) % 3; break;
+        case "arrowup": acted(); volume = Math.min(100, volume + 5); break;
+        case "arrowdown": acted(); volume = Math.max(0, volume - 5); break;
+        case "arrowright":
+          acted();
+          if (loadedTrack)
+            seek(Math.min(loadedTrack.durationInMs, seekPosition + 5000));
+          break;
+        case "arrowleft":
+          acted();
+          if (loadedTrack) seek(Math.max(0, seekPosition - 5000));
+          break;
+        case "l":
+          acted();
+          invoke("set_library_window_visible", { visible: true });
+          break;
+      }
+    };
+    document.addEventListener("keydown", onPlayerKeyDown);
+
     return () => {
       clearInterval(tickerInterval);
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
+      document.removeEventListener("keydown", onPlayerKeyDown);
     };
   });
 
