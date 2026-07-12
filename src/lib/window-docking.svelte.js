@@ -276,6 +276,13 @@ export function isDocked(windowRect, otherRect) {
  */
 export function makeTauriWindowDraggable(element, options = {}) {
   element.onpointerdown = async function (event) {
+    // Don't start a drag when the press lands on an interactive control inside
+    // the drag handle (e.g. a titlebar close button). Svelte 5 delegates
+    // pointerdown, so a child's stopPropagation runs *after* this direct
+    // handler — hence this explicit opt-out instead.
+    if (event.target instanceof Element && event.target.closest("[data-no-drag]")) {
+      return;
+    }
     event.preventDefault();
 
     const currentWindow = getCurrentWindow();

@@ -41,7 +41,11 @@ pub async fn set_visualizer_window_visible(
             let size = anchor.outer_size().map_err(|_| ())?;
             position.y += size.height as i32;
             let scale_factor = anchor.scale_factor().unwrap_or(1.0);
-            build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?
+            let window =
+                build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
+            // dock to the player (subclass id 3, alongside playlist=1, library=2)
+            app_window::dock_windows(&anchor, &window, "playerWindow", "visualizerWindow", 3);
+            window
         }
     };
 

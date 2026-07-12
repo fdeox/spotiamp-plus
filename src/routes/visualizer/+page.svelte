@@ -1,11 +1,26 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { Window } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
-  import { emitWindowEvent } from "$lib/events.svelte.js";
-  import { makeTauriWindowDraggable } from "$lib/window-docking.svelte.js";
+  import {
+    emitWindowEvent,
+    subscribeToWindowEvent,
+  } from "$lib/events.svelte.js";
+  import {
+    makeTauriWindowDraggable,
+    isDocked,
+    rectFromPositionAndSize,
+    SNAP_DISTANCE,
+    snapPosition,
+    STICKY_SNAP_DISTANCE,
+  } from "$lib/window-docking.svelte.js";
 
   let canvas;
+  const MODE_COUNT = 4;
+  const MODE_NAMES = ["tunnel", "kaleido", "warpgrid", "starburst"];
+  let mode = $state(0);
+  const nextMode = () => (mode = (mode + 1) % MODE_COUNT);
 
   const close = () => invoke("set_visualizer_window_visible", { visible: false });
 
@@ -17,53 +32,63 @@
     uniform float uMid;
     uniform float uTreble;
     uniform float uLevel;
+    uniform float uMode;
 
-    // audio-reactive swirling tunnel / plasma — milkdrop-ish
+    vec3 hsv(float h, float s, float v) {
+      vec3 rgb = clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+      return v * mix(vec3(1.0), rgb, s);
+    }
+
     void main() {
-      vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution) / iResolution.y;
-      float t = iTime * 0.25;
-
+      vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/iResolution.y;
+      float t = iTime*0.25;
       float r = length(uv);
       float a = atan(uv.y, uv.x);
+      int m = int(uMode + 0.5);
+      vec3 col = vec3(0.0);
 
-      // warp the radius with the beat
-      r += sin(a * (5.0 + floor(uMid * 6.0)) + t * 2.0) * (0.06 + 0.22 * uMid);
-      r -= uBass * 0.25;
+      if (m == 0) {
+        // swirling tunnel / plasma
+        float rr = r + sin(a*(5.0+floor(uMid*6.0))+t*2.0)*(0.06+0.22*uMid) - uBass*0.25;
+        float tun = 0.35/(rr+0.18)+t*(1.0+uBass);
+        col.r=0.5+0.5*sin(tun*3.0+a*2.0+uBass*5.0);
+        col.g=0.5+0.5*sin(tun*2.0+t*1.3+uMid*4.0+2.1);
+        col.b=0.5+0.5*sin(tun*4.0+uTreble*6.0+4.2);
+        col+=(0.25+uBass)*smoothstep(0.5,0.0,rr);
+      } else if (m == 1) {
+        // kaleidoscope
+        float seg = 6.0;
+        float aa = abs(mod(a, 6.2831/seg) - 3.1415/seg);
+        vec2 p = vec2(cos(aa), sin(aa))*r;
+        float v = sin(p.x*10.0+t*3.0+uBass*6.0)*cos(p.y*10.0-t*2.0);
+        col = hsv(fract(v*0.3+t*0.2+uMid), 0.8, 0.5+0.5*abs(v)+uLevel*0.5);
+      } else if (m == 2) {
+        // liquid warp grid
+        vec2 p = uv*(2.0+uBass*2.0);
+        p += 0.3*vec2(sin(p.y*3.0+t*2.0), cos(p.x*3.0+t*1.7))*(0.5+uMid);
+        float g = abs(sin(p.x*6.0))*abs(sin(p.y*6.0));
+        col = hsv(fract(t*0.1+length(p)*0.1+uTreble), 0.7, g+uLevel*0.4);
+      } else {
+        // starburst rings
+        float w = sin(r*20.0 - t*5.0 - uBass*10.0)*0.5+0.5;
+        float rays = 0.5+0.5*sin(a*(8.0+floor(uTreble*10.0))+t);
+        col = hsv(fract(a/6.2831 + t*0.1), 0.6, w*rays*(0.4+uLevel+uBass));
+      }
 
-      float tunnel = 0.35 / (r + 0.18) + t * (1.0 + uBass);
-      float spokes = a * (2.0 + uTreble * 6.0);
-
-      vec3 col;
-      col.r = 0.5 + 0.5 * sin(tunnel * 3.0 + spokes + uBass * 5.0);
-      col.g = 0.5 + 0.5 * sin(tunnel * 2.0 + t * 1.3 + uMid * 4.0 + 2.1);
-      col.b = 0.5 + 0.5 * sin(tunnel * 4.0 + uTreble * 6.0 + 4.2);
-
-      // ripple detail
-      col += 0.15 * uTreble * sin(tunnel * 12.0 + spokes * 2.0);
-
-      // pulse and center bloom
-      col *= 0.35 + 0.9 * uLevel + 0.5 * uBass;
-      col += (0.25 + uBass) * smoothstep(0.5, 0.0, r);
-
-      // soft vignette
+      col *= 0.35+0.9*uLevel+0.3*uBass;
       col *= smoothstep(1.5, 0.15, r);
-
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      gl_FragColor = vec4(clamp(col,0.0,1.0),1.0);
     }
   `;
 
-  const VERT = `
-    attribute vec2 p;
-    void main() { gl_Position = vec4(p, 0.0, 1.0); }
-  `;
+  const VERT = `attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
 
   function compile(gl, type, src) {
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
     gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-      console.error("shader error", gl.getShaderInfoLog(s));
-    }
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      console.error("shader", gl.getShaderInfoLog(s));
     return s;
   }
 
@@ -83,7 +108,6 @@
     gl.linkProgram(prog);
     gl.useProgram(prog);
 
-    // fullscreen quad
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(
@@ -95,22 +119,23 @@
     gl.enableVertexAttribArray(pLoc);
     gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
 
-    const uRes = gl.getUniformLocation(prog, "iResolution");
-    const uTime = gl.getUniformLocation(prog, "iTime");
-    const uBass = gl.getUniformLocation(prog, "uBass");
-    const uMid = gl.getUniformLocation(prog, "uMid");
-    const uTreble = gl.getUniformLocation(prog, "uTreble");
-    const uLevel = gl.getUniformLocation(prog, "uLevel");
+    const u = (n) => gl.getUniformLocation(prog, n);
+    const uRes = u("iResolution"),
+      uTime = u("iTime"),
+      uBassL = u("uBass"),
+      uMidL = u("uMid"),
+      uTrebL = u("uTreble"),
+      uLevelL = u("uLevel"),
+      uModeL = u("uMode");
 
     let bass = 0,
       mid = 0,
       treble = 0,
-      level = 0;
-    let running = true;
+      level = 0,
+      running = true;
     const start = performance.now();
 
-    // poll the Rust spectrum on its own cadence, decoupled from rendering
-    function poll() {
+    let pollTimer = setTimeout(function poll() {
       if (!running) return;
       invoke("take_latest_spectrum", {})
         .then((data) => {
@@ -120,10 +145,7 @@
             const band = (lo, hi) => {
               let s = 0,
                 c = 0;
-              for (let i = lo; i < hi && i < n; i++) {
-                s += v[i];
-                c++;
-              }
+              for (let i = lo; i < hi && i < n; i++) (s += v[i]), c++;
               return c ? s / c : 0;
             };
             const tb = band(0, Math.max(1, Math.floor(n * 0.16)));
@@ -145,8 +167,7 @@
         .finally(() => {
           if (running) pollTimer = setTimeout(poll, 33);
         });
-    }
-    let pollTimer = setTimeout(poll, 33);
+    }, 33);
 
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -165,27 +186,67 @@
       resize();
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, (performance.now() - start) / 1000);
-      gl.uniform1f(uBass, bass);
-      gl.uniform1f(uMid, mid);
-      gl.uniform1f(uTreble, treble);
-      gl.uniform1f(uLevel, level);
+      gl.uniform1f(uBassL, bass);
+      gl.uniform1f(uMidL, mid);
+      gl.uniform1f(uTrebL, treble);
+      gl.uniform1f(uLevelL, level);
+      gl.uniform1f(uModeL, mode);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
 
+    // auto-cycle presets, and switch on every track change for milkdrop variety
+    const cycle = setInterval(nextMode, 25000);
+    let lastUri = "";
+    let unsub;
+    subscribeToWindowEvent("player", (event) => {
+      const p = event.Playing;
+      if (p && p.uri && p.uri !== lastUri) {
+        lastUri = p.uri;
+        mode = Math.floor(Math.random() * MODE_COUNT);
+      }
+    }).then((u2) => (unsub = u2));
+
     return () => {
       running = false;
       cancelAnimationFrame(raf);
       clearTimeout(pollTimer);
+      clearInterval(cycle);
+      if (unsub) unsub();
     };
   });
 
   function makeVizDraggable(element) {
     makeTauriWindowDraggable(element, {
-      async onStart() {
+      async onStart({ startPosition, windowSize }) {
+        const playerWindow = await Window.getByLabel("player");
+        if (!playerWindow) return false;
         await emitWindowEvent("visualizerWindow", { DragStarted: null });
-        return {};
+        const [pp, ps] = await Promise.all([
+          playerWindow.outerPosition(),
+          playerWindow.outerSize(),
+        ]);
+        const playerRect = rectFromPositionAndSize(pp, ps);
+        return {
+          playerRect,
+          vizSize: windowSize,
+          docked: isDocked(
+            rectFromPositionAndSize(startPosition, windowSize),
+            playerRect,
+          ),
+        };
+      },
+      mapPosition(rawPosition, context) {
+        const rawRect = {
+          ...rawPosition,
+          width: context.vizSize.width,
+          height: context.vizSize.height,
+        };
+        const d = context.docked ? STICKY_SNAP_DISTANCE : SNAP_DISTANCE;
+        const snapped = snapPosition(rawRect, context.playerRect, d);
+        context.docked = snapped !== undefined;
+        return snapped ?? rawPosition;
       },
       async onEnd() {
         await emitWindowEvent("visualizerWindow", { DragEnded: null });
@@ -216,15 +277,19 @@
   <div class="viz-titlebar" use:makeVizDraggable>
     <div class="viz-tl"></div>
     <span class="viz-title">VISUALIZER</span>
-    <button
-      class="viz-close"
-      onpointerdown={(e) => e.stopPropagation()}
-      onclick={close}
-      aria-label="Close"
+    <button class="viz-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
   </div>
 
-  <canvas bind:this={canvas} class="viz-canvas"></canvas>
+  <div class="viz-stage">
+    <canvas
+      bind:this={canvas}
+      class="viz-canvas"
+      onclick={nextMode}
+      title="click to change pattern"
+    ></canvas>
+    <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
+  </div>
 
   <div class="viz-resize" use:makeVizResizable></div>
 </div>
@@ -247,7 +312,6 @@
     user-select: none;
   }
 
-  /* authentic gen.bmp titlebar (same tiles as the library window) */
   .viz-titlebar {
     position: relative;
     flex: 0 0 20px;
@@ -296,12 +360,28 @@
     z-index: 2;
   }
 
-  .viz-canvas {
+  .viz-stage {
+    position: relative;
     flex: 1;
-    width: 100%;
     min-height: 0;
+  }
+  .viz-canvas {
+    width: 100%;
+    height: 100%;
     display: block;
     background: #000;
+    cursor: pointer;
+  }
+  .viz-preset {
+    position: absolute;
+    left: 4px;
+    bottom: 3px;
+    font-family: monospace;
+    font-size: 9px;
+    color: #6effa0;
+    text-shadow: 0 0 3px #000, 0 0 2px #000;
+    pointer-events: none;
+    opacity: 0.75;
   }
 
   .viz-resize {

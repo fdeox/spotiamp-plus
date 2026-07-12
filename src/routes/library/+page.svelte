@@ -216,11 +216,7 @@
   <div class="lib-titlebar" use:makeLibraryDraggable>
     <div class="lib-tl"></div>
     <span class="lib-title">LIBRARY</span>
-    <button
-      class="lib-close"
-      onpointerdown={(e) => e.stopPropagation()}
-      onclick={close}
-      aria-label="Close"
+    <button class="lib-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
   </div>
 
