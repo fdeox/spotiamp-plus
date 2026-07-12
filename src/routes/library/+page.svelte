@@ -146,6 +146,27 @@
       },
     });
   }
+
+  // Resize from the bottom-right corner, like the Winamp playlist. Updating
+  // REACTIVE_WINDOW_SIZE makes the layout effect resize the OS window; the panes
+  // are flexbox so they reflow to fill it.
+  function makeLibraryResizable(element) {
+    element.onpointerdown = function (event) {
+      event.preventDefault();
+      element.setPointerCapture(event.pointerId);
+      document.onpointermove = function (e) {
+        const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
+        const width = Math.max(Math.round(e.clientX / zoom) + 3, 240);
+        const height = Math.max(Math.round(e.clientY / zoom) + 3, 220);
+        REACTIVE_WINDOW_SIZE.setSize(width, height);
+      };
+      document.onpointerup = function () {
+        document.onpointermove = null;
+        element.releasePointerCapture(event.pointerId);
+      };
+    };
+    element.onselectstart = () => false;
+  }
 </script>
 
 <div class="lib-window">
@@ -222,6 +243,8 @@
   <div class="lib-footer">
     double-click a playlist to load · a track to play it
   </div>
+
+  <div class="lib-resize" use:makeLibraryResizable></div>
 </div>
 
 <style>
@@ -399,6 +422,17 @@
   .lib-err {
     color: #d06a6a;
     white-space: normal;
+  }
+
+  /* resize grip, bottom-right corner (like the playlist) */
+  .lib-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    z-index: 20;
   }
 
   /* ---- footer ---- */
