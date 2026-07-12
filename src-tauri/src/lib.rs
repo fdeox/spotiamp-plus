@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use librespot::playback::player::PlayerEvent;
+use librespot::playback::player::{PlayerEvent, PlayerEventChannel};
 use serde::{Deserialize, Serialize};
 use spotify::{SessionError, SpotifyPlayer};
-use tauri::{AppHandle, Emitter, Listener, Manager};
+use tauri::{AppHandle, Emitter, Listener, Manager, WebviewWindow};
 use thiserror::Error;
 
 use crate::spotify::SpotifySession;
@@ -114,19 +114,52 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
             e,
         })?;
     let player = Arc::new(tokio::sync::Mutex::new(SpotifyPlayer::new(session)));
-
     app_handle.manage(player.clone());
-    tauri::async_runtime::spawn(async move {
-        let mut channel = player.lock().await.get_player_event_channel();
 
+    // Forward playback events from the current player to the UI.
+    let channel = player.lock().await.get_player_event_channel();
+    spawn_event_forwarder(player_window.clone(), channel);
+
+    // Watch the Spotify connection: it gets force-closed every so often
+    // (os error 10054) and a librespot session can't be revived, so when it
+    // drops we rebuild session + player and re-forward events — playback
+    // recovers on the next play without needing an app restart.
+    {
+        let player = player.clone();
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                if !player.lock().await.is_session_invalid() {
+                    continue;
+                }
+                log::warn!("Spotify session dropped — reconnecting…");
+                let result = player.lock().await.reconnect(&app_handle).await;
+                match result {
+                    Ok(channel) => {
+                        log::info!("Reconnected to Spotify.");
+                        spawn_event_forwarder(player_window.clone(), channel);
+                    }
+                    Err(e) => log::warn!("Reconnect failed (will retry in 10s): {e:?}"),
+                }
+            }
+        });
+    }
+
+    Ok(())
+}
+
+/// Pump playback events from a player's channel out to the player window.
+/// Ends on its own when the channel closes (e.g. when a stale player is
+/// replaced during a reconnect).
+fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: PlayerEventChannel) {
+    tauri::async_runtime::spawn(async move {
         while let Some(player_event) = channel.recv().await {
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
                 let _ = player_window.emit("player", player_event);
             }
         }
     });
-
-    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

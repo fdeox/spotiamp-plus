@@ -139,6 +139,26 @@ pub struct SpotifyPlayer {
 impl SpotifyPlayer {
     #[allow(clippy::new_without_default)]
     pub fn new(session: SpotifySession) -> Self {
+        let volume = Arc::new(AtomicU16::new(Settings::current().player.volume));
+        let visualizer = Arc::new(Mutex::new(Visualizer::new()));
+        let player = Self::build_player(&session.inner, volume.clone(), visualizer.clone());
+
+        Self {
+            player,
+            session,
+            volume,
+            visualizer,
+        }
+    }
+
+    /// Build a librespot Player bound to `session`. Split out of `new` so that
+    /// `reconnect` can rebuild the player on a fresh session while keeping the
+    /// same volume + visualizer.
+    fn build_player(
+        session: &Session,
+        volume: Arc<AtomicU16>,
+        visualizer: Arc<Mutex<Visualizer>>,
+    ) -> Arc<Player> {
         let player_config = PlayerConfig {
             // Emit a position update every second so the UI can re-sync its
             // playback clock instead of free-running and drifting from the
@@ -169,11 +189,9 @@ impl SpotifyPlayer {
             }
         }
 
-        let volume = Arc::new(AtomicU16::new(Settings::current().player.volume));
-        let visualizer = Arc::new(Mutex::new(Visualizer::new()));
-        let player = Player::new(
+        Player::new(
             player_config,
-            session.inner.clone(),
+            session.clone(),
             Box::new(SpotiampVolumeGetter {
                 volume: volume.clone(),
             }),
@@ -185,14 +203,30 @@ impl SpotifyPlayer {
                     Box::new(SpotiampSink::new(None, audio_format, visualizer, volume))
                 }
             },
-        );
+        )
+    }
 
-        Self {
-            player,
-            session,
-            volume,
-            visualizer,
-        }
+    /// Whether Spotify has dropped our session (so playback needs a reconnect).
+    pub fn is_session_invalid(&self) -> bool {
+        self.session.inner.is_invalid()
+    }
+
+    /// Rebuild the session + player after Spotify closed the connection
+    /// (os error 10054 etc.). A librespot Session can't be reused once
+    /// invalidated, so we spin up a fresh one (reusing the cached credentials,
+    /// no re-login prompt) and swap in a new Player, keeping the same volume and
+    /// visualizer. Returns the new event channel for the UI forwarder.
+    pub async fn reconnect(
+        &mut self,
+        app: &AppHandle,
+    ) -> Result<PlayerEventChannel, SessionError> {
+        self.player.stop();
+        let session = SpotifySession::default();
+        session.login(app).await?;
+        self.player =
+            Self::build_player(&session.inner, self.volume.clone(), self.visualizer.clone());
+        self.session = session;
+        Ok(self.player.get_player_event_channel())
     }
 
     pub async fn load_track(&self, uri: &str) -> Result<(), PlayError> {
