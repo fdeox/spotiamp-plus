@@ -148,6 +148,16 @@ export class Playlist {
     /** 0 = off, 1 = repeat all (wrap at ends), 2 = repeat one (loop track). */
     repeat = 0;
 
+    /** Elapsed time of the current track in ms (fed by player events). */
+    positionMs = $state(0);
+    /** Total time of all loaded tracks in ms (for the bottom-bar readout). */
+    totalDurationMs = $derived(
+        this.rows.reduce(
+            (sum, r) => sum + (r.track ? r.track.durationInMs : 0),
+            0,
+        ),
+    );
+
     /**
      * @argument {string[]} uris
      */
@@ -231,6 +241,18 @@ export class Playlist {
                         emitWindowEvent("playlistWindow", { EndReached: null });
                     }
                 });
+            } else if (event.Playing) {
+                this.positionMs = event.Playing.position_ms;
+            } else if (event.PositionChanged) {
+                this.positionMs = event.PositionChanged.position_ms;
+            } else if (event.PositionCorrection) {
+                this.positionMs = event.PositionCorrection.position_ms;
+            } else if (event.Seeked) {
+                this.positionMs = event.Seeked.position_ms;
+            } else if (event.Paused) {
+                this.positionMs = event.Paused.position_ms;
+            } else if (event.Stopped) {
+                this.positionMs = 0;
             }
         });
 

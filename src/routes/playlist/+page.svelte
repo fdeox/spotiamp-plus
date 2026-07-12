@@ -56,6 +56,12 @@
   const openLibraryWindow = () =>
     invoke("set_library_window_visible", { visible: true });
 
+  // m:ss for the bottom-bar time readouts
+  function fmtTime(ms) {
+    const s = Math.floor((ms || 0) / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
   async function openLibrary() {
     showLibrary = true;
     if (libraryPlaylists.length > 0) return;
@@ -649,6 +655,15 @@
     title="clear playlist"
   ></button>
 
+  <!-- bottom-right LCD readouts over the two black areas:
+       total playlist time (wide, upper) + current track elapsed (small row) -->
+  <div class="pl-time pl-time-total pl-time-debug">
+    {fmtTime(playlist.totalDurationMs)}
+  </div>
+  <div class="pl-time pl-time-elapsed pl-time-debug">
+    {fmtTime(playlist.positionMs)}
+  </div>
+
   <div class="draggable-corner" use:makeResizable></div>
 </span>
 
@@ -902,6 +917,35 @@
     padding: 0;
     cursor: pointer;
     z-index: 60;
+  }
+
+  /* bottom-right LCD time readouts (green seven-seg-ish) */
+  .pl-time {
+    position: absolute;
+    text-align: right;
+    font-family: monospace;
+    font-size: calc(7px * var(--zoom));
+    line-height: 1;
+    color: #14e614;
+    white-space: nowrap;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 55;
+  }
+  .pl-time-elapsed {
+    right: calc(78px * var(--zoom));
+    width: calc(26px * var(--zoom));
+    top: calc(((var(--playlist-h) - 1) * 29px + 8px) * var(--zoom));
+  }
+  .pl-time-total {
+    right: calc(82px * var(--zoom));
+    width: calc(76px * var(--zoom));
+    top: calc(((var(--playlist-h) - 1) * 29px - 4px) * var(--zoom));
+  }
+  /* temporary alignment aid — removed once positions are dialed in */
+  .pl-time-debug {
+    background: rgba(255, 0, 0, 0.4);
+    outline: 1px solid yellow;
   }
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
