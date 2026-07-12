@@ -212,6 +212,9 @@ export class Playlist {
                     this.clear().then(() => {
                         this.addUrls(urls);
                     });
+                } else if (event.UrlsAppended) {
+                    // append without clearing (e.g. adding one search result)
+                    this.addUrls(event.UrlsAppended);
                 }
             },
         );

@@ -119,12 +119,21 @@
   // listens for (clear + load). Works cross-window via Tauri's global emit.
   const loadPlaylistIntoMain = (pl) =>
     emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
-  // Play a track *and* queue the rest of the playlist after it, so playback
-  // keeps going instead of stopping on that one song.
-  const loadTrackIntoMain = (index) =>
-    emitWindowEvent("playerWindow", {
-      UrlsDropped: trackUris.slice(index).map(trackUrl),
-    });
+  // Double-clicking a track in the right pane:
+  //  - search results  → append just that one track (build a playlist by
+  //    searching repeatedly), keeping what's already loaded
+  //  - playlist tracks → play it and queue the rest of that playlist
+  function loadTrackIntoMain(index) {
+    if (searchMode) {
+      emitWindowEvent("playerWindow", {
+        UrlsAppended: [trackUrl(trackUris[index])],
+      });
+    } else {
+      emitWindowEvent("playerWindow", {
+        UrlsDropped: trackUris.slice(index).map(trackUrl),
+      });
+    }
+  }
 
   function fmt(ms) {
     const s = Math.round(ms / 1000);
@@ -262,7 +271,9 @@
             <button
               class="lib-row"
               ondblclick={() => loadTrackIntoMain(i)}
-              title="double-click to play from here"
+              title={searchMode
+                ? "double-click to add to the playlist"
+                : "double-click to play from here"}
             >
               <span class="lib-row-idx">{i + 1}.</span>
               <span class="lib-row-name">{t.artist} - {t.name}</span>
