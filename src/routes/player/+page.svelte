@@ -75,7 +75,8 @@
   let showPlaylist = $state(initialShowPlaylist());
   let doubleSizeActive = $state(initialDoubleSizeActive());
   let shuffle = $state(false);
-  let repeat = $state(false);
+  // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
+  let repeat = $state(0);
   /**
    * @type {'nothing' | 'seeking' | 'volume-change'}
    */
@@ -406,8 +407,9 @@
   ></button>
   <button
     class="sprite repeat-btn"
-    class:active={repeat}
-    onclick={() => (repeat = !repeat)}
+    class:active={repeat > 0}
+    class:repeat-one={repeat === 2}
+    onclick={() => (repeat = (repeat + 1) % 3)}
     aria-label="Repeat"
   ></button>
   <div class="sprite playpause-sprite playpause-{playerState}"></div>
@@ -624,6 +626,19 @@
   }
   button.repeat-btn.active:active {
     background-position: 0px -45px;
+  }
+  /* the base skin has no "repeat one" art, so mark that mode with a small 1 */
+  button.repeat-btn.repeat-one::after {
+    content: "1";
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-family: monospace;
+    font-size: 7px;
+    font-weight: bold;
+    line-height: 1;
+    color: #00e000;
+    text-shadow: 0 0 1px #000;
   }
 
   .stereo-mono-sprite {

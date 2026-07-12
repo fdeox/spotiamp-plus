@@ -145,8 +145,8 @@ export class Playlist {
 
     /** Play in random order (toggled from the player's shuffle button). */
     shuffle = false;
-    /** Loop back to the start when the end is reached (repeat all). */
-    repeat = false;
+    /** 0 = off, 1 = repeat all (wrap at ends), 2 = repeat one (loop track). */
+    repeat = 0;
 
     /**
      * @argument {string[]} uris
@@ -218,6 +218,11 @@ export class Playlist {
 
         const playerSubscription = subscribeToWindowEvent("player", (event) => {
             if (event.EndOfTrack) {
+                // repeat one: replay the current track instead of advancing
+                if (this.repeat === 2 && this.loadedRow) {
+                    this.loadedRow.loadTrack();
+                    return;
+                }
                 this.next(true).then((endReached) => {
                     if (endReached) {
                         emitWindowEvent("playlistWindow", { EndReached: null });

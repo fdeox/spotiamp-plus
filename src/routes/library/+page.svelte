@@ -259,10 +259,10 @@
     inset: 0;
     display: flex;
     flex-direction: column;
-    /* Winamp gen-window frame palette (matches the gold titlebar tiles) */
-    background: #2b2b47;
-    border: 1px solid #12121f;
-    box-shadow: inset 1px 1px 0 #56567c, inset -1px -1px 0 #191930;
+    /* dark frame toned to sit next to the PLEDIT playlist window */
+    background: #1c1d26;
+    border: 1px solid #0c0d12;
+    box-shadow: inset 1px 1px 0 #34384a, inset -1px -1px 0 #0e0f16;
     font-family: "Segoe UI", Tahoma, sans-serif;
     color: #c9d2e0;
     user-select: none;
@@ -347,8 +347,8 @@
     letter-spacing: 1px;
     color: #7f8aa3;
     padding: 2px 5px;
-    background: #1a1d27;
-    border-bottom: 1px solid #10121a;
+    background: #14151d;
+    border-bottom: 1px solid #0a0b10;
   }
 
   .lib-search {
@@ -380,7 +380,8 @@
     padding: 1px 5px;
     background: transparent;
     border: none;
-    color: #12d012;
+    /* match the playlist window: bright green on black, blue selection */
+    color: rgb(0, 255, 0);
     font-family: monospace;
     font-size: 11px;
     line-height: 15px;
@@ -392,11 +393,11 @@
     background: #0a1f0f;
   }
   .lib-row.selected {
-    background: #0b2f6b;
-    color: #d8e4ff;
+    background: rgb(0, 0, 198);
+    color: #fff;
   }
   .lib-row-idx {
-    color: #0a7a0a;
+    color: rgb(0, 160, 0);
     flex: 0 0 auto;
   }
   .lib-row-name {
@@ -406,11 +407,11 @@
   }
   .lib-row-count {
     flex: 0 0 auto;
-    color: #0a7a0a;
+    color: rgb(0, 160, 0);
   }
   .lib-row.selected .lib-row-idx,
   .lib-row.selected .lib-row-count {
-    color: #9fb6e6;
+    color: #cfe0ff;
   }
 
   .lib-msg {
@@ -443,19 +444,23 @@
     padding: 0 6px;
     font-size: 9px;
     color: #7f8aa3;
-    background: #1a1d27;
-    border-top: 1px solid #10121a;
+    background: #14151d;
+    border-top: 1px solid #0a0b10;
   }
 
-  /* chunky Winamp-ish scrollbars */
+  /* chunky beveled Winamp-style scrollbar */
   .lib-list::-webkit-scrollbar {
-    width: 8px;
+    width: 9px;
   }
   .lib-list::-webkit-scrollbar-track {
-    background: #0a0c12;
+    background: #05070a;
   }
   .lib-list::-webkit-scrollbar-thumb {
-    background: #3a4260;
-    border: 1px solid #10121a;
+    background: #1f2630;
+    border: 1px solid #0a0c10;
+    box-shadow: inset 1px 1px 0 #3a4350, inset -1px -1px 0 #0e1116;
+  }
+  .lib-list::-webkit-scrollbar-thumb:hover {
+    background: #262f3b;
   }
 </style>
