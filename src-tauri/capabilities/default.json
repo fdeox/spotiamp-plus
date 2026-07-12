@@ -5,7 +5,8 @@
   "windows": [
     "player",
     "playlist",
-    "library"
+    "library",
+    "visualizer"
   ],
   "permissions": [
     "core:default",

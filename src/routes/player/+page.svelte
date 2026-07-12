@@ -471,6 +471,14 @@
       class:hidden={bar.hat < 0.01}
     ></div>
   {/each}
+  <!-- double-click the spectrum to pop the milkdrop-style visualizer window -->
+  <button
+    class="viz-open-btn"
+    ondblclick={() =>
+      invoke("set_visualizer_window_visible", { visible: true })}
+    aria-label="Open visualizer"
+    title="double-click for the visualizer"
+  ></button>
   <input
     type="range"
     class="sprite volume-sprite"
@@ -753,6 +761,18 @@
     width: calc(var(--zoom) * 3px);
     height: calc(var(--zoom) * 1px);
     left: calc((24px + var(--bar-idx) * 4px) * var(--zoom));
+  }
+  .viz-open-btn {
+    position: absolute;
+    left: calc(24px * var(--zoom));
+    top: calc(43px * var(--zoom));
+    width: calc(76px * var(--zoom));
+    height: calc(16px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 30;
   }
   /* ------ /VISUALIZER ------ */
 

@@ -13,6 +13,7 @@ mod oauth;
 mod player_window;
 mod playlist_window;
 mod settings;
+mod visualizer_window;
 mod sink;
 pub mod spotify;
 mod visualizer;
@@ -185,6 +186,7 @@ pub fn run() {
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
             library_window::set_library_window_visible,
+            visualizer_window::set_visualizer_window_visible,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
