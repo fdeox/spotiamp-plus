@@ -17,8 +17,21 @@
   } from "$lib/window-docking.svelte.js";
 
   let canvas;
-  const MODE_COUNT = 4;
-  const MODE_NAMES = ["tunnel", "kaleido", "warpgrid", "starburst"];
+  const MODE_NAMES = [
+    "tunnel",
+    "kaleido",
+    "warpgrid",
+    "starburst",
+    "spiral",
+    "plasma",
+    "rings",
+    "hexgrid",
+    "cells",
+    "lightning",
+    "checker",
+    "bars",
+  ];
+  const MODE_COUNT = MODE_NAMES.length;
   let mode = $state(0);
   const nextMode = () => (mode = (mode + 1) % MODE_COUNT);
 
@@ -38,6 +51,7 @@
       vec3 rgb = clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
       return v * mix(vec3(1.0), rgb, s);
     }
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5); }
 
     void main() {
       vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/iResolution.y;
@@ -48,7 +62,6 @@
       vec3 col = vec3(0.0);
 
       if (m == 0) {
-        // swirling tunnel / plasma
         float rr = r + sin(a*(5.0+floor(uMid*6.0))+t*2.0)*(0.06+0.22*uMid) - uBass*0.25;
         float tun = 0.35/(rr+0.18)+t*(1.0+uBass);
         col.r=0.5+0.5*sin(tun*3.0+a*2.0+uBass*5.0);
@@ -56,23 +69,63 @@
         col.b=0.5+0.5*sin(tun*4.0+uTreble*6.0+4.2);
         col+=(0.25+uBass)*smoothstep(0.5,0.0,rr);
       } else if (m == 1) {
-        // kaleidoscope
-        float seg = 6.0;
-        float aa = abs(mod(a, 6.2831/seg) - 3.1415/seg);
+        float aa = abs(mod(a, 1.0472) - 0.5236);
         vec2 p = vec2(cos(aa), sin(aa))*r;
         float v = sin(p.x*10.0+t*3.0+uBass*6.0)*cos(p.y*10.0-t*2.0);
         col = hsv(fract(v*0.3+t*0.2+uMid), 0.8, 0.5+0.5*abs(v)+uLevel*0.5);
       } else if (m == 2) {
-        // liquid warp grid
         vec2 p = uv*(2.0+uBass*2.0);
         p += 0.3*vec2(sin(p.y*3.0+t*2.0), cos(p.x*3.0+t*1.7))*(0.5+uMid);
         float g = abs(sin(p.x*6.0))*abs(sin(p.y*6.0));
         col = hsv(fract(t*0.1+length(p)*0.1+uTreble), 0.7, g+uLevel*0.4);
-      } else {
-        // starburst rings
+      } else if (m == 3) {
         float w = sin(r*20.0 - t*5.0 - uBass*10.0)*0.5+0.5;
         float rays = 0.5+0.5*sin(a*(8.0+floor(uTreble*10.0))+t);
         col = hsv(fract(a/6.2831 + t*0.1), 0.6, w*rays*(0.4+uLevel+uBass));
+      } else if (m == 4) {
+        // logarithmic spiral galaxy
+        float s = sin(a*3.0 + log(r+0.08)*8.0 - t*3.0 - uBass*8.0);
+        col = hsv(fract(0.6+t*0.1+uMid), 0.8, 0.5+0.5*s) * (0.5+uLevel+uBass*0.5);
+      } else if (m == 5) {
+        // classic sine plasma
+        float v = sin(uv.x*8.0+t*2.0)+sin(uv.y*8.0+t*1.5)+sin((uv.x+uv.y)*8.0+t)+sin(r*10.0-t*2.0-uBass*8.0);
+        col = hsv(fract(v*0.1+t*0.05+uTreble), 0.7, 0.5+0.4*sin(v+uBass*4.0)+uLevel*0.3);
+      } else if (m == 6) {
+        // pulsing concentric rings
+        float ring = sin(r*(14.0+uBass*20.0) - t*4.0);
+        col = hsv(fract(r*0.5-t*0.1+uMid), 0.75, smoothstep(0.0,1.0,ring)*(0.4+uLevel+uBass));
+      } else if (m == 7) {
+        // hexagon grid
+        vec2 p = uv*(4.0+uBass*3.0);
+        vec2 h = abs(fract(p)-0.5);
+        float d = abs(max(h.x*0.866+h.y*0.5, h.y)-0.4);
+        col = hsv(fract(t*0.1+uTreble+dot(floor(p),vec2(0.1))), 0.7, smoothstep(0.1,0.0,d)*(0.5+uLevel+uBass*0.5));
+      } else if (m == 8) {
+        // voronoi cells
+        vec2 p = uv*(3.0+uBass*2.0)+t;
+        vec2 g = floor(p); float md = 1.0;
+        for (int j=-1;j<=1;j++) for (int i=-1;i<=1;i++) {
+          vec2 o = vec2(float(i),float(j));
+          vec2 pt = o + vec2(hash(g+o),hash(g+o+7.0)) - fract(p);
+          md = min(md, length(pt));
+        }
+        col = hsv(fract(md+t*0.1+uMid), 0.7, (1.0-md)*(0.4+uLevel+uBass));
+      } else if (m == 9) {
+        // radial lightning
+        float b = 0.02/abs(sin(a*3.0+t)*0.5 - r + 0.3 + uBass*0.3);
+        col = hsv(fract(0.55+uTreble), 0.5, b*(0.5+uLevel)) + vec3(0.1,0.2,0.4)*b;
+      } else if (m == 10) {
+        // warped checkerboard
+        vec2 p = uv*(3.0+uMid*3.0);
+        p *= mat2(cos(t),-sin(t),sin(t),cos(t));
+        p += 0.2*sin(p.yx*4.0+t*2.0+uBass*6.0);
+        float c = mod(floor(p.x)+floor(p.y), 2.0);
+        col = hsv(fract(t*0.1+uTreble), 0.6, (0.2+0.8*c)*(0.4+uLevel+uBass*0.5));
+      } else {
+        // radial spectrum bars
+        float bars = step(0.5, fract(a*(6.0+floor(uMid*8.0))/6.2831));
+        float lvl = 0.3+uBass*0.6+uTreble*0.4;
+        col = hsv(fract(a/6.2831+t*0.2), 0.8, step(r,lvl)*bars*(0.6+uLevel));
       }
 
       col *= 0.35+0.9*uLevel+0.3*uBass;
