@@ -96,13 +96,14 @@
 
 <div class="lib-window">
   <div class="lib-titlebar" use:makeTauriWindowDraggable>
+    <div class="lib-tl"></div>
     <span class="lib-title">LIBRARY</span>
     <button
       class="lib-close"
       onpointerdown={(e) => e.stopPropagation()}
       onclick={close}
-      aria-label="Close">×</button
-    >
+      aria-label="Close"
+    ></button>
   </div>
 
   <div class="lib-body">
@@ -181,54 +182,62 @@
     inset: 0;
     display: flex;
     flex-direction: column;
-    background: #2b2f3a;
-    border: 1px solid #10121a;
-    box-shadow: inset 1px 1px 0 #4a5266, inset -1px -1px 0 #171922;
+    /* Winamp gen-window frame palette (matches the gold titlebar tiles) */
+    background: #2b2b47;
+    border: 1px solid #12121f;
+    box-shadow: inset 1px 1px 0 #56567c, inset -1px -1px 0 #191930;
     font-family: "Segoe UI", Tahoma, sans-serif;
     color: #c9d2e0;
     user-select: none;
   }
 
-  /* ---- title bar ---- */
+  /* ---- title bar: authentic pieces cropped from GEN.BMP ---- */
   .lib-titlebar {
+    position: relative;
+    flex: 0 0 20px;
     height: 20px;
-    display: flex;
-    align-items: center;
-    padding: 0 4px;
-    background: linear-gradient(
-      90deg,
-      #10131c 0%,
-      #2e3550 25%,
-      #4b5a86 50%,
-      #2e3550 75%,
-      #10131c 100%
-    );
-    border-bottom: 1px solid #10121a;
+    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_fill.png)
+      repeat-x;
     cursor: default;
   }
+  .lib-tl {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 25px;
+    height: 20px;
+    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tl.png)
+      no-repeat;
+  }
+  /* the title sits in a dark "notch" over the gold bar, like real Winamp */
   .lib-title {
-    flex: 1;
-    text-align: center;
-    font-size: 10px;
+    position: absolute;
+    left: 50%;
+    top: 3px;
+    transform: translateX(-50%);
+    height: 14px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 8px;
     font-weight: 700;
     letter-spacing: 2px;
-    color: #dfe6f2;
-    text-shadow: 0 1px 0 #000;
+    color: #cdd6ea;
+    background: #26264a;
+    z-index: 1;
   }
   .lib-close {
-    width: 14px;
-    height: 13px;
-    line-height: 11px;
-    font-size: 12px;
-    color: #dfe6f2;
-    background: #3a4260;
-    border: 1px solid #10121a;
-    box-shadow: inset 1px 1px 0 #5b6a90;
-    cursor: pointer;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 15px;
+    height: 20px;
+    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tr.png)
+      no-repeat;
+    border: none;
     padding: 0;
-  }
-  .lib-close:active {
-    box-shadow: inset 1px 1px 0 #10121a;
+    cursor: pointer;
+    z-index: 2;
   }
 
   /* ---- body: two panes ---- */
