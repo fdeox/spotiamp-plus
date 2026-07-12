@@ -6,6 +6,64 @@
     cursor: url(/src/static/assets/skins/base-2.91/MAINMENU.CUR), auto;
 }
 
+/* ---- skins ----
+   Every sprite BMP is referenced through a --skin-* variable so switching a
+   skin is just swapping this block. Default = the classic base-2.91 set. Other
+   skins override these under body[data-skin="..."]. */
+:root {
+    --skin-main: url(/src/static/assets/skins/base-2.91/MAIN.BMP);
+    --skin-cbuttons: url(/src/static/assets/skins/base-2.91/CBUTTONS.BMP);
+    --skin-monoster: url(/src/static/assets/skins/base-2.91/MONOSTER.BMP);
+    --skin-numbers: url(/src/static/assets/skins/base-2.91/NUMBERS.BMP);
+    --skin-playpaus: url(/src/static/assets/skins/base-2.91/PLAYPAUS.BMP);
+    --skin-pledit: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --skin-posbar: url(/src/static/assets/skins/base-2.91/POSBAR.BMP);
+    --skin-shufrep: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --skin-text: url(/src/static/assets/skins/base-2.91/TEXT.BMP);
+    --skin-titlebar: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --skin-volume: url(/src/static/assets/skins/base-2.91/VOLUME.BMP);
+}
+
+body[data-skin="cherry"] {
+    --skin-main: url(/src/static/assets/skins/cherry/MAIN.BMP);
+    --skin-cbuttons: url(/src/static/assets/skins/cherry/CBUTTONS.BMP);
+    --skin-monoster: url(/src/static/assets/skins/cherry/MONOSTER.BMP);
+    --skin-numbers: url(/src/static/assets/skins/cherry/NUMBERS.BMP);
+    --skin-playpaus: url(/src/static/assets/skins/cherry/PLAYPAUS.BMP);
+    --skin-pledit: url(/src/static/assets/skins/cherry/PLEDIT.BMP);
+    --skin-posbar: url(/src/static/assets/skins/cherry/POSBAR.BMP);
+    --skin-shufrep: url(/src/static/assets/skins/cherry/SHUFREP.BMP);
+    --skin-text: url(/src/static/assets/skins/cherry/TEXT.BMP);
+    --skin-titlebar: url(/src/static/assets/skins/cherry/TITLEBAR.BMP);
+    --skin-volume: url(/src/static/assets/skins/cherry/VOLUME.BMP);
+}
+body[data-skin="amber"] {
+    --skin-main: url(/src/static/assets/skins/amber/MAIN.BMP);
+    --skin-cbuttons: url(/src/static/assets/skins/amber/CBUTTONS.BMP);
+    --skin-monoster: url(/src/static/assets/skins/amber/MONOSTER.BMP);
+    --skin-numbers: url(/src/static/assets/skins/amber/NUMBERS.BMP);
+    --skin-playpaus: url(/src/static/assets/skins/amber/PLAYPAUS.BMP);
+    --skin-pledit: url(/src/static/assets/skins/amber/PLEDIT.BMP);
+    --skin-posbar: url(/src/static/assets/skins/amber/POSBAR.BMP);
+    --skin-shufrep: url(/src/static/assets/skins/amber/SHUFREP.BMP);
+    --skin-text: url(/src/static/assets/skins/amber/TEXT.BMP);
+    --skin-titlebar: url(/src/static/assets/skins/amber/TITLEBAR.BMP);
+    --skin-volume: url(/src/static/assets/skins/amber/VOLUME.BMP);
+}
+body[data-skin="emerald"] {
+    --skin-main: url(/src/static/assets/skins/emerald/MAIN.BMP);
+    --skin-cbuttons: url(/src/static/assets/skins/emerald/CBUTTONS.BMP);
+    --skin-monoster: url(/src/static/assets/skins/emerald/MONOSTER.BMP);
+    --skin-numbers: url(/src/static/assets/skins/emerald/NUMBERS.BMP);
+    --skin-playpaus: url(/src/static/assets/skins/emerald/PLAYPAUS.BMP);
+    --skin-pledit: url(/src/static/assets/skins/emerald/PLEDIT.BMP);
+    --skin-posbar: url(/src/static/assets/skins/emerald/POSBAR.BMP);
+    --skin-shufrep: url(/src/static/assets/skins/emerald/SHUFREP.BMP);
+    --skin-text: url(/src/static/assets/skins/emerald/TEXT.BMP);
+    --skin-titlebar: url(/src/static/assets/skins/emerald/TITLEBAR.BMP);
+    --skin-volume: url(/src/static/assets/skins/emerald/VOLUME.BMP);
+}
+
 /* Disable scrolling */
 html,
 body {

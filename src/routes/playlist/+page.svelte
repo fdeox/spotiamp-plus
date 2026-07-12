@@ -62,6 +62,32 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  // --- right-click menu (skins + shortcuts) ---
+  const SKINS = ["classic", "cherry", "amber", "emerald"];
+  let menu = $state({ show: false, x: 0, y: 0 });
+  let currentSkin = $state("classic");
+  invoke("get_skin")
+    .then((s) => (currentSkin = s || "classic"))
+    .catch(() => {});
+
+  function openMenu(e) {
+    e.preventDefault();
+    const mw = 130,
+      mh = 200;
+    menu = {
+      show: true,
+      x: Math.min(e.clientX, Math.max(2, window.innerWidth - mw)),
+      y: Math.min(e.clientY, Math.max(2, window.innerHeight - mh)),
+    };
+  }
+  const closeMenu = () => (menu.show = false);
+  async function chooseSkin(skin) {
+    currentSkin = skin;
+    closeMenu();
+    await invoke("set_skin", { skin });
+    emitWindowEvent("skinChanged", { skin });
+  }
+
   async function openLibrary() {
     showLibrary = true;
     if (libraryPlaylists.length > 0) return;
@@ -485,6 +511,7 @@
   style:--playlist-w={playlist.width}
   style:--playlist-h={playlist.height}
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
+  oncontextmenu={openMenu}
 >
   <!-- our "my playlists" browser (opens a list of the user's Spotify playlists) -->
   <button class="my-playlists-btn" onclick={openLibraryWindow}>♪ library</button>
@@ -661,6 +688,47 @@
   <div class="pl-time pl-time-elapsed">{fmtTime(playlist.positionMs)}</div>
 
   <div class="draggable-corner" use:makeResizable></div>
+
+  {#if menu.show}
+    <div
+      class="ctx-backdrop"
+      onclick={closeMenu}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        closeMenu();
+      }}
+    ></div>
+    <div class="ctx-menu" style:left="{menu.x}px" style:top="{menu.y}px">
+      <div class="ctx-head">SKIN</div>
+      {#each SKINS as s}
+        <button class="ctx-item" onclick={() => chooseSkin(s)}>
+          <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
+        </button>
+      {/each}
+      <div class="ctx-sep"></div>
+      <button
+        class="ctx-item"
+        onclick={() => {
+          closeMenu();
+          openLibraryWindow();
+        }}>Library…</button
+      >
+      <button
+        class="ctx-item"
+        onclick={() => {
+          closeMenu();
+          invoke("set_visualizer_window_visible", { visible: true });
+        }}>Visualizer…</button
+      >
+      <button
+        class="ctx-item"
+        onclick={() => {
+          closeMenu();
+          playlist.clear();
+        }}>Clear playlist</button
+      >
+    </div>
+  {/if}
 </span>
 
 <style>
@@ -733,7 +801,7 @@
   }
 
   input.scroll-bar::-webkit-slider-thumb {
-    background: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    background: var(--skin-pledit);
     appearance: none;
     width: 8px;
     height: 18px;
@@ -817,14 +885,14 @@
 
   .playlist-tl-sprite {
     cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 20px;
   }
 
   .playlist-t-sprite {
     cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 20px;
     --y: 0;
@@ -834,7 +902,7 @@
 
   .playlist-title-sprite {
     cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 100px;
     height: 20px;
     --y: 0;
@@ -843,7 +911,7 @@
   }
 
   .playlist-tr-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 20px;
     --x: var(--playlist-w);
@@ -853,7 +921,7 @@
   }
 
   .playlist-l-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 10px;
     height: 29px;
     --sprite-y: calc(var(--y) * 29px - 9px);
@@ -861,7 +929,7 @@
   }
 
   .playlist-r-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 19px;
     height: 29px;
     --x: var(--playlist-w);
@@ -871,7 +939,7 @@
   }
 
   .playlist-bl-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 125px;
     height: 38px;
     --y: var(--playlist-h);
@@ -880,7 +948,7 @@
   }
 
   .playlist-b-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 38px;
     --y: var(--playlist-h);
@@ -890,7 +958,7 @@
   }
 
   .playlist-br-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
+    --sprite-url: var(--skin-pledit);
     width: 150px;
     height: 38px;
     --x: var(--playlist-w);
@@ -939,6 +1007,59 @@
     right: calc(120px * var(--zoom));
     width: calc(76px * var(--zoom));
     bottom: calc(21px * var(--zoom));
+  }
+
+  /* right-click menu — classic Win98 look, like Winamp's own menus */
+  .ctx-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+  }
+  .ctx-menu {
+    position: fixed;
+    z-index: 201;
+    min-width: 118px;
+    background: #d4d0c8;
+    border: 1px solid #000;
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+    padding: 2px;
+    font-family: "MS Sans Serif", Tahoma, sans-serif;
+    font-size: 11px;
+    color: #000;
+  }
+  .ctx-head {
+    padding: 1px 18px 2px 6px;
+    color: #505050;
+    font-size: 10px;
+    font-weight: bold;
+  }
+  .ctx-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 2px 10px 2px 4px;
+    background: transparent;
+    border: none;
+    color: #000;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .ctx-item:hover {
+    background: #000080;
+    color: #fff;
+  }
+  .ctx-dot {
+    display: inline-block;
+    width: 11px;
+    text-align: center;
+  }
+  .ctx-sep {
+    height: 0;
+    border-top: 1px solid #808080;
+    border-bottom: 1px solid #fff;
+    margin: 3px 2px;
   }
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */

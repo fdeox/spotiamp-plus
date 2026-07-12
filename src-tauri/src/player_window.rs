@@ -55,6 +55,16 @@ pub fn get_player_settings() -> PlayerSettings {
 }
 
 #[tauri::command]
+pub fn get_skin() -> String {
+    Settings::current().skin.clone()
+}
+
+#[tauri::command]
+pub fn set_skin(skin: String) {
+    Settings::current_mut().skin = skin;
+}
+
+#[tauri::command]
 pub async fn set_volume(volume: u16, player: State<'_, SharedPlayer>) -> Result<(), ()> {
     player.lock().await.set_volume(volume);
     Settings::current_mut().player.volume = volume;

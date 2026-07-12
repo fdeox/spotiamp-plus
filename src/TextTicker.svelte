@@ -159,7 +159,7 @@
   }
 
   .letter-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TEXT.BMP);
+    --sprite-url: var(--skin-text);
     width: 5px;
     height: 6px;
     background-position: calc(-5px * var(--letter-idx-col))

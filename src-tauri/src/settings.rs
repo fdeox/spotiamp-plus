@@ -136,6 +136,9 @@ impl Default for PlayerSettings {
 pub struct Settings {
     pub player: PlayerSettings,
     pub playlist: PlaylistSettings,
+    /// Active skin name ("" / "classic" = the default base-2.91 set).
+    #[serde(default)]
+    pub skin: String,
 }
 
 impl Settings {

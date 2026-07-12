@@ -534,7 +534,7 @@
 <style>
   button.close-btn {
     cursor: url(/src/static/assets/skins/base-2.91/CLOSE.CUR), default;
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --sprite-url: var(--skin-titlebar);
     --sprite-x: 264px;
     --sprite-y: 3px;
     width: 9px;
@@ -548,7 +548,7 @@
 
   button.minimize-btn {
     cursor: url(/src/static/assets/skins/base-2.91/MAINMENU.CUR), auto;
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --sprite-url: var(--skin-titlebar);
     --sprite-x: 244px;
     --sprite-y: 3px;
     width: 9px;
@@ -561,7 +561,7 @@
   }
 
   .side-buttons {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --sprite-url: var(--skin-titlebar);
     --sprite-x: 10px;
     --sprite-y: 22px;
     width: 8px;
@@ -570,7 +570,7 @@
   }
 
   button.double-size-btn {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --sprite-url: var(--skin-titlebar);
     --sprite-x: 10px;
     --sprite-y: 48px;
     width: 8px;
@@ -583,7 +583,7 @@
   }
 
   button.playlist-btn {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --sprite-url: var(--skin-shufrep);
     --sprite-x: 242px;
     --sprite-y: 58px;
     width: 23px;
@@ -601,7 +601,7 @@
   /* SHUFREP.BMP: shuffle (47x15) + repeat (28x15), 4 states each
      (off / off-pressed / on / on-pressed stacked every 15px) */
   button.shuffle-btn {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --sprite-url: var(--skin-shufrep);
     --sprite-x: 164px;
     --sprite-y: 89px;
     width: 47px;
@@ -619,7 +619,7 @@
   }
 
   button.repeat-btn {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --sprite-url: var(--skin-shufrep);
     --sprite-x: 211px;
     --sprite-y: 89px;
     width: 28px;
@@ -650,7 +650,7 @@
   }
 
   .stereo-mono-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/MONOSTER.BMP);
+    --sprite-url: var(--skin-monoster);
     --sprite-y: 41px;
     height: 12px;
   }
@@ -694,7 +694,7 @@
 
   /* ------ SEEK POSITION ------ */
   .seek-position-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/POSBAR.BMP);
+    --sprite-url: var(--skin-posbar);
     --sprite-x: 16px;
     --sprite-y: 72px;
     width: 249px;
@@ -708,7 +708,7 @@
   }
 
   #seek-position::-webkit-slider-thumb {
-    background: url(/src/static/assets/skins/base-2.91/POSBAR.BMP);
+    background: var(--skin-posbar);
     appearance: none;
     width: 28px;
     height: 11px;
@@ -778,7 +778,7 @@
 
   /* ------ TITLEBAR ------ */
   .titlebar-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
+    --sprite-url: var(--skin-titlebar);
     width: 275px;
     height: 14px;
     background-position: -27px 0px;
@@ -789,7 +789,7 @@
 
   /* ------ MAIN ------ */
   .main-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/MAIN.BMP);
+    --sprite-url: var(--skin-main);
     width: 275px;
     height: 116px;
     background-position: 0px 0px;
@@ -799,7 +799,7 @@
 
   /* ------ PLAYPAUSE ------ */
   .playpause-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/PLAYPAUS.BMP);
+    --sprite-url: var(--skin-playpaus);
     width: 9px;
     height: 9px;
     --sprite-x: 26px;
@@ -822,7 +822,7 @@
 
   /* ------ VOLUME ------ */
   .volume-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/VOLUME.BMP);
+    --sprite-url: var(--skin-volume);
     --sprite-x: 107px;
     --sprite-y: 57px;
     width: 65px;
@@ -837,7 +837,7 @@
   }
 
   #volume::-webkit-slider-thumb {
-    background: url(/src/static/assets/skins/base-2.91/VOLUME.BMP);
+    background: var(--skin-volume);
     appearance: none;
     width: 14px;
     height: 11px;
@@ -853,7 +853,7 @@
 
   /* ------ CBUTTONS ------ */
   .control-buttons-sprite {
-    --sprite-url: url(/src/static/assets/skins/base-2.91/CBUTTONS.BMP);
+    --sprite-url: var(--skin-cbuttons);
     --button-width: 23px;
     --button-height: 18px;
     --button-state: 0;

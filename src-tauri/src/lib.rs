@@ -177,6 +177,8 @@ pub fn run() {
             player_window::pause,
             player_window::stop,
             player_window::get_player_settings,
+            player_window::get_skin,
+            player_window::set_skin,
             player_window::set_volume,
             player_window::set_double_size,
             player_window::take_latest_spectrum,
