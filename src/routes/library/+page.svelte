@@ -1,9 +1,17 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { Window } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
-  import { makeTauriWindowDraggable } from "$lib/window-docking.svelte.js";
+  import {
+    makeTauriWindowDraggable,
+    isDocked,
+    rectFromPositionAndSize,
+    SNAP_DISTANCE,
+    snapPosition,
+    STICKY_SNAP_DISTANCE,
+  } from "$lib/window-docking.svelte.js";
 
   let playlists = $state([]);
   let loading = $state(true);
@@ -92,10 +100,56 @@
   // hide via the Rust command (app commands aren't capability-gated, so this is
   // reliable regardless of window permissions)
   const close = () => invoke("set_library_window_visible", { visible: false });
+
+  // Drag the library window, snapping to the player like the playlist does.
+  // The DragStarted/DragEnded events drive the Rust docking (native follow +
+  // snap-on-release); mapPosition adds the live visual snap while dragging.
+  function makeLibraryDraggable(element) {
+    makeTauriWindowDraggable(element, {
+      async onStart({ startPosition, windowSize }) {
+        const playerWindow = await Window.getByLabel("player");
+        if (!playerWindow) return false;
+        await emitWindowEvent("libraryWindow", { DragStarted: null });
+        const [playerPosition, playerSize] = await Promise.all([
+          playerWindow.outerPosition(),
+          playerWindow.outerSize(),
+        ]);
+        const playerRect = rectFromPositionAndSize(playerPosition, playerSize);
+        return {
+          playerRect,
+          librarySize: windowSize,
+          docked: isDocked(
+            rectFromPositionAndSize(startPosition, windowSize),
+            playerRect,
+          ),
+        };
+      },
+      mapPosition(rawPosition, context) {
+        const rawRect = {
+          ...rawPosition,
+          width: context.librarySize.width,
+          height: context.librarySize.height,
+        };
+        const snapDistance = context.docked
+          ? STICKY_SNAP_DISTANCE
+          : SNAP_DISTANCE;
+        const snappedPosition = snapPosition(
+          rawRect,
+          context.playerRect,
+          snapDistance,
+        );
+        context.docked = snappedPosition !== undefined;
+        return snappedPosition ?? rawPosition;
+      },
+      async onEnd() {
+        await emitWindowEvent("libraryWindow", { DragEnded: null });
+      },
+    });
+  }
 </script>
 
 <div class="lib-window">
-  <div class="lib-titlebar" use:makeTauriWindowDraggable>
+  <div class="lib-titlebar" use:makeLibraryDraggable>
     <div class="lib-tl"></div>
     <span class="lib-title">LIBRARY</span>
     <button

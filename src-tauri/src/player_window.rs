@@ -189,7 +189,13 @@ pub async fn set_playlist_window_visible(visible: bool, app_handle: AppHandle) -
             ),
         )
         .expect("a playlist window to be created");
-        app_window::dock_windows(&player_window, &playlist_window);
+        app_window::dock_windows(
+            &player_window,
+            &playlist_window,
+            "playerWindow",
+            "playlistWindow",
+            1,
+        );
         playlist_window
     };
     Settings::current_mut().player.show_playlist = visible;

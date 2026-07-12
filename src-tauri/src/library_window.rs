@@ -34,7 +34,13 @@ pub async fn set_library_window_visible(visible: bool, app_handle: AppHandle) ->
             let size = anchor.outer_size().map_err(|_| ())?;
             position.x += size.width as i32;
             let scale_factor = anchor.scale_factor().unwrap_or(1.0);
-            build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?
+            let window =
+                build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
+            // Dock the library to the player just like the playlist does. A
+            // distinct subclass id (2 vs the playlist's 1) lets the player drive
+            // both followers, so dragging the player moves all three together.
+            app_window::dock_windows(&anchor, &window, "playerWindow", "libraryWindow", 2);
+            window
         }
     };
 

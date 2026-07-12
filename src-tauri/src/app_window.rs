@@ -324,9 +324,6 @@ fn set_native_child_window(
 // This happens synchronously, before the frame is painted, giving lockstep
 // movement with no trailing — the equivalent of macOS child windows.
 #[cfg(target_os = "windows")]
-const DOCK_SUBCLASS_ID: usize = 1;
-
-#[cfg(target_os = "windows")]
 struct NativeDockContext {
     state: Arc<Mutex<DockingState>>,
     anchor_label: String,
@@ -419,6 +416,7 @@ fn install_native_docking(
     state: &Arc<Mutex<DockingState>>,
     anchor_window: &WebviewWindow,
     follower_window: &WebviewWindow,
+    subclass_id: usize,
 ) {
     use windows::Win32::UI::Shell::SetWindowSubclass;
 
@@ -442,13 +440,14 @@ fn install_native_docking(
         });
         // The subclass lives for the lifetime of the window, so the context is
         // leaked on purpose; it is reclaimed when the window is destroyed at
-        // shutdown.
+        // shutdown. A distinct subclass_id per anchor→follower pair lets one
+        // anchor (the player) drive several followers (playlist + library).
         let refdata = Box::into_raw(context) as usize;
         unsafe {
             let _ = SetWindowSubclass(
                 anchor_hwnd,
                 Some(anchor_subclass_proc),
-                DOCK_SUBCLASS_ID,
+                subclass_id,
                 refdata,
             );
         }
@@ -462,6 +461,7 @@ fn install_native_docking(
     _state: &Arc<Mutex<DockingState>>,
     _anchor_window: &WebviewWindow,
     _follower_window: &WebviewWindow,
+    _subclass_id: usize,
 ) {
 }
 
@@ -725,7 +725,18 @@ fn handle_follower_visibility_changed(
     set_native_child_attached(state, anchor_window, follower_window, true);
 }
 
-pub fn dock_windows(anchor_window: &WebviewWindow, follower_window: &WebviewWindow) {
+/// Wire `follower_window` to dock to `anchor_window`: it snaps to the anchor's
+/// edges and stays glued while the anchor moves. `anchor_event`/`follower_event`
+/// are the window-event channel names each side emits DragStarted/DragEnded on,
+/// and `subclass_id` must be unique per pair so one anchor can drive several
+/// followers (player → playlist and player → library).
+pub fn dock_windows(
+    anchor_window: &WebviewWindow,
+    follower_window: &WebviewWindow,
+    anchor_event: &'static str,
+    follower_event: &'static str,
+    subclass_id: usize,
+) {
     let state = Arc::new(Mutex::new(DockingState::new([
         anchor_window,
         follower_window,
@@ -737,7 +748,7 @@ pub fn dock_windows(anchor_window: &WebviewWindow, follower_window: &WebviewWind
         commit_attachment_for_window(&mut state, anchor_window, follower_window, follower_window);
     }
 
-    install_native_docking(&state, anchor_window, follower_window);
+    install_native_docking(&state, anchor_window, follower_window, subclass_id);
 
     for (window, anchor_moved) in [
         (anchor_window.clone(), true),
@@ -783,8 +794,8 @@ pub fn dock_windows(anchor_window: &WebviewWindow, follower_window: &WebviewWind
     }
 
     for (event_name, moved_window) in [
-        ("playerWindow", anchor_window.clone()),
-        ("playlistWindow", follower_window.clone()),
+        (anchor_event, anchor_window.clone()),
+        (follower_event, follower_window.clone()),
     ] {
         let anchor_window = anchor_window.clone();
         let follower_window = follower_window.clone();
