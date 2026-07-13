@@ -12,8 +12,7 @@ skins, a WebGL visualizer, and much more.
 > [librespot](https://github.com/librespot-org/librespot); login uses Spotify's
 > own OAuth page.
 
-<!-- Replace the paths below with your own screenshots (put them in docs/). -->
-![Spotiamp+](docs/screenshots/main.png)
+![Spotiamp+](docs/screenshots/classic.jpg)
 
 ---
 
@@ -40,11 +39,11 @@ skins, a WebGL visualizer, and much more.
 
 | Classic | Cherry | Amber | Emerald |
 | :-----: | :----: | :---: | :-----: |
-| ![](docs/screenshots/skin-classic.png) | ![](docs/screenshots/skin-cherry.png) | ![](docs/screenshots/skin-amber.png) | ![](docs/screenshots/skin-emerald.png) |
+| ![](docs/screenshots/classic.jpg) | ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
 
 | Library | Visualizer |
 | :-----: | :--------: |
-| ![](docs/screenshots/library.png) | ![](docs/screenshots/visualizer.png) |
+| ![](docs/screenshots/library.jpg) | ![](docs/screenshots/visualizer.jpg) |
 
 ## Install
 
