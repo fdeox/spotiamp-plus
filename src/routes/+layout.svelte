@@ -29,6 +29,8 @@
     else delete document.body.dataset.skin;
   }
   onMount(() => {
+    // the login window redirects to Spotify — it has no skinnable UI
+    if (getCurrentWindow().label === "login") return;
     invoke("get_skin").then(applySkin).catch(() => {});
     let unsub;
     subscribeToWindowEvent("skinChanged", (e) => applySkin(e.skin)).then(
