@@ -30,6 +30,14 @@
     "lightning",
     "checker",
     "bars",
+    "moire",
+    "flow",
+    "polygon",
+    "waveform",
+    "marble",
+    "neongrid",
+    "metaball",
+    "mandala",
   ];
   const MODE_COUNT = MODE_NAMES.length;
   let mode = $state(0);
@@ -52,6 +60,12 @@
       return v * mix(vec3(1.0), rgb, s);
     }
     float hash(vec2 p){ return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5); }
+    float noise(vec2 p){
+      vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+      return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),
+                 mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x), f.y);
+    }
+    float fbm(vec2 p){ float v=0.0, a=0.5; for(int k=0;k<4;k++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
 
     void main() {
       vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/iResolution.y;
@@ -121,11 +135,61 @@
         p += 0.2*sin(p.yx*4.0+t*2.0+uBass*6.0);
         float c = mod(floor(p.x)+floor(p.y), 2.0);
         col = hsv(fract(t*0.1+uTreble), 0.6, (0.2+0.8*c)*(0.4+uLevel+uBass*0.5));
-      } else {
+      } else if (m == 11) {
         // radial spectrum bars
         float bars = step(0.5, fract(a*(6.0+floor(uMid*8.0))/6.2831));
         float lvl = 0.3+uBass*0.6+uTreble*0.4;
         col = hsv(fract(a/6.2831+t*0.2), 0.8, step(r,lvl)*bars*(0.6+uLevel));
+      } else if (m == 12) {
+        // moire interference
+        vec2 p = uv*20.0;
+        float g1 = sin(p.x*cos(t)+p.y*sin(t));
+        float g2 = sin(p.x*cos(t+uBass)+p.y*sin(t+uBass)+t*3.0);
+        float mo = g1*g2;
+        col = hsv(fract(mo*0.3+t*0.1+uMid), 0.7, 0.5+0.5*mo+uLevel*0.4);
+      } else if (m == 13) {
+        // flowing fbm noise
+        vec2 p = uv*2.0;
+        p += vec2(fbm(p+t), fbm(p-t))*(1.0+uBass);
+        float f = fbm(p*2.0+t);
+        col = hsv(fract(f+t*0.1+uTreble), 0.7, f*(0.5+uLevel+uBass));
+      } else if (m == 14) {
+        // rotating polygon rings
+        float n = 3.0+floor(uMid*6.0);
+        float ang = 6.2831/n;
+        float d = cos(floor(0.5+a/ang)*ang - a)*r;
+        float poly = smoothstep(0.03,0.0, abs(fract(d*(6.0+uBass*8.0)-t)-0.5));
+        col = hsv(fract(a/6.2831+t*0.1), 0.7, poly*(0.5+uLevel+uBass));
+      } else if (m == 15) {
+        // radial audio waveform ring
+        float wave = 0.35 + 0.12*sin(a*8.0+t*4.0) + 0.18*uBass + 0.1*sin(a*20.0-t*6.0)*uTreble;
+        col = hsv(fract(a/6.2831+t*0.2), 0.8, smoothstep(0.05,0.0, abs(r-wave))*(0.6+uLevel));
+      } else if (m == 16) {
+        // marble
+        float mrb = sin((uv.x + fbm(uv*3.0+t))*8.0 + uBass*6.0);
+        col = hsv(fract(mrb*0.2+t*0.1+uMid), 0.6, 0.5+0.5*mrb+uLevel*0.3);
+      } else if (m == 17) {
+        // neon perspective grid
+        vec2 p = uv; p.y += 0.55;
+        float persp = 1.0/(abs(p.y)+0.08);
+        vec2 g = vec2(p.x*persp, persp*(1.0+uBass) + t*3.0);
+        float line = max(smoothstep(0.06,0.0,abs(fract(g.x)-0.5)), smoothstep(0.06,0.0,abs(fract(g.y)-0.5)));
+        col = hsv(fract(0.6+t*0.1+uTreble), 0.85, line*(0.4+uLevel+uBass)) * step(0.0,p.y);
+      } else if (m == 18) {
+        // metaballs
+        float mb = 0.0;
+        for (int k=0;k<4;k++) {
+          float fk = float(k);
+          vec2 c = 0.5*vec2(sin(t*(1.0+fk*0.3)+fk), cos(t*(0.8+fk*0.2)+fk*2.0));
+          mb += (0.09+uBass*0.09)/length(uv-c);
+        }
+        col = hsv(fract(mb*0.1+t*0.1+uMid), 0.7, smoothstep(1.0,2.2,mb)*(0.6+uLevel));
+      } else {
+        // mandala
+        float seg = 8.0+floor(uMid*8.0);
+        float aa = abs(mod(a, 6.2831/seg) - 3.1415/seg);
+        float mand = sin(aa*10.0+t)*sin(r*15.0 - t*3.0 - uBass*8.0);
+        col = hsv(fract(r+t*0.1+uTreble), 0.8, 0.5+0.5*mand+uLevel*0.4);
       }
 
       col *= 0.35+0.9*uLevel+0.3*uBass;
