@@ -23,12 +23,14 @@ skins, a WebGL visualizer, and much more.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
   a two-pane Library (playlists + tracks), load or queue anything.
 - 🔎 **Spotify catalogue search** — search the whole catalogue right in the
-  Library; add results to your playlist one by one.
+  Library. Double-clicking a search result **adds it to the end of the current
+  playlist** (it doesn't replace what's playing), so you can build a playlist by
+  searching for songs one after another.
 - 🧲 **Docking windows** — the Playlist, Library and Visualizer snap to the main
   window and move together, just like classic Winamp.
 - 🎨 **Skins** — right-click the playlist to switch skins live: **Classic**,
   **Cherry**, **Amber**, **Emerald**. Persisted across restarts.
-- 🌀 **Milkdrop-style visualizer** — a WebGL window with **12 audio-reactive
+- 🌀 **Milkdrop-style visualizer** — a WebGL window with **20 audio-reactive
   patterns** that cycle on click, on a timer, and on every track change.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
@@ -75,6 +77,13 @@ skins, a WebGL visualizer, and much more.
 
 Double-click the main window's spectrum to open the visualizer; click the
 visualizer to cycle patterns.
+
+**In the Library, double-click…**
+
+- a **playlist** → loads it into the playlist window and plays it
+- a **playlist track** → plays from that track and keeps the rest queued
+- a **search result** → appends it to the end of the current playlist (does not
+  replace what's playing) — search again and again to build a list
 
 ## Build from source
 
