@@ -433,7 +433,7 @@
     position: relative;
     flex: 0 0 20px;
     height: 20px;
-    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_fill.png)
+    background: var(--skin-genfill)
       repeat-x;
     cursor: default;
   }
@@ -443,7 +443,7 @@
     top: 0;
     width: 25px;
     height: 20px;
-    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tl.png)
+    background: var(--skin-gentl)
       no-repeat;
   }
   .viz-title {
@@ -469,7 +469,7 @@
     top: 0;
     width: 15px;
     height: 20px;
-    background: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tr.png)
+    background: var(--skin-gentr)
       no-repeat;
     border: none;
     padding: 0;

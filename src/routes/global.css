@@ -22,6 +22,9 @@
     --skin-text: url(/src/static/assets/skins/base-2.91/TEXT.BMP);
     --skin-titlebar: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
     --skin-volume: url(/src/static/assets/skins/base-2.91/VOLUME.BMP);
+    --skin-gentl: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tl.png);
+    --skin-genfill: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_fill.png);
+    --skin-gentr: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tr.png);
 }
 
 body[data-skin="cherry"] {
@@ -36,6 +39,9 @@ body[data-skin="cherry"] {
     --skin-text: url(/src/static/assets/skins/cherry/TEXT.BMP);
     --skin-titlebar: url(/src/static/assets/skins/cherry/TITLEBAR.BMP);
     --skin-volume: url(/src/static/assets/skins/cherry/VOLUME.BMP);
+    --skin-gentl: url(/src/static/assets/skins/cherry/gen-tiles/gen_tl.png);
+    --skin-genfill: url(/src/static/assets/skins/cherry/gen-tiles/gen_fill.png);
+    --skin-gentr: url(/src/static/assets/skins/cherry/gen-tiles/gen_tr.png);
 }
 body[data-skin="amber"] {
     --skin-main: url(/src/static/assets/skins/amber/MAIN.BMP);
@@ -49,6 +55,9 @@ body[data-skin="amber"] {
     --skin-text: url(/src/static/assets/skins/amber/TEXT.BMP);
     --skin-titlebar: url(/src/static/assets/skins/amber/TITLEBAR.BMP);
     --skin-volume: url(/src/static/assets/skins/amber/VOLUME.BMP);
+    --skin-gentl: url(/src/static/assets/skins/amber/gen-tiles/gen_tl.png);
+    --skin-genfill: url(/src/static/assets/skins/amber/gen-tiles/gen_fill.png);
+    --skin-gentr: url(/src/static/assets/skins/amber/gen-tiles/gen_tr.png);
 }
 body[data-skin="emerald"] {
     --skin-main: url(/src/static/assets/skins/emerald/MAIN.BMP);
@@ -62,6 +71,9 @@ body[data-skin="emerald"] {
     --skin-text: url(/src/static/assets/skins/emerald/TEXT.BMP);
     --skin-titlebar: url(/src/static/assets/skins/emerald/TITLEBAR.BMP);
     --skin-volume: url(/src/static/assets/skins/emerald/VOLUME.BMP);
+    --skin-gentl: url(/src/static/assets/skins/emerald/gen-tiles/gen_tl.png);
+    --skin-genfill: url(/src/static/assets/skins/emerald/gen-tiles/gen_fill.png);
+    --skin-gentr: url(/src/static/assets/skins/emerald/gen-tiles/gen_tr.png);
 }
 
 /* Disable scrolling */
