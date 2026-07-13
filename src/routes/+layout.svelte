@@ -10,7 +10,11 @@
    */
   let { children } = $props();
   $effect(() => {
-    getCurrentWindow().setSize(
+    const win = getCurrentWindow();
+    // the login window is sized by Rust (600x800) and then redirects to
+    // Spotify — don't shrink it to the player's dimensions
+    if (win.label === "login") return;
+    win.setSize(
       new LogicalSize(
         REACTIVE_WINDOW_SIZE.width * REACTIVE_WINDOW_SIZE.zoom,
         REACTIVE_WINDOW_SIZE.height * REACTIVE_WINDOW_SIZE.zoom
