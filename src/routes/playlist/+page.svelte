@@ -3,6 +3,7 @@
     enterExitViewport,
     range,
     handleDrop,
+    handleError,
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
@@ -73,7 +74,7 @@
   function openMenu(e) {
     e.preventDefault();
     const mw = 130,
-      mh = 200;
+      mh = 250;
     menu = {
       show: true,
       x: Math.min(e.clientX, Math.max(2, window.innerWidth - mw)),
@@ -86,6 +87,35 @@
     closeMenu();
     await invoke("set_skin", { skin });
     emitWindowEvent("skinChanged", { skin });
+  }
+  // load a classic Winamp 2.x skin (.wsz) from disk
+  async function loadWszSkin() {
+    closeMenu();
+    try {
+      const name = await invoke("pick_and_load_skin");
+      if (name === null) return; // cancelled
+      currentSkin = "custom";
+      emitWindowEvent("skinChanged", { skin: "custom" });
+    } catch (e) {
+      handleError(new Error(`Could not load skin: ${e}`));
+    }
+  }
+
+  // .wsz skins shipped with the app, selectable straight from the menu
+  let bundledSkins = $state([]);
+  invoke("list_bundled_skins")
+    .then((names) => (bundledSkins = names))
+    .catch(() => {});
+  const prettySkinName = (name) => name.replaceAll("_", " ");
+  async function chooseBundledSkin(name) {
+    closeMenu();
+    try {
+      await invoke("load_bundled_skin", { name });
+      currentSkin = "custom";
+      emitWindowEvent("skinChanged", { skin: "custom" });
+    } catch (e) {
+      handleError(new Error(`Could not load skin: ${e}`));
+    }
   }
 
   async function openLibrary() {
@@ -188,14 +218,28 @@
           playerWindow.outerPosition(),
           playerWindow.outerSize(),
         ]);
-        const playerRect = rectFromPositionAndSize(playerPosition, playerSize);
+        // snap to the EQ too (when it's open), so the playlist can dock under
+        // it in the classic player/EQ/playlist stack. EQ first = it wins when
+        // both edges are in range.
+        const snapRects = [];
+        try {
+          const eqWindow = await Window.getByLabel("eq");
+          if (eqWindow && (await eqWindow.isVisible())) {
+            const [eqPosition, eqSize] = await Promise.all([
+              eqWindow.outerPosition(),
+              eqWindow.outerSize(),
+            ]);
+            snapRects.push(rectFromPositionAndSize(eqPosition, eqSize));
+          }
+        } catch (e) {
+          /* no EQ window — player only */
+        }
+        snapRects.push(rectFromPositionAndSize(playerPosition, playerSize));
+        const startRect = rectFromPositionAndSize(startPosition, windowSize);
         return {
-          playerRect,
+          snapRects,
           playlistSize: windowSize,
-          docked: isDocked(
-            rectFromPositionAndSize(startPosition, windowSize),
-            playerRect,
-          ),
+          docked: snapRects.some((rect) => isDocked(startRect, rect)),
         };
       },
       mapPosition(rawPosition, context) {
@@ -207,11 +251,11 @@
         const snapDistance = context.docked
           ? STICKY_SNAP_DISTANCE
           : SNAP_DISTANCE;
-        const snappedPosition = snapPosition(
-          rawRect,
-          context.playerRect,
-          snapDistance,
-        );
+        let snappedPosition;
+        for (const rect of context.snapRects) {
+          snappedPosition = snapPosition(rawRect, rect, snapDistance);
+          if (snappedPosition) break;
+        }
         context.docked = snappedPosition !== undefined;
 
         return snappedPosition ?? rawPosition;
@@ -705,6 +749,15 @@
           <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
         </button>
       {/each}
+      {#each bundledSkins as name}
+        <button class="ctx-item" onclick={() => chooseBundledSkin(name)}>
+          <span class="ctx-dot"></span>{prettySkinName(name)}
+        </button>
+      {/each}
+      <button class="ctx-item" onclick={loadWszSkin}>
+        <span class="ctx-dot">{currentSkin === "custom" ? "●" : ""}</span>load
+        .wsz…
+      </button>
       <div class="ctx-sep"></div>
       <button
         class="ctx-item"
@@ -814,7 +867,7 @@
   }
 
   #playlist-tracks {
-    color: rgb(0, 255, 0);
+    color: var(--skin-plnormal, rgb(0, 255, 0));
     border-collapse: collapse;
     font-family: "px sans nouveaux", sans-serif;
     font-size: calc(7px * var(--zoom));
@@ -858,11 +911,11 @@
   }
 
   .playlist-track.selected {
-    background-color: rgb(0, 0, 198);
+    background-color: var(--skin-plselbg, rgb(0, 0, 198));
   }
 
   .playlist-track.loaded {
-    color: white;
+    color: var(--skin-plcurrent, white);
   }
 
   .playlist-track.unavailable {

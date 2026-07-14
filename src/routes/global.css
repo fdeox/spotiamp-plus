@@ -19,12 +19,27 @@
     --skin-pledit: url(/src/static/assets/skins/base-2.91/PLEDIT.BMP);
     --skin-posbar: url(/src/static/assets/skins/base-2.91/POSBAR.BMP);
     --skin-shufrep: url(/src/static/assets/skins/base-2.91/SHUFREP.BMP);
+    --skin-eqmain: url(/src/static/assets/skins/base-2.91/EQMAIN.BMP);
     --skin-text: url(/src/static/assets/skins/base-2.91/TEXT.BMP);
     --skin-titlebar: url(/src/static/assets/skins/base-2.91/TITLEBAR.BMP);
     --skin-volume: url(/src/static/assets/skins/base-2.91/VOLUME.BMP);
+    --skin-balance: url(/src/static/assets/skins/base-2.91/BALANCE.BMP);
     --skin-gentl: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tr.png);
+    /* GENEX.BMP palette + button faces — how real Winamp colours plugin
+       windows (the library). Loaded .wsz skins override these inline. */
+    --skin-genexbtn: url(/src/static/assets/skins/base-2.91/gen-tiles/genexbtn.png);
+    --skin-genexbtnp: url(/src/static/assets/skins/base-2.91/gen-tiles/genexbtnp.png);
+    --skin-genexitembg: #000000;
+    --skin-genexitemfg: #00ff00;
+    --skin-genexwndbg: #383757;
+    --skin-genexbtntext: #393942;
+    --skin-genexwndtext: #ffffff;
+    --skin-genexdivider: #75748b;
+    --skin-genexselbg: #0000c6;
+    --skin-genexhdrbg: #484878;
+    --skin-genexhdrtext: #ffffff;
 }
 
 body[data-skin="cherry"] {
@@ -42,6 +57,13 @@ body[data-skin="cherry"] {
     --skin-gentl: url(/src/static/assets/skins/cherry/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/cherry/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/cherry/gen-tiles/gen_tr.png);
+    --skin-genexbtn: url(/src/static/assets/skins/cherry/gen-tiles/genexbtn.png);
+    --skin-genexbtnp: url(/src/static/assets/skins/cherry/gen-tiles/genexbtnp.png);
+    --skin-genexwndbg: #574337;
+    --skin-genexbtntext: #423c39;
+    --skin-genexdivider: #8b7d74;
+    --skin-genexselbg: #c64200;
+    --skin-genexhdrbg: #785848;
 }
 body[data-skin="amber"] {
     --skin-main: url(/src/static/assets/skins/amber/MAIN.BMP);
@@ -58,6 +80,13 @@ body[data-skin="amber"] {
     --skin-gentl: url(/src/static/assets/skins/amber/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/amber/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/amber/gen-tiles/gen_tr.png);
+    --skin-genexbtn: url(/src/static/assets/skins/amber/gen-tiles/genexbtn.png);
+    --skin-genexbtnp: url(/src/static/assets/skins/amber/gen-tiles/genexbtnp.png);
+    --skin-genexwndbg: #575537;
+    --skin-genexbtntext: #424139;
+    --skin-genexdivider: #8b8a74;
+    --skin-genexselbg: #c6b600;
+    --skin-genexhdrbg: #787448;
 }
 body[data-skin="emerald"] {
     --skin-main: url(/src/static/assets/skins/emerald/MAIN.BMP);
@@ -74,6 +103,13 @@ body[data-skin="emerald"] {
     --skin-gentl: url(/src/static/assets/skins/emerald/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/emerald/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/emerald/gen-tiles/gen_tr.png);
+    --skin-genexbtn: url(/src/static/assets/skins/emerald/gen-tiles/genexbtn.png);
+    --skin-genexbtnp: url(/src/static/assets/skins/emerald/gen-tiles/genexbtnp.png);
+    --skin-genexwndbg: #375743;
+    --skin-genexbtntext: #39423c;
+    --skin-genexdivider: #748b7d;
+    --skin-genexselbg: #00c642;
+    --skin-genexhdrbg: #487858;
 }
 
 /* Disable scrolling */

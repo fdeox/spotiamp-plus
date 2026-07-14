@@ -5,8 +5,8 @@ use crate::{app_window, settings::InnerWindowSize};
 /// The library window is wider than the player/playlist windows so it can hold
 /// the two panes (playlists on the left, tracks on the right).
 const LIBRARY_SIZE: InnerWindowSize = InnerWindowSize {
-    width: 360,
-    height: 420,
+    width: 500,
+    height: 380,
 };
 
 pub fn build_window(

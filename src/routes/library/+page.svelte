@@ -1,7 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { Window } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import {
@@ -23,24 +23,57 @@
   let searchMode = $state(false);
   let searchQuery = $state("");
   let tracks = $state([]);
-  // every track uri of the selected playlist (from get_track_ids, arrives in
-  // one call) — used so playing a track loads the rest of the list after it
   let trackUris = $state([]);
   let tracksLoading = $state(false);
   let tracksError = $state("");
-  // bumped every time we switch playlists so a slow in-flight load bails out
   let loadToken = 0;
 
-  const filtered = $derived(
-    search.trim()
-      ? playlists.filter((p) =>
-          p.name.toLowerCase().includes(search.toLowerCase()),
-        )
-      : playlists,
-  );
+  // tree UI state
+  let expandLocal = $state(true);
+  let expandPlaylists = $state(true);
+  // which tree item is active: "audio" | "search" | a playlist uri
+  let activeNode = $state("audio");
+  // selected row in the track list (for the Play / Enqueue buttons)
+  let selectedTrack = $state(-1);
+  // width of the left tree pane (px), draggable via the splitter
+  let treeWidth = $state(150);
+
+  let searchInput;
+
+  // Winamp-style scrollbar: the native one is hidden and this input range
+  // (PLEDIT sprite thumb, same as the playlist window) drives scrollTop.
+  let rowsEl = $state();
+  let scrollPos = $state(0);
+  let scrollMax = $state(0);
+  function syncScroll() {
+    if (!rowsEl) return;
+    scrollMax = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight);
+    scrollPos = rowsEl.scrollTop;
+  }
+  $effect(() => {
+    tracks.length; // re-measure whenever rows are added
+    tick().then(syncScroll);
+  });
+
+  // Drag the splitter between the tree and the content pane.
+  function makeSplitter(element) {
+    element.onpointerdown = (event) => {
+      event.preventDefault();
+      element.setPointerCapture(event.pointerId);
+      const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
+      document.onpointermove = (e) => {
+        const w = Math.round(e.clientX / zoom) - 4;
+        treeWidth = Math.max(90, Math.min(w, REACTIVE_WINDOW_SIZE.width - 140));
+      };
+      document.onpointerup = () => {
+        document.onpointermove = null;
+        element.releasePointerCapture(event.pointerId);
+      };
+    };
+  }
 
   onMount(async () => {
-    REACTIVE_WINDOW_SIZE.setSize(360, 420);
+    REACTIVE_WINDOW_SIZE.setSize(500, 380);
     REACTIVE_WINDOW_SIZE.setZoom(1);
     try {
       playlists = await invoke("get_user_playlists");
@@ -73,6 +106,8 @@
   async function selectPlaylist(pl) {
     searchMode = false;
     selectedUri = pl.uri;
+    activeNode = pl.uri;
+    selectedTrack = -1;
     tracks = [];
     trackUris = [];
     tracksError = "";
@@ -96,8 +131,10 @@
     const q = search.trim();
     if (!q) return;
     searchMode = true;
+    activeNode = "search";
     searchQuery = q;
     selectedUri = null;
+    selectedTrack = -1;
     tracks = [];
     trackUris = [];
     tracksError = "";
@@ -115,15 +152,39 @@
     }
   }
 
+  async function focusSearch() {
+    activeNode = "search";
+    searchMode = true;
+    await tick();
+    searchInput?.focus();
+  }
+
+  function showAudio() {
+    activeNode = "audio";
+    searchMode = false;
+    selectedUri = null;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    selectedTrack = -1;
+    ++loadToken;
+  }
+
+  function clearSearch() {
+    search = "";
+    if (searchMode) showAudio();
+  }
+
   // Reuse the existing "UrlsDropped" event the main playlist window already
   // listens for (clear + load). Works cross-window via Tauri's global emit.
   const loadPlaylistIntoMain = (pl) =>
     emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
+
   // Double-clicking a track in the right pane:
-  //  - search results  → append just that one track (build a playlist by
-  //    searching repeatedly), keeping what's already loaded
+  //  - search results  → append just that one track
   //  - playlist tracks → play it and queue the rest of that playlist
   function loadTrackIntoMain(index) {
+    selectedTrack = index;
     if (searchMode) {
       emitWindowEvent("playerWindow", {
         UrlsAppended: [trackUrl(trackUris[index])],
@@ -135,18 +196,38 @@
     }
   }
 
+  // Bottom-bar buttons operate on the selected row (falling back to the first).
+  function playSelected() {
+    const i = selectedTrack >= 0 ? selectedTrack : 0;
+    if (!trackUris[i]) return;
+    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(trackUris[i])] });
+  }
+  function enqueueSelected() {
+    const i = selectedTrack >= 0 ? selectedTrack : 0;
+    if (!trackUris[i]) return;
+    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(trackUris[i])] });
+  }
+  function playAll() {
+    if (trackUris.length === 0) return;
+    emitWindowEvent("playerWindow", { UrlsDropped: trackUris.map(trackUrl) });
+  }
+
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  // hide via the Rust command (app commands aren't capability-gated, so this is
-  // reliable regardless of window permissions)
+  const headTitle = $derived(
+    searchMode
+      ? `Search: ${searchQuery}`
+      : selectedUri
+        ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
+        : "Audio",
+  );
+
   const close = () => invoke("set_library_window_visible", { visible: false });
 
   // Drag the library window, snapping to the player like the playlist does.
-  // The DragStarted/DragEnded events drive the Rust docking (native follow +
-  // snap-on-release); mapPosition adds the live visual snap while dragging.
   function makeLibraryDraggable(element) {
     makeTauriWindowDraggable(element, {
       async onStart({ startPosition, windowSize }) {
@@ -190,17 +271,15 @@
     });
   }
 
-  // Resize from the bottom-right corner, like the Winamp playlist. Updating
-  // REACTIVE_WINDOW_SIZE makes the layout effect resize the OS window; the panes
-  // are flexbox so they reflow to fill it.
+  // Resize from the bottom-right corner, like the Winamp playlist.
   function makeLibraryResizable(element) {
     element.onpointerdown = function (event) {
       event.preventDefault();
       element.setPointerCapture(event.pointerId);
       document.onpointermove = function (e) {
         const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
-        const width = Math.max(Math.round(e.clientX / zoom) + 3, 240);
-        const height = Math.max(Math.round(e.clientY / zoom) + 3, 220);
+        const width = Math.max(Math.round(e.clientX / zoom) + 3, 380);
+        const height = Math.max(Math.round(e.clientY / zoom) + 3, 260);
         REACTIVE_WINDOW_SIZE.setSize(width, height);
       };
       document.onpointerup = function () {
@@ -212,305 +291,608 @@
   }
 </script>
 
-<div class="lib-window">
-  <div class="lib-titlebar" use:makeLibraryDraggable>
-    <div class="lib-tl"></div>
-    <span class="lib-title">LIBRARY</span>
-    <button class="lib-close" data-no-drag onclick={close} aria-label="Close"
+<div class="ml-window">
+  <div class="ml-titlebar" use:makeLibraryDraggable>
+    <div class="ml-tl"></div>
+    <span class="ml-title">WINAMP LIBRARY</span>
+    <button class="ml-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
   </div>
 
-  <div class="lib-body">
-    <!-- left: playlists -->
-    <div class="lib-pane lib-playlists">
-      <div class="lib-pane-head">PLAYLISTS</div>
-      <input
-        class="lib-search"
-        placeholder="filter · Enter = search Spotify"
-        bind:value={search}
-        onkeydown={(e) => e.key === "Enter" && doSearch()}
-      />
-      <div class="lib-list">
+  <div class="ml-body">
+    <!-- left: navigation tree -->
+    <div class="ml-tree" style="flex-basis: {treeWidth}px;">
+      <div
+        class="ml-node ml-root"
+        role="button"
+        tabindex="0"
+        onclick={() => (expandLocal = !expandLocal)}
+        onkeydown={(e) => e.key === "Enter" && (expandLocal = !expandLocal)}
+      >
+        <span class="ml-tw">{expandLocal ? "▾" : "▸"}</span>
+        <span class="ml-ic ml-ic-media"></span>Local Media
+      </div>
+      {#if expandLocal}
+        <div
+          class="ml-node ml-child"
+          class:active={activeNode === "audio"}
+          role="button"
+          tabindex="0"
+          onclick={showAudio}
+          onkeydown={(e) => e.key === "Enter" && showAudio()}
+        >
+          <span class="ml-ic ml-ic-audio"></span>Audio
+        </div>
+      {/if}
+
+      <div
+        class="ml-node ml-root"
+        role="button"
+        tabindex="0"
+        onclick={() => (expandPlaylists = !expandPlaylists)}
+        onkeydown={(e) =>
+          e.key === "Enter" && (expandPlaylists = !expandPlaylists)}
+      >
+        <span class="ml-tw">{expandPlaylists ? "▾" : "▸"}</span>
+        <span class="ml-ic ml-ic-pl"></span>Playlists
+      </div>
+      {#if expandPlaylists}
         {#if loading}
-          <div class="lib-msg">loading playlists…</div>
+          <div class="ml-node ml-child ml-dim">loading…</div>
         {:else if error}
-          <div class="lib-msg lib-err">{error}</div>
-        {:else if filtered.length === 0}
-          <div class="lib-msg">no playlists</div>
+          <div class="ml-node ml-child ml-err">{error}</div>
+        {:else if playlists.length === 0}
+          <div class="ml-node ml-child ml-dim">no playlists</div>
         {:else}
-          {#each filtered as pl}
-            <button
-              class="lib-row"
-              class:selected={selectedUri === pl.uri}
+          {#each playlists as pl}
+            <div
+              class="ml-node ml-child"
+              class:active={activeNode === pl.uri}
+              role="button"
+              tabindex="0"
+              title="double-click to load into the player"
               onclick={() => selectPlaylist(pl)}
               ondblclick={() => loadPlaylistIntoMain(pl)}
-              title="double-click to load &amp; play"
+              onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
             >
-              <span class="lib-row-name">{pl.name}</span>
-              <span class="lib-row-count">{pl.track_count}</span>
-            </button>
+              <span class="ml-ic ml-ic-list"></span>{pl.name}
+            </div>
           {/each}
         {/if}
+      {/if}
+
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "search"}
+        role="button"
+        tabindex="0"
+        onclick={focusSearch}
+        onkeydown={(e) => e.key === "Enter" && focusSearch()}
+      >
+        <span class="ml-ic ml-ic-search"></span>Search
       </div>
     </div>
 
-    <!-- right: tracks of the selected playlist, or search results -->
-    <div class="lib-pane lib-tracks">
-      <div class="lib-pane-head">
-        {searchMode ? `SEARCH: ${searchQuery}` : "TRACKS"}
+    <!-- draggable splitter -->
+    <div class="ml-splitter" use:makeSplitter></div>
+
+    <!-- right: search bar + column list -->
+    <div class="ml-content">
+      <div class="ml-searchbar">
+        <span class="ml-search-label">Search:</span>
+        <input
+          class="ml-search"
+          bind:this={searchInput}
+          placeholder="artist, song… (Enter)"
+          bind:value={search}
+          onkeydown={(e) => e.key === "Enter" && doSearch()}
+        />
+        <button class="ml-clear" onclick={clearSearch}>Clear</button>
       </div>
-      <div class="lib-list">
-        {#if !selectedUri && !searchMode}
-          <div class="lib-msg">← select a playlist<br />or search Spotify ↑</div>
+
+      <div class="ml-view-head">{headTitle}</div>
+
+      <div class="ml-cols">
+        <div class="ml-col ml-c-artist">Artist</div>
+        <div class="ml-col ml-c-album">Album</div>
+        <div class="ml-col ml-c-title">Title</div>
+        <div class="ml-col ml-c-time">Time</div>
+      </div>
+
+      <div class="ml-listwrap">
+      <div class="ml-rows" bind:this={rowsEl} onscroll={syncScroll}>
+        {#if activeNode === "audio" && !searchMode && !selectedUri}
+          <div class="ml-hint">
+            Select a playlist on the left, or search Spotify above.
+          </div>
         {:else}
           {#each tracks as t, i}
-            <button
-              class="lib-row"
+            <div
+              class="ml-row"
+              class:sel={selectedTrack === i}
+              class:odd={i % 2 === 1}
+              role="button"
+              tabindex="0"
+              onclick={() => (selectedTrack = i)}
               ondblclick={() => loadTrackIntoMain(i)}
-              title={searchMode
-                ? "double-click to add to the playlist"
-                : "double-click to play from here"}
+              onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
             >
-              <span class="lib-row-idx">{i + 1}.</span>
-              <span class="lib-row-name">{t.artist} - {t.name}</span>
-              <span class="lib-row-count">{fmt(t.duration)}</span>
-            </button>
+              <div class="ml-col ml-c-artist">{t.artist}</div>
+              <div class="ml-col ml-c-album">{t.album}</div>
+              <div class="ml-col ml-c-title">{t.name}</div>
+              <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
+            </div>
           {/each}
           {#if tracksLoading}
-            <div class="lib-msg">
-              {searchMode ? "searching…" : "loading tracks…"}
-            </div>
+            <div class="ml-hint">{searchMode ? "searching…" : "loading…"}</div>
           {:else if tracksError}
-            <div class="lib-msg lib-err">{tracksError}</div>
+            <div class="ml-hint ml-err">{tracksError}</div>
           {:else if tracks.length === 0}
-            <div class="lib-msg">{searchMode ? "no results" : "empty"}</div>
+            <div class="ml-hint">{searchMode ? "no results" : "empty"}</div>
           {/if}
         {/if}
       </div>
+      <input
+        type="range"
+        class="ml-scroll"
+        min="0"
+        max={scrollMax}
+        step="1"
+        value={scrollPos}
+        oninput={(e) => rowsEl && (rowsEl.scrollTop = +e.currentTarget.value)}
+        aria-label="Scroll tracks"
+      />
+      </div>
     </div>
   </div>
 
-  <div class="lib-footer">
-    double-click a playlist to load · a track to play it
+  <div class="ml-footer">
+    <button class="ml-btn" onclick={playSelected}>Play</button>
+    <button class="ml-btn" onclick={enqueueSelected}>Enqueue</button>
+    <button class="ml-btn" onclick={playAll}>Play all</button>
+    <span class="ml-count">
+      {tracks.length}
+      {tracks.length === 1 ? "item" : "items"}
+    </span>
   </div>
 
-  <div class="lib-resize" use:makeLibraryResizable></div>
+  <div class="ml-resize" use:makeLibraryResizable></div>
 </div>
 
 <style>
+  @font-face {
+    font-family: px sans nouveaux;
+    font-style: normal;
+    font-weight: 400;
+    src:
+      local("px sans nouveaux"),
+      url(/src/static/assets/px_sans_nouveaux.woff) format("woff");
+  }
+
   :global(body) {
     margin: 0;
     overflow: hidden;
     background: #000;
   }
 
-  .lib-window {
+  .ml-window {
     position: fixed;
     inset: 0;
     display: flex;
     flex-direction: column;
-    /* dark frame toned to sit next to the PLEDIT playlist window */
-    background: #1c1d26;
+    /* colours follow real Winamp plugin-window rules: GENEX.BMP palette when
+       a .wsz is loaded (fallback PLEDIT.TXT), classic green-on-black otherwise */
+    background: var(--skin-genexwndbg, var(--skin-plbg, #000));
     border: 1px solid #0c0d12;
-    box-shadow: inset 1px 1px 0 #34384a, inset -1px -1px 0 #0e0f16;
-    font-family: "Segoe UI", Tahoma, sans-serif;
-    color: #c9d2e0;
+    box-shadow: inset 1px 1px 0 #2a2f3a, inset -1px -1px 0 #0e0f16;
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: 7px;
+    -webkit-font-smoothing: none;
+    font-smooth: never;
+    letter-spacing: 0.3px;
+    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 255, 0)));
     user-select: none;
   }
 
-  /* ---- title bar: authentic pieces cropped from GEN.BMP ---- */
-  .lib-titlebar {
+  /* ---- titlebar (gen tiles) ---- */
+  .ml-titlebar {
     position: relative;
     flex: 0 0 20px;
     height: 20px;
-    background: var(--skin-genfill)
-      repeat-x;
+    background: var(--skin-genfill) repeat-x;
     cursor: default;
   }
-  .lib-tl {
+  .ml-tl {
     position: absolute;
     left: 0;
     top: 0;
     width: 25px;
     height: 20px;
-    background: var(--skin-gentl)
-      no-repeat;
+    background: var(--skin-gentl) no-repeat;
   }
-  /* the title sits in a dark "notch" over the gold bar, like real Winamp */
-  .lib-title {
+  .ml-title {
     position: absolute;
     left: 50%;
-    top: 3px;
+    top: 4px;
     transform: translateX(-50%);
-    height: 14px;
+    height: 11px;
     display: flex;
     align-items: center;
-    padding: 0 8px;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 2px;
+    padding: 0 6px;
+    /* match the tiny bitmap lettering of the playlist titlebar */
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: 7px;
+    -webkit-font-smoothing: none;
+    letter-spacing: 1px;
     color: #cdd6ea;
     background: #26264a;
     z-index: 1;
   }
-  .lib-close {
+  .ml-close {
     position: absolute;
     right: 0;
     top: 0;
     width: 15px;
     height: 20px;
-    background: var(--skin-gentr)
-      no-repeat;
+    background: var(--skin-gentr) no-repeat;
     border: none;
     padding: 0;
     cursor: pointer;
     z-index: 2;
   }
 
-  /* ---- body: two panes ---- */
-  .lib-body {
+  /* ---- body: tree | content ---- */
+  .ml-body {
     flex: 1;
     display: flex;
-    gap: 3px;
+    min-height: 0;
     padding: 3px;
-    min-height: 0;
+    gap: 3px;
   }
-  .lib-pane {
+
+  .ml-tree {
+    flex: 0 0 150px;
+    overflow: auto;
+    background: var(--skin-genexitembg, var(--skin-plbg, #000));
+    border: 1px solid var(--skin-genexdivider, #060a12);
+    padding: 2px 0;
+  }
+  .ml-node {
     display: flex;
-    flex-direction: column;
-    min-height: 0;
-    /* without min-width:0 the long (nowrap) playlist names force this flex
-       item wider than its basis, collapsing the tracks pane to zero width */
-    min-width: 0;
-    background: #000;
-    border: 1px solid #10121a;
-    box-shadow: inset 1px 1px 0 #171922;
-  }
-  .lib-playlists {
-    flex: 0 0 45%;
-  }
-  .lib-tracks {
-    flex: 1;
-  }
-  .lib-pane-head {
-    font-size: 9px;
-    letter-spacing: 1px;
-    color: #7f8aa3;
-    padding: 2px 5px;
-    background: #14151d;
-    border-bottom: 1px solid #0a0b10;
-  }
-
-  .lib-search {
-    margin: 3px 4px;
-    padding: 2px 5px;
-    background: #05170a;
-    border: 1px solid #1e6b32;
-    color: #00ff41;
-    font-family: monospace;
-    font-size: 11px;
-    outline: none;
-  }
-  .lib-search::placeholder {
-    color: #3f7a4e;
-  }
-
-  .lib-list {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .lib-row {
-    display: flex;
-    align-items: baseline;
-    gap: 5px;
-    width: 100%;
-    text-align: left;
-    padding: 1px 5px;
-    background: transparent;
-    border: none;
-    /* match the playlist window: bright green on black, blue selection */
-    color: rgb(0, 255, 0);
-    font-family: monospace;
-    font-size: 11px;
-    line-height: 15px;
-    cursor: pointer;
+    align-items: center;
+    height: 15px;
+    padding: 0 4px 0 4px;
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 230, 0)));
+    cursor: default;
   }
-  .lib-row:hover {
-    background: #0a1f0f;
+  .ml-root {
+    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 255, 0)));
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
   }
-  .lib-row.selected {
-    background: rgb(0, 0, 198);
-    color: #fff;
+  .ml-child {
+    padding-left: 18px;
   }
-  .lib-row-idx {
-    color: rgb(0, 160, 0);
-    flex: 0 0 auto;
+  .ml-node:hover {
+    background: color-mix(
+      in srgb,
+      var(--skin-genexselbg, var(--skin-plselbg, #0f4a1a)) 45%,
+      transparent
+    );
   }
-  .lib-row-name {
+  .ml-node.active {
+    background: var(--skin-genexselbg, var(--skin-plselbg, rgb(0, 0, 198)));
+    color: var(--skin-plcurrent, #fff);
+  }
+  .ml-dim {
+    color: color-mix(
+      in srgb,
+      var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 120, 0))) 55%,
+      transparent
+    );
+    font-style: italic;
+  }
+  .ml-tw {
+    display: inline-block;
+    width: 9px;
+    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 200, 0)));
+  }
+  .ml-ic {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    flex: 0 0 12px;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+  /* tiny CSS glyph icons — drawn with currentColor so they follow the
+     skin's list text colour automatically */
+  .ml-ic-media {
+    background: color-mix(in srgb, currentColor 25%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
+    border-radius: 1px;
+    height: 8px;
+    margin-top: 1px;
+  }
+  .ml-ic-audio {
+    background: currentColor;
+    border-radius: 50%;
+    width: 7px;
+    height: 7px;
+    margin-left: 2px;
+    margin-right: 6px;
+    opacity: 0.9;
+  }
+  .ml-ic-pl {
+    background: color-mix(in srgb, currentColor 35%, transparent);
+    height: 8px;
+    border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
+    border-radius: 1px;
+    margin-top: 1px;
+  }
+  .ml-ic-list {
+    background: color-mix(in srgb, currentColor 20%, transparent);
+    width: 8px;
+    height: 6px;
+    border-top: 2px solid color-mix(in srgb, currentColor 75%, transparent);
+    border-bottom: 2px solid color-mix(in srgb, currentColor 75%, transparent);
+    margin-left: 2px;
+    margin-right: 6px;
+  }
+  .ml-ic-search {
+    background: transparent;
+    border: 1.5px solid color-mix(in srgb, currentColor 75%, transparent);
+    border-radius: 50%;
+    width: 7px;
+    height: 7px;
+  }
+
+  /* ---- right content ---- */
+  .ml-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .ml-searchbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 0 3px 0;
+  }
+  .ml-search-label {
+    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 210, 0)));
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .ml-search {
+    flex: 1;
+    min-width: 0;
+    background: var(--skin-genexitembg, #05170a);
+    color: var(--skin-genexitemfg, #00ff41);
+    border: 1px solid var(--skin-genexdivider, #1e6b32);
+    font-family: "Consolas", monospace;
+    font-size: 11px;
+    padding: 1px 4px;
+    outline: none;
+  }
+  /* the skin's real GENEX button face (base skin included) */
+  .ml-clear {
+    background: none;
+    border: 4px solid transparent;
+    border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
+    color: var(--skin-genexbtntext, #393942);
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: 7px;
+    -webkit-font-smoothing: none;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    cursor: pointer;
+  }
+  .ml-clear:active {
+    border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
+  }
+
+  .ml-view-head {
+    font-size: 7px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 200, 0)));
+    padding: 2px 3px;
+    border-bottom: 1px solid var(--skin-genexdivider, #0a0f0a);
+  }
+
+  .ml-cols,
+  .ml-row {
+    display: flex;
+    align-items: center;
+  }
+  .ml-cols {
+    height: 15px;
+    background: var(--skin-genexhdrbg, #0a0d12);
+    border-bottom: 1px solid var(--skin-genexdivider, #1e6b32);
+    color: var(--skin-genexhdrtext, rgb(0, 210, 0));
+    font-size: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .ml-col {
+    padding: 0 5px;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .lib-row-count {
-    flex: 0 0 auto;
-    color: rgb(0, 160, 0);
+  .ml-cols .ml-col {
+    border-right: 1px solid var(--skin-genexdivider, #0e2214);
+    height: 15px;
+    line-height: 15px;
   }
-  .lib-row.selected .lib-row-idx,
-  .lib-row.selected .lib-row-count {
-    color: #cfe0ff;
+  .ml-c-artist {
+    flex: 0 0 26%;
+  }
+  .ml-c-album {
+    flex: 0 0 26%;
+  }
+  .ml-c-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .ml-c-time {
+    flex: 0 0 44px;
+    text-align: right;
   }
 
-  .lib-msg {
-    padding: 6px 8px;
-    font-family: monospace;
-    font-size: 11px;
-    color: #6a7488;
+  .ml-rows {
+    flex: 1;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    background: var(--skin-genexitembg, var(--skin-plbg, #000));
+    border: 1px solid var(--skin-genexdivider, #060a12);
+    min-height: 0;
   }
-  .lib-err {
-    color: #d06a6a;
-    white-space: normal;
+  .ml-row {
+    height: 13px;
+    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 255, 0)));
+    cursor: default;
+  }
+  .ml-row.odd {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .ml-row:hover {
+    background: color-mix(
+      in srgb,
+      var(--skin-genexselbg, var(--skin-plselbg, #0f4a1a)) 45%,
+      transparent
+    );
+  }
+  .ml-row.sel {
+    background: var(--skin-genexselbg, var(--skin-plselbg, rgb(0, 0, 198)));
+    color: var(--skin-plcurrent, #fff);
+  }
+  .ml-hint {
+    padding: 8px 10px;
+    color: color-mix(
+      in srgb,
+      var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 130, 0))) 60%,
+      transparent
+    );
+    font-style: italic;
+  }
+  .ml-err {
+    color: #ff6b6b;
   }
 
-  /* resize grip, bottom-right corner (like the playlist) */
-  .lib-resize {
+  /* the real scrollbar is the PLEDIT-sprite slider next to the list */
+  .ml-listwrap {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .ml-listwrap .ml-rows {
+    flex: 1;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .ml-rows::-webkit-scrollbar {
+    display: none;
+  }
+  .ml-scroll {
+    cursor: url(/src/static/assets/skins/base-2.91/EQSLID.CUR), default;
+    writing-mode: vertical-lr;
+    direction: ltr;
+    appearance: none;
+    width: 10px;
+    flex: 0 0 10px;
+    background: var(--skin-genexwndbg, #050a05);
+    box-shadow: inset 1px 0 0 var(--skin-genexdivider, #0e1a0e);
+  }
+  .ml-scroll::-webkit-slider-thumb {
+    background: var(--skin-pledit);
+    appearance: none;
+    width: 8px;
+    height: 18px;
+    background-position: -52px -53px;
+  }
+  .ml-scroll::-webkit-slider-thumb:active {
+    background-position-x: -61px;
+  }
+  .ml-tree::-webkit-scrollbar {
+    width: 9px;
+  }
+  .ml-tree::-webkit-scrollbar-track {
+    background: var(--skin-genexwndbg, #050a05);
+  }
+  .ml-tree::-webkit-scrollbar-thumb {
+    background: var(--skin-genexhdrbg, #16241a);
+    border: 1px solid var(--skin-genexdivider, #0a0f0a);
+  }
+
+  /* ---- footer ---- */
+  .ml-footer {
+    flex: 0 0 22px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 5px;
+    border-top: 1px solid var(--skin-genexdivider, #0a1a0a);
+    background: var(--skin-genexwndbg, #050a05);
+  }
+  .ml-btn {
+    background: none;
+    border: 4px solid transparent;
+    border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
+    color: var(--skin-genexbtntext, #393942);
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: 7px;
+    -webkit-font-smoothing: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 7px;
+    cursor: pointer;
+  }
+  .ml-btn:active {
+    border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
+  }
+  .ml-count {
+    margin-left: auto;
+    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 170, 0)));
+    padding-right: 8px;
+  }
+
+  /* ---- splitter between tree and content ---- */
+  .ml-splitter {
+    flex: 0 0 4px;
+    cursor: ew-resize;
+    background: transparent;
+    box-shadow: inset 1px 0 0 var(--skin-genexdivider, #1e6b32);
+  }
+  .ml-splitter:hover {
+    background: color-mix(
+      in srgb,
+      var(--skin-genexdivider, #123a1a) 40%,
+      transparent
+    );
+  }
+
+  .ml-resize {
     position: absolute;
     right: 0;
     bottom: 0;
     width: 16px;
     height: 16px;
     cursor: nwse-resize;
-    z-index: 20;
-  }
-
-  /* ---- footer ---- */
-  .lib-footer {
-    height: 16px;
-    display: flex;
-    align-items: center;
-    padding: 0 6px;
-    font-size: 9px;
-    color: #7f8aa3;
-    background: #14151d;
-    border-top: 1px solid #0a0b10;
-  }
-
-  /* chunky beveled Winamp-style scrollbar */
-  .lib-list::-webkit-scrollbar {
-    width: 9px;
-  }
-  .lib-list::-webkit-scrollbar-track {
-    background: #05070a;
-  }
-  .lib-list::-webkit-scrollbar-thumb {
-    background: #1f2630;
-    border: 1px solid #0a0c10;
-    box-shadow: inset 1px 1px 0 #3a4350, inset -1px -1px 0 #0e1116;
-  }
-  .lib-list::-webkit-scrollbar-thumb:hover {
-    background: #262f3b;
+    background: linear-gradient(
+      135deg,
+      transparent 0 8px,
+      var(--skin-genexdivider, #1e6b32) 8px 9px,
+      transparent 9px 11px,
+      var(--skin-genexdivider, #1e6b32) 11px 12px,
+      transparent 12px
+    );
   }
 </style>

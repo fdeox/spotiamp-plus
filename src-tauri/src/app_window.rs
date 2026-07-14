@@ -87,6 +87,12 @@ struct DockingState {
     /// position, so the docking logic must neither move it nor re-evaluate the
     /// dock against it; it is repositioned to the docked spot when shown again.
     follower_visible: bool,
+    /// Whether this pair also owns the follower natively (`GWLP_HWNDPARENT` /
+    /// `addChildWindow`). A follower may belong to several pairs (playlist →
+    /// player AND playlist → EQ) but only ONE pair may manage ownership —
+    /// two pairs fighting over the single owner slot mid-drag wedges the
+    /// window manager. Chained pairs track position only.
+    manage_ownership: bool,
 }
 
 impl DockingState {
@@ -106,6 +112,7 @@ impl DockingState {
             attachment: None,
             native_child_attached: false,
             follower_visible: true,
+            manage_ownership: true,
         }
     }
 
@@ -483,7 +490,11 @@ fn set_native_child_attached(
     attached: bool,
 ) {
     if state.native_child_attached != attached {
-        set_native_child_window(anchor_window, follower_window, attached);
+        // chained pairs only track position; the owner slot belongs to the
+        // follower's primary pair (see DockingState::manage_ownership)
+        if state.manage_ownership {
+            set_native_child_window(anchor_window, follower_window, attached);
+        }
         state.native_child_attached = attached;
     }
 }
@@ -737,6 +748,45 @@ pub fn dock_windows(
     follower_event: &'static str,
     subclass_id: usize,
 ) {
+    dock_windows_impl(
+        anchor_window,
+        follower_window,
+        anchor_event,
+        follower_event,
+        subclass_id,
+        true,
+    );
+}
+
+/// Like `dock_windows`, but the pair only tracks/drives the follower's
+/// position and never touches its native owner. Use this to chain a follower
+/// that already has a primary anchor (player → EQ → playlist): the primary
+/// pair keeps the owner slot, this pair adds the extra glue.
+pub fn dock_windows_chained(
+    anchor_window: &WebviewWindow,
+    follower_window: &WebviewWindow,
+    anchor_event: &'static str,
+    follower_event: &'static str,
+    subclass_id: usize,
+) {
+    dock_windows_impl(
+        anchor_window,
+        follower_window,
+        anchor_event,
+        follower_event,
+        subclass_id,
+        false,
+    );
+}
+
+fn dock_windows_impl(
+    anchor_window: &WebviewWindow,
+    follower_window: &WebviewWindow,
+    anchor_event: &'static str,
+    follower_event: &'static str,
+    subclass_id: usize,
+    manage_ownership: bool,
+) {
     let state = Arc::new(Mutex::new(DockingState::new([
         anchor_window,
         follower_window,
@@ -744,6 +794,7 @@ pub fn dock_windows(
 
     {
         let mut state = state.lock().expect("docking state lock");
+        state.manage_ownership = manage_ownership;
         state.refresh_both(anchor_window, follower_window);
         commit_attachment_for_window(&mut state, anchor_window, follower_window, follower_window);
     }

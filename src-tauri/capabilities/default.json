@@ -6,7 +6,8 @@
     "player",
     "playlist",
     "library",
-    "visualizer"
+    "visualizer",
+    "eq"
   ],
   "permissions": [
     "core:default",

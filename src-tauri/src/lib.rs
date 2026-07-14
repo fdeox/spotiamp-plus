@@ -10,6 +10,8 @@ use thiserror::Error;
 use crate::oauth::OAuthError;
 use crate::spotify::{SpotifySession, pending_auth_url};
 mod app_window;
+mod eq;
+mod eq_window;
 mod library_window;
 mod oauth;
 mod player_window;
@@ -19,6 +21,7 @@ mod visualizer_window;
 mod sink;
 pub mod spotify;
 mod visualizer;
+mod wsz;
 
 #[derive(Debug, Error)]
 #[allow(clippy::enum_variant_names)]
@@ -191,6 +194,12 @@ pub fn run() {
             player_window::get_player_settings,
             player_window::get_skin,
             player_window::set_skin,
+            wsz::pick_and_load_skin,
+            wsz::get_custom_skin,
+            wsz::list_bundled_skins,
+            wsz::load_bundled_skin,
+            player_window::set_eq,
+            player_window::set_balance,
             player_window::set_volume,
             player_window::set_double_size,
             player_window::take_latest_spectrum,
@@ -201,6 +210,7 @@ pub fn run() {
             playlist_window::set_playlist_inner_size,
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
+            eq_window::set_eq_window_visible,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    eq::EqState,
     oauth::{OAuthError, OAuthFlow},
     settings::Settings,
     sink::SpotiampSink,
@@ -158,6 +159,7 @@ pub struct SpotifyPlayer {
     player: Arc<Player>,
     pub session: SpotifySession,
     volume: Arc<AtomicU16>,
+    eq: Arc<Mutex<EqState>>,
 
     visualizer: Arc<Mutex<Visualizer>>,
 }
@@ -167,12 +169,15 @@ impl SpotifyPlayer {
     pub fn new(session: SpotifySession) -> Self {
         let volume = Arc::new(AtomicU16::new(Settings::current().player.volume));
         let visualizer = Arc::new(Mutex::new(Visualizer::new()));
-        let player = Self::build_player(&session.inner, volume.clone(), visualizer.clone());
+        let eq = Arc::new(Mutex::new(EqState::default()));
+        let player =
+            Self::build_player(&session.inner, volume.clone(), visualizer.clone(), eq.clone());
 
         Self {
             player,
             session,
             volume,
+            eq,
             visualizer,
         }
     }
@@ -184,6 +189,7 @@ impl SpotifyPlayer {
         session: &Session,
         volume: Arc<AtomicU16>,
         visualizer: Arc<Mutex<Visualizer>>,
+        eq: Arc<Mutex<EqState>>,
     ) -> Arc<Player> {
         let player_config = PlayerConfig {
             // Emit a position update every second so the UI can re-sync its
@@ -224,9 +230,16 @@ impl SpotifyPlayer {
             {
                 let visualizer = visualizer.clone();
                 let volume = volume.clone();
+                let eq = eq.clone();
                 move || {
                     let audio_format = AudioFormat::F32;
-                    Box::new(SpotiampSink::new(None, audio_format, visualizer, volume))
+                    Box::new(SpotiampSink::new(
+                        None,
+                        audio_format,
+                        visualizer,
+                        volume,
+                        eq,
+                    ))
                 }
             },
         )
@@ -249,10 +262,28 @@ impl SpotifyPlayer {
         self.player.stop();
         let session = SpotifySession::default();
         session.login(app).await?;
-        self.player =
-            Self::build_player(&session.inner, self.volume.clone(), self.visualizer.clone());
+        self.player = Self::build_player(
+            &session.inner,
+            self.volume.clone(),
+            self.visualizer.clone(),
+            self.eq.clone(),
+        );
         self.session = session;
         Ok(self.player.get_player_event_channel())
+    }
+
+    /// Update the equaliser (applied live by the sink).
+    pub fn set_eq(&self, enabled: bool, preamp_db: f32, bands_db: [f32; 10]) {
+        let mut eq = self.eq.lock().unwrap();
+        eq.enabled = enabled;
+        eq.preamp_db = preamp_db;
+        eq.bands_db = bands_db;
+    }
+
+    /// Set the stereo balance (-1.0 left .. 0.0 centre .. +1.0 right).
+    pub fn set_balance(&self, balance: f32) {
+        let mut eq = self.eq.lock().unwrap();
+        eq.balance = balance;
     }
 
     pub async fn load_track(&self, uri: &str) -> Result<(), PlayError> {
@@ -278,152 +309,12 @@ impl SpotifyPlayer {
         Ok(())
     }
 
-    pub async fn get_track_ids(
-        &self,
-        playlist_uri: SpotifyUri,
-    ) -> Result<Vec<SpotifyUri>, PlayError> {
-        match playlist_uri {
-            SpotifyUri::Playlist { .. } => Ok(Playlist::get(&self.session.inner, &playlist_uri)
-                .await
-                .map_err(|e| PlayError::MetadataError { e })?
-                .contents
-                .items
-                .iter()
-                .filter(|item| {
-                    let is_track = matches!(&item.id, SpotifyUri::Track { .. });
-
-                    is_track
-                })
-                .map(|item| &item.id)
-                .cloned()
-                .collect()),
-            SpotifyUri::Album { .. } => Ok(Album::get(&self.session.inner, &playlist_uri)
-                .await
-                .map_err(|e| PlayError::MetadataError { e })?
-                .tracks()
-                .cloned()
-                .collect()),
-            _ => {
-                log::warn!("Trying to get playlist tracks from an id that is not a playlist");
-                Ok(vec![])
-            }
-        }
-    }
-
-    /// Fetch the current user's playlists via librespot's internal rootlist
-    /// (uses the same session auth that plays music — no Web API scope needed,
-    /// which the keymaster refuses to grant). We pull the raw rootlist, scan it
-    /// for playlist URIs, then resolve each playlist's name + length via the
-    /// metadata API (Playlist::get, the same call get_track_ids uses).
-    pub async fn get_user_playlists(&self) -> Result<Vec<UserPlaylist>, String> {
-        let bytes = self
-            .session
-            .inner
-            .spclient()
-            .get_rootlist(0, Some(500))
-            .await
-            .map_err(|e| format!("Failed to fetch rootlist: {e:?}"))?;
-
-        // rootlist is protobuf; the playlist URIs appear as literal strings.
-        let text = String::from_utf8_lossy(bytes.as_ref());
-        let pat = "spotify:playlist:";
-        let mut uris: Vec<String> = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        let mut search_from = 0usize;
-        while let Some(rel) = text[search_from..].find(pat) {
-            let id_start = search_from + rel + pat.len();
-            let id: String = text[id_start..].chars().take(22).collect();
-            search_from = id_start;
-            if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
-                let uri = format!("{pat}{id}");
-                if seen.insert(uri.clone()) {
-                    uris.push(uri);
-                }
-            }
-        }
-
-        // resolve names + lengths concurrently (bounded), keeping rootlist
-        // order. buffered(N) runs up to N Playlist::get calls at once, which
-        // turns a slow one-by-one wait into a few fast batches.
-        const CONCURRENCY: usize = 16;
-        let session = &self.session.inner;
-        let playlists: Vec<UserPlaylist> = stream::iter(uris)
-            .map(|uri| async move {
-                let spuri = SpotifyUri::from_uri(&uri).ok()?;
-                match Playlist::get(session, &spuri).await {
-                    Ok(pl) => Some(UserPlaylist {
-                        name: pl.attributes.name.clone(),
-                        uri,
-                        track_count: pl.length.max(0) as u32,
-                        image: None,
-                    }),
-                    Err(e) => {
-                        log::debug!("Skipping playlist {uri}: {e:?}");
-                        None
-                    }
-                }
-            })
-            .buffered(CONCURRENCY)
-            .filter_map(|maybe| async move { maybe })
-            .collect()
-            .await;
-        Ok(playlists)
-    }
-
-    /// Search the Spotify catalogue. Uses the internal context-resolve endpoint
-    /// (the same one the desktop client uses for `spotify:search:<query>`),
-    /// which returns JSON we scan for track URIs — no extra protobuf deps.
-    /// Returns track URIs; the frontend resolves names via get_track_metadata.
-    pub async fn search(&self, query: &str) -> Result<Vec<String>, String> {
-        let query = query.trim();
-        if query.is_empty() {
-            return Ok(Vec::new());
-        }
-        // spotify:search:<query> expects '+' between words
-        let encoded = query.split_whitespace().collect::<Vec<_>>().join("+");
-        let endpoint = format!("/context-resolve/v1/spotify:search:{encoded}");
-
-        let bytes = self
-            .session
-            .inner
-            .spclient()
-            .request_as_json(&http::Method::GET, &endpoint, None, None)
-            .await
-            .map_err(|e| format!("Search failed: {e:?}"))?;
-
-        let text = String::from_utf8_lossy(bytes.as_ref());
-        let pat = "spotify:track:";
-        let mut uris: Vec<String> = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        let mut search_from = 0usize;
-        while let Some(rel) = text[search_from..].find(pat) {
-            let id_start = search_from + rel + pat.len();
-            let id: String = text[id_start..].chars().take(22).collect();
-            search_from = id_start;
-            if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
-                let uri = format!("{pat}{id}");
-                if seen.insert(uri.clone()) {
-                    uris.push(uri);
-                }
-            }
-            if uris.len() >= 50 {
-                break;
-            }
-        }
-        Ok(uris)
-    }
-
-    pub async fn get_track(&mut self, track_uri: SpotifyUri) -> Result<Track, PlayError> {
-        match track_uri {
-            SpotifyUri::Track { .. } => {
-                log::debug!("Getting track data: {:?}", track_uri);
-                //TODO: Check why we get `TrackMetadataError { e: Error { kind: Internal, error: ErrorMessage("channel closed") } }` here after leaving the mac in standby for a while.
-                Track::get(&self.session.inner, &track_uri)
-                    .await
-                    .map_err(|e| PlayError::MetadataError { e })
-            }
-            _ => Err(PlayError::GettingTrackForNonTrackUri(track_uri)),
-        }
+    /// A cheap clone of the underlying librespot session handle. Metadata
+    /// fetches (track names, playlists, search) run over this WITHOUT holding
+    /// the player lock — otherwise a playlist load would starve play/pause/stop
+    /// for its whole duration.
+    pub fn session_handle(&self) -> Session {
+        self.session.inner.clone()
     }
 
     pub fn set_volume(&mut self, volume: u16) {
@@ -470,4 +361,154 @@ pub enum PlayError {
     MetadataError { e: Error },
     #[error("Cannot get track for non track id ({_0:?})")]
     GettingTrackForNonTrackUri(SpotifyUri),
+}
+
+// ---------------------------------------------------------------------------
+// Metadata fetches over a bare session handle. These are free functions (not
+// SpotifyPlayer methods) on purpose: the tauri commands clone the session with
+// a brief lock and run the network I/O here WITHOUT the player mutex, so
+// play/pause/stop stay responsive while a playlist or search is loading.
+// ---------------------------------------------------------------------------
+
+pub async fn fetch_track(session: &Session, track_uri: SpotifyUri) -> Result<Track, PlayError> {
+    match track_uri {
+        SpotifyUri::Track { .. } => {
+            log::debug!("Getting track data: {:?}", track_uri);
+            //TODO: Check why we get `TrackMetadataError { e: Error { kind: Internal, error: ErrorMessage("channel closed") } }` here after leaving the mac in standby for a while.
+            Track::get(session, &track_uri)
+                .await
+                .map_err(|e| PlayError::MetadataError { e })
+        }
+        _ => Err(PlayError::GettingTrackForNonTrackUri(track_uri)),
+    }
+}
+
+pub async fn fetch_track_ids(
+    session: &Session,
+    playlist_uri: SpotifyUri,
+) -> Result<Vec<SpotifyUri>, PlayError> {
+    match playlist_uri {
+        SpotifyUri::Playlist { .. } => Ok(Playlist::get(session, &playlist_uri)
+            .await
+            .map_err(|e| PlayError::MetadataError { e })?
+            .contents
+            .items
+            .iter()
+            .filter(|item| {
+                let is_track = matches!(&item.id, SpotifyUri::Track { .. });
+
+                is_track
+            })
+            .map(|item| &item.id)
+            .cloned()
+            .collect()),
+        SpotifyUri::Album { .. } => Ok(Album::get(session, &playlist_uri)
+            .await
+            .map_err(|e| PlayError::MetadataError { e })?
+            .tracks()
+            .cloned()
+            .collect()),
+        _ => {
+            log::warn!("Trying to get playlist tracks from an id that is not a playlist");
+            Ok(vec![])
+        }
+    }
+}
+
+/// Fetch the current user's playlists via librespot's internal rootlist
+/// (uses the same session auth that plays music — no Web API scope needed,
+/// which the keymaster refuses to grant). We pull the raw rootlist, scan it
+/// for playlist URIs, then resolve each playlist's name + length via the
+/// metadata API (Playlist::get, the same call fetch_track_ids uses).
+pub async fn fetch_user_playlists(session: &Session) -> Result<Vec<UserPlaylist>, String> {
+    let bytes = session
+        .spclient()
+        .get_rootlist(0, Some(500))
+        .await
+        .map_err(|e| format!("Failed to fetch rootlist: {e:?}"))?;
+
+    // rootlist is protobuf; the playlist URIs appear as literal strings.
+    let text = String::from_utf8_lossy(bytes.as_ref());
+    let pat = "spotify:playlist:";
+    let mut uris: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = text[search_from..].find(pat) {
+        let id_start = search_from + rel + pat.len();
+        let id: String = text[id_start..].chars().take(22).collect();
+        search_from = id_start;
+        if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            let uri = format!("{pat}{id}");
+            if seen.insert(uri.clone()) {
+                uris.push(uri);
+            }
+        }
+    }
+
+    // resolve names + lengths concurrently (bounded), keeping rootlist
+    // order. buffered(N) runs up to N Playlist::get calls at once, which
+    // turns a slow one-by-one wait into a few fast batches.
+    const CONCURRENCY: usize = 16;
+    let playlists: Vec<UserPlaylist> = stream::iter(uris)
+        .map(|uri| async move {
+            let spuri = SpotifyUri::from_uri(&uri).ok()?;
+            match Playlist::get(session, &spuri).await {
+                Ok(pl) => Some(UserPlaylist {
+                    name: pl.attributes.name.clone(),
+                    uri,
+                    track_count: pl.length.max(0) as u32,
+                    image: None,
+                }),
+                Err(e) => {
+                    log::debug!("Skipping playlist {uri}: {e:?}");
+                    None
+                }
+            }
+        })
+        .buffered(CONCURRENCY)
+        .filter_map(|maybe| async move { maybe })
+        .collect()
+        .await;
+    Ok(playlists)
+}
+
+/// Search the Spotify catalogue. Uses the internal context-resolve endpoint
+/// (the same one the desktop client uses for `spotify:search:<query>`),
+/// which returns JSON we scan for track URIs — no extra protobuf deps.
+/// Returns track URIs; the frontend resolves names via get_track_metadata.
+pub async fn fetch_search(session: &Session, query: &str) -> Result<Vec<String>, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    // spotify:search:<query> expects '+' between words
+    let encoded = query.split_whitespace().collect::<Vec<_>>().join("+");
+    let endpoint = format!("/context-resolve/v1/spotify:search:{encoded}");
+
+    let bytes = session
+        .spclient()
+        .request_as_json(&http::Method::GET, &endpoint, None, None)
+        .await
+        .map_err(|e| format!("Search failed: {e:?}"))?;
+
+    let text = String::from_utf8_lossy(bytes.as_ref());
+    let pat = "spotify:track:";
+    let mut uris: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = text[search_from..].find(pat) {
+        let id_start = search_from + rel + pat.len();
+        let id: String = text[id_start..].chars().take(22).collect();
+        search_from = id_start;
+        if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            let uri = format!("{pat}{id}");
+            if seen.insert(uri.clone()) {
+                uris.push(uri);
+            }
+        }
+        if uris.len() >= 50 {
+            break;
+        }
+    }
+    Ok(uris)
 }

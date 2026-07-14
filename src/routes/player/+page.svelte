@@ -55,6 +55,8 @@
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
+  // -100 (full left) .. 0 (centre) .. +100 (full right)
+  let balance = $state(0);
   let sliderSeekPosition = $state(0);
   let seekPosition = $state(0);
   // Wall-clock anchor for interpolating the playback position between backend
@@ -73,12 +75,13 @@
     positionAnchorAt = performance.now();
   }
   let showPlaylist = $state(initialShowPlaylist());
+  let showEq = $state(false);
   let doubleSizeActive = $state(initialDoubleSizeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
   let repeat = $state(0);
   /**
-   * @type {'nothing' | 'seeking' | 'volume-change'}
+   * @type {'nothing' | 'seeking' | 'volume-change' | 'balance-change'}
    */
   let uiInputState = $state("nothing");
   /**
@@ -107,6 +110,9 @@
         : "NO TRACK LOADED";
     } else if (uiInputState == "volume-change") {
       return `VOLUME: ${volume}%`;
+    } else if (uiInputState == "balance-change") {
+      if (balance == 0) return "BALANCE: CENTER";
+      return `BALANCE: ${Math.abs(balance)}% ${balance < 0 ? "LEFT" : "RIGHT"}`;
     }
   });
 
@@ -199,6 +205,12 @@
     invoke("set_volume", { volume });
   });
 
+  // snap the balance to centre when it's close, like Winamp's detent
+  const balanceRow = $derived(Math.round((Math.abs(balance) / 100) * 27));
+  $effect(() => {
+    invoke("set_balance", { balance: balance / 100 });
+  });
+
   $effect(() => {
     if (uiInputState != "seeking") {
       sliderSeekPosition = seekPosition;
@@ -208,6 +220,12 @@
   $effect(() => {
     invoke("set_playlist_window_visible", {
       visible: showPlaylist,
+    }).catch(handleError);
+  });
+
+  $effect(() => {
+    invoke("set_eq_window_visible", {
+      visible: showEq,
     }).catch(handleError);
   });
 
@@ -251,6 +269,13 @@
         } else if (event.EndReached !== undefined) {
           stop();
         }
+      },
+    );
+
+    const eqWindowEventSubscription = subscribeToWindowEvent(
+      "eqWindow",
+      (event) => {
+        if (event.CloseRequested !== undefined) showEq = false;
       },
     );
 
@@ -329,6 +354,7 @@
       clearInterval(tickerInterval);
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());
+      eqWindowEventSubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };
@@ -440,6 +466,12 @@
   {/if}
 
   <button
+    class="sprite eq-btn"
+    class:eq-btn-enabled={showEq}
+    onclick={() => (showEq = !showEq)}
+    aria-label="Toggle equalizer"
+  ></button>
+  <button
     class="sprite playlist-btn"
     class:playlist-btn-enabled={showPlaylist}
     onclick={() => (showPlaylist = !showPlaylist)}
@@ -536,6 +568,18 @@
     bind:value={volume}
     onmousedown={() => (uiInputState = "volume-change")}
     onmouseup={() => (uiInputState = "nothing")}
+  />
+  <input
+    type="range"
+    class="sprite balance-sprite"
+    style:--balance-row={balanceRow}
+    id="balance"
+    min="-100"
+    max="100"
+    bind:value={balance}
+    onmousedown={() => (uiInputState = "balance-change")}
+    onmouseup={() => (uiInputState = "nothing")}
+    ondblclick={() => (balance = 0)}
   />
   <input
     type="range"
@@ -641,6 +685,22 @@
   }
 
   button.playlist-btn-enabled {
+    background-position-y: -73px;
+  }
+
+  /* EQ button — sits directly left of the PL button (SHUFREP.BMP col 0) */
+  button.eq-btn {
+    --sprite-url: var(--skin-shufrep);
+    --sprite-x: 219px;
+    --sprite-y: 58px;
+    width: 23px;
+    height: 12px;
+    background-position: 0px -61px;
+  }
+  button.eq-btn:active {
+    background-position-x: -46px;
+  }
+  button.eq-btn-enabled {
     background-position-y: -73px;
   }
 
@@ -896,6 +956,38 @@
   }
 
   /* ------ /VOLUME ------ */
+
+  /* ------ BALANCE ------ */
+  .balance-sprite {
+    --sprite-url: var(--skin-balance);
+    --sprite-x: 177px;
+    --sprite-y: 57px;
+    width: 38px;
+    height: 14px;
+    /* the balance trough bar sits at x=12..45 in the 68px-wide BMP */
+    background-position: -10px 0px;
+  }
+
+  #balance {
+    appearance: none;
+    cursor: url(/src/static/assets/skins/base-2.91/VOLBAL.CUR), default;
+    background-position-y: calc(var(--balance-row) * -15px);
+  }
+
+  #balance::-webkit-slider-thumb {
+    background: var(--skin-balance);
+    appearance: none;
+    width: 14px;
+    height: 11px;
+    margin-bottom: 1px;
+    background-position: -15px 11px;
+  }
+
+  #balance::-webkit-slider-thumb:active {
+    background-position: 0px 11px;
+  }
+
+  /* ------ /BALANCE ------ */
 
   /* ------ CBUTTONS ------ */
   .control-buttons-sprite {

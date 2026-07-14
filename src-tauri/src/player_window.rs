@@ -12,6 +12,7 @@ use crate::{
 pub struct TrackMetadata {
     uri: String,
     artist: String,
+    album: String,
     name: String,
     duration: u32,
     unavailable: bool,
@@ -20,6 +21,7 @@ impl TrackMetadata {
     pub fn new(
         track_uri: &SpotifyUri,
         artist: &str,
+        album: &str,
         name: &str,
         duration: u32,
         unavailable: bool,
@@ -28,6 +30,7 @@ impl TrackMetadata {
             unavailable,
             uri: track_uri.to_uri().expect("a valid uri"),
             artist: artist.to_string(),
+            album: album.to_string(),
             name: name.to_string(),
             duration,
         }
@@ -42,6 +45,7 @@ impl From<&Track> for TrackMetadata {
                 .first()
                 .map(|artist| artist.name.clone())
                 .unwrap_or("Unknown Artist".to_string()),
+            &track.album.name,
             &track.name,
             track.duration as u32,
             !track.restrictions.is_empty() && track.alternatives.is_empty(),
@@ -62,6 +66,27 @@ pub fn get_skin() -> String {
 #[tauri::command]
 pub fn set_skin(skin: String) {
     Settings::current_mut().skin = skin;
+}
+
+#[tauri::command]
+pub async fn set_eq(
+    enabled: bool,
+    preamp: f32,
+    bands: Vec<f32>,
+    player: State<'_, SharedPlayer>,
+) -> Result<(), ()> {
+    let mut arr = [0.0f32; 10];
+    for (i, v) in bands.iter().take(10).enumerate() {
+        arr[i] = *v;
+    }
+    player.lock().await.set_eq(enabled, preamp, arr);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_balance(balance: f32, player: State<'_, SharedPlayer>) -> Result<(), ()> {
+    player.lock().await.set_balance(balance);
+    Ok(())
 }
 
 #[tauri::command]
@@ -122,21 +147,23 @@ pub async fn stop(player: State<'_, SharedPlayer>) -> Result<(), String> {
     Ok(())
 }
 
+//NOTE: these metadata commands clone the session handle under a brief lock and
+//      fetch WITHOUT holding the player mutex — otherwise loading a playlist's
+//      names would block play/pause/stop for the whole load.
 #[tauri::command]
 pub async fn get_track_metadata(
     uri: &str,
     player: State<'_, SharedPlayer>,
 ) -> Result<TrackMetadata, String> {
+    let session = player.lock().await.session_handle();
     Ok(TrackMetadata::from(
-        &player
-            .lock()
-            .await
-            .get_track(
-                SpotifyUri::from_uri(uri)
-                    .map_err(|e| format!("Failed to get track by uri '{uri}' ({e:?})"))?,
-            )
-            .await
-            .map_err(|e| format!("Could not load track ({e:?})"))?,
+        &crate::spotify::fetch_track(
+            &session,
+            SpotifyUri::from_uri(uri)
+                .map_err(|e| format!("Failed to get track by uri '{uri}' ({e:?})"))?,
+        )
+        .await
+        .map_err(|e| format!("Could not load track ({e:?})"))?,
     ))
 }
 
@@ -145,30 +172,31 @@ pub async fn get_track_ids(
     uri: &str,
     player: State<'_, SharedPlayer>,
 ) -> Result<Vec<String>, String> {
-    Ok(player
-        .lock()
-        .await
-        .get_track_ids(
-            SpotifyUri::from_uri(uri)
-                .map_err(|e| format!("Failed to get playlist by uri '{uri}' ({e:?})"))?,
-        )
-        .await
-        .map_err(|e| format!("Could not load playlist tracks ({e:?})"))?
-        .iter()
-        .map(|track_uri| track_uri.to_uri().expect("a valid uri"))
-        .collect())
+    let session = player.lock().await.session_handle();
+    Ok(crate::spotify::fetch_track_ids(
+        &session,
+        SpotifyUri::from_uri(uri)
+            .map_err(|e| format!("Failed to get playlist by uri '{uri}' ({e:?})"))?,
+    )
+    .await
+    .map_err(|e| format!("Could not load playlist tracks ({e:?})"))?
+    .iter()
+    .map(|track_uri| track_uri.to_uri().expect("a valid uri"))
+    .collect())
 }
 
 #[tauri::command]
 pub async fn get_user_playlists(
     player: State<'_, SharedPlayer>,
 ) -> Result<Vec<UserPlaylist>, String> {
-    player.lock().await.get_user_playlists().await
+    let session = player.lock().await.session_handle();
+    crate::spotify::fetch_user_playlists(&session).await
 }
 
 #[tauri::command]
 pub async fn search(query: &str, player: State<'_, SharedPlayer>) -> Result<Vec<String>, String> {
-    player.lock().await.search(query).await
+    let session = player.lock().await.session_handle();
+    crate::spotify::fetch_search(&session, query).await
 }
 
 #[tauri::command]
