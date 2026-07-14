@@ -84,7 +84,7 @@ export class SpotifyTrack {
      * @param {SpotifyUri} uri
      * @param {boolean} unavailable
      */
-    constructor(artist, name, durationInMs, uri, unavailable) {
+    constructor(artist, name, durationInMs, uri, unavailable, album = "", albumArt = null) {
         this.name = name;
         this.artist = artist;
         this.durationInMs = durationInMs;
@@ -92,6 +92,8 @@ export class SpotifyTrack {
         this.displayName = `${this.artist} - ${this.name}`;
         this.uri = uri;
         this.unavailable = unavailable;
+        this.album = album;
+        this.albumArt = albumArt;
     }
 
     /**
@@ -99,8 +101,8 @@ export class SpotifyTrack {
      * @returns {Promise<SpotifyTrack>}
      */
     static async loadFromUri(uri) {
-        /** @type {{artist: string, name: string, duration: number, uri: string, unavailable: boolean}} */
+        /** @type {{artist: string, name: string, duration: number, uri: string, unavailable: boolean, album: string, albumArt: string | null}} */
         const trackData = await invoke("get_track_metadata", { uri: uri.asString });
-        return new SpotifyTrack(trackData.artist, trackData.name, trackData.duration, uri, trackData.unavailable);
+        return new SpotifyTrack(trackData.artist, trackData.name, trackData.duration, uri, trackData.unavailable, trackData.album, trackData.albumArt);
     }
 }

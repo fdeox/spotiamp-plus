@@ -33,9 +33,13 @@ fn ensure_connected(guard: &mut Option<DiscordIpcClient>) -> bool {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn set_discord_activity(
     name: String,
     artist: String,
+    album: String,
+    album_art: Option<String>,
+    track_url: String,
     elapsed_ms: i64,
     duration_ms: i64,
     playing: bool,
@@ -58,16 +62,35 @@ pub fn set_discord_activity(
     let timestamps = activity::Timestamps::new()
         .start(start)
         .end(start + duration_ms / 1000);
-    let assets = activity::Assets::new()
-        .large_image("logo")
-        .large_text("Spotiamp+");
+
+    // real album cover as the big image (with the app logo tucked in the
+    // corner); fall back to just the logo when there's no cover art
+    let large_image = album_art.as_deref().unwrap_or("logo");
+    let large_text = if album.is_empty() { "Spotiamp+" } else { &album };
+    let mut assets = activity::Assets::new()
+        .large_image(large_image)
+        .large_text(large_text);
+    if album_art.is_some() {
+        assets = assets.small_image("logo").small_text("Spotiamp+");
+    }
+
+    // clickable buttons — Spotify's presence can't do this
+    let mut buttons = Vec::new();
+    if track_url.starts_with("http") {
+        buttons.push(activity::Button::new("▶  Open in Spotify", &track_url));
+    }
+    buttons.push(activity::Button::new(
+        "⚡  Get Spotiamp+",
+        "https://github.com/fdeox/spotiamp-plus",
+    ));
 
     // "Listening to Spotiamp+" (type 2), like Spotify — not "Playing"
     let mut act = activity::Activity::new()
         .activity_type(ActivityType::Listening)
         .details(&name)
         .state(&state)
-        .assets(assets);
+        .assets(assets)
+        .buttons(buttons);
     if playing && duration_ms > 0 {
         act = act.timestamps(timestamps);
     }

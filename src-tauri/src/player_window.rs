@@ -13,43 +13,35 @@ pub struct TrackMetadata {
     uri: String,
     artist: String,
     album: String,
+    #[serde(rename = "albumArt")]
+    album_art: Option<String>,
     name: String,
     duration: u32,
     unavailable: bool,
 }
-impl TrackMetadata {
-    pub fn new(
-        track_uri: &SpotifyUri,
-        artist: &str,
-        album: &str,
-        name: &str,
-        duration: u32,
-        unavailable: bool,
-    ) -> Self {
-        Self {
-            unavailable,
-            uri: track_uri.to_uri().expect("a valid uri"),
-            artist: artist.to_string(),
-            album: album.to_string(),
-            name: name.to_string(),
-            duration,
-        }
-    }
-}
 impl From<&Track> for TrackMetadata {
     fn from(track: &Track) -> Self {
-        Self::new(
-            &track.id,
-            &track
+        // first album cover → Spotify CDN url, for Discord Rich Presence art
+        let album_art = track
+            .album
+            .covers
+            .0
+            .first()
+            .and_then(|image| image.id.to_base16().ok())
+            .map(|hex| format!("https://i.scdn.co/image/{hex}"));
+        Self {
+            unavailable: !track.restrictions.is_empty() && track.alternatives.is_empty(),
+            uri: track.id.to_uri().expect("a valid uri"),
+            artist: track
                 .artists
                 .first()
                 .map(|artist| artist.name.clone())
                 .unwrap_or("Unknown Artist".to_string()),
-            &track.album.name,
-            &track.name,
-            track.duration as u32,
-            !track.restrictions.is_empty() && track.alternatives.is_empty(),
-        )
+            album: track.album.name.clone(),
+            album_art,
+            name: track.name.clone(),
+            duration: track.duration as u32,
+        }
     }
 }
 
