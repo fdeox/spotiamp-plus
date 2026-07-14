@@ -2,14 +2,31 @@
 //! The sheets are extracted once into the config dir and served to every
 //! window as data-URLs that override the `--skin-*` CSS variables.
 
-use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
+use std::{collections::HashMap, io::Read, path::PathBuf};
 
 use base64::Engine;
-use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::settings::{Settings, get_config_dir};
+
+/// Classic skins shipped inside the binary (embedded so they always ship with
+/// the installer — external bundle resources don't survive NSIS reliably).
+/// `(display name, .wsz bytes)`.
+const BUNDLED_SKINS: &[(&str, &[u8])] = &[
+    (
+        "Bento Classified",
+        include_bytes!("../../skins/Bento_Classified.wsz"),
+    ),
+    (
+        "Winamp3 Classified",
+        include_bytes!("../../skins/Winamp3_Classified_v5.5.wsz"),
+    ),
+    (
+        "Winamp5 Classified",
+        include_bytes!("../../skins/Winamp5_Classified_v5.5.wsz"),
+    ),
+];
 
 /// Extra skin files that aren't 1:1 sprite sheets: GEN.BMP is cropped into the
 /// generic-window titlebar tiles (library/visualizer), PLEDIT.TXT carries the
@@ -38,11 +55,16 @@ fn custom_skin_dir() -> Option<PathBuf> {
     get_config_dir().map(|dir| dir.join("custom-skin"))
 }
 
-/// Extract the BMP sprite sheets from a .wsz/.zip into the config dir.
+/// Extract the BMP sprite sheets from a .wsz/.zip file into the config dir.
 fn extract_wsz(path: &std::path::Path) -> Result<(), String> {
-    let file = File::open(path).map_err(|e| format!("Could not open skin ({e})"))?;
-    let mut zip =
-        zip::ZipArchive::new(file).map_err(|e| format!("Not a valid .wsz/.zip ({e})"))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("Could not open skin ({e})"))?;
+    extract_wsz_bytes(&bytes)
+}
+
+/// Extract the BMP sprite sheets from raw .wsz/.zip bytes into the config dir.
+fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("Not a valid .wsz/.zip ({e})"))?;
 
     let dir = custom_skin_dir().ok_or("no config dir")?;
     let _ = std::fs::remove_dir_all(&dir);
@@ -107,45 +129,22 @@ pub async fn pick_and_load_skin(app_handle: AppHandle) -> Result<Option<String>,
     ))
 }
 
-/// The .wsz files bundled with the app (installer resources; the repo's
-/// `skins/` folder in dev). Returned as file stems for the skin menu.
+/// The display names of the skins embedded in the binary, for the skin menu.
 #[tauri::command]
-pub fn list_bundled_skins(app_handle: AppHandle) -> Vec<String> {
-    let Ok(dir) = app_handle.path().resolve("skins", BaseDirectory::Resource) else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = entries
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            if path.extension()?.to_ascii_lowercase() != "wsz" {
-                return None;
-            }
-            Some(path.file_stem()?.to_string_lossy().into_owned())
-        })
-        .collect();
-    names.sort();
-    names
+pub fn list_bundled_skins() -> Vec<String> {
+    BUNDLED_SKINS
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect()
 }
 
-/// Activate one of the bundled skins by file stem (from `list_bundled_skins`).
+/// Activate one of the embedded skins by display name (from list_bundled_skins).
 #[tauri::command]
-pub fn load_bundled_skin(name: String, app_handle: AppHandle) -> Result<(), String> {
-    // stems only — no path tricks
-    if name.contains(['/', '\\']) || name.contains("..") {
-        return Err("invalid skin name".to_string());
-    }
-    let dir = app_handle
-        .path()
-        .resolve("skins", BaseDirectory::Resource)
-        .map_err(|e| format!("no bundled skins dir ({e})"))?;
-    let path = dir.join(format!("{name}.wsz"));
-    if !path.exists() {
+pub fn load_bundled_skin(name: String) -> Result<(), String> {
+    let Some((_, bytes)) = BUNDLED_SKINS.iter().find(|(n, _)| *n == name) else {
         return Err(format!("bundled skin '{name}' not found"));
-    }
-    extract_wsz(&path)?;
+    };
+    extract_wsz_bytes(bytes)?;
     Settings::current_mut().skin = "custom".to_string();
     Ok(())
 }

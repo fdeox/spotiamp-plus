@@ -55,6 +55,15 @@ skins, a WebGL visualizer, and much more.
 | :-----: | :--------: |
 | ![](docs/screenshots/library.jpg) | ![](docs/screenshots/visualizer.jpg) |
 
+### Load any classic Winamp skin
+
+Right-click the playlist → *load .wsz…* (or pick one of the bundled skins). Every
+window — player, equalizer, playlist and library — reskins live.
+
+| Bento Classified | Winamp3 Classified | Winamp5 Classified |
+| :--------------: | :----------------: | :----------------: |
+| ![](docs/screenshots/winampbento.jpg) | ![](docs/screenshots/winamp3.jpg) | ![](docs/screenshots/winamp5.jpg) |
+
 ## Install
 
 1. Download the latest installer from the [**Releases**](../../releases) page.
