@@ -79,8 +79,16 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
         .map_err(|e| format!("Not a valid .wsz/.zip ({e})"))?;
 
     let dir = custom_skin_dir().ok_or("no config dir")?;
-    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create skin dir ({e})"))?;
+    // Delete every file from a previously-loaded skin. `remove_dir_all` can fail
+    // silently on Windows (a lingering handle from the antivirus/indexer), which
+    // used to leave stale sheets behind — e.g. a GENEX.BMP from one skin bleeding
+    // into the next skin's media library. Removing files one by one is robust.
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 
     let mut found_main = false;
     for i in 0..zip.len() {
