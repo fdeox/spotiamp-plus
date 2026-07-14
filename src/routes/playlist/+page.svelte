@@ -1125,8 +1125,12 @@
     font-family: monospace;
     font-size: 9px;
     line-height: 12px;
-    color: #00ff41;
-    background: linear-gradient(#2a2f3a, #12151c);
+    /* follows the active skin (PLEDIT text colour), green on the base skin */
+    color: var(--skin-plnormal, #00ff41);
+    background: linear-gradient(
+      color-mix(in srgb, var(--skin-plbg, #12151c) 55%, #6a6a6a),
+      var(--skin-plbg, #12151c)
+    );
     border: 1px solid #000;
     box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.15);
     cursor: pointer;

@@ -51,8 +51,8 @@ skins, a WebGL visualizer, and much more.
 | :-----: | :----: | :---: | :-----: |
 | ![](docs/screenshots/classic.jpg) | ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
 
-| Library | Visualizer |
-| :-----: | :--------: |
+| Media Library | Visualizer |
+| :-----------: | :--------: |
 | ![](docs/screenshots/library.jpg) | ![](docs/screenshots/visualizer.jpg) |
 
 ### Load any classic Winamp skin
