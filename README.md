@@ -32,18 +32,21 @@ skins, a WebGL visualizer, and much more.
   behind it (biquad peaking filters on the decoded audio), preamp, presets and
   the animated response curve. Plus a **balance** slider next to the volume.
 - 🎨 **Skins** — right-click the playlist to switch skins live: **Classic**,
-  **Cherry**, **Amber**, **Emerald**, plus **three bundled classics** right in
-  the menu (the *Classified* series by
-  [Victhor](https://victhor.deviantart.com/) — all rights remain with their
-  original authors). Or **load any classic Winamp 2.x skin (`.wsz`)** with
-  *load .wsz…* — thousands are free at the
-  [Winamp Skin Museum](https://skins.webamp.org/). Persisted across restarts.
+  **Cherry**, **Amber**, **Emerald**, plus **six bundled classic Winamp skins**
+  right in the menu — the *Classified* series by
+  [Victhor](https://victhor.deviantart.com/) and the Sony/Nucleo hardware-style
+  skins (all rights remain with their original authors). Or **load any classic
+  Winamp 2.x skin (`.wsz`)** with *load .wsz…* — thousands are free at the
+  [Winamp Skin Museum](https://skins.webamp.org/). Every window — player,
+  equalizer, playlist **and the media library** — reskins live and persists
+  across restarts.
 - 🌀 **Milkdrop-style visualizer** — a WebGL window with **20 audio-reactive
   patterns** that cycle on click, on a timer, and on every track change.
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
   line in time with playback (right-click the playlist → *Lyrics…*).
-- 🎮 **Discord Rich Presence** — shows the track, artist and elapsed time on
-  your Discord profile while it plays.
+- 🎮 **Discord Rich Presence** — shows the track, artist, **album art** and a
+  live progress bar on your Discord profile while it plays, and clears the moment
+  playback stops.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
@@ -67,6 +70,10 @@ window — player, equalizer, playlist and library — reskins live.
 | Bento Classified | Winamp3 Classified | Winamp5 Classified |
 | :--------------: | :----------------: | :----------------: |
 | ![](docs/screenshots/winampbento.jpg) | ![](docs/screenshots/winamp3.jpg) | ![](docs/screenshots/winamp5.jpg) |
+
+| Nucleo NLog | Sony CDX-MP3 | Sony Esprit V2 |
+| :---------: | :----------: | :------------: |
+| ![](docs/screenshots/Nucleo%20Nlog.jpg) | ![](docs/screenshots/Sony%20CDX-MP3.jpg) | ![](docs/screenshots/Sony%20Esprit%20V2.jpg) |
 
 ## Install
 
