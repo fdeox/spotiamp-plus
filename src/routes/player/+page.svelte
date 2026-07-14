@@ -200,6 +200,8 @@
     await invoke("seek", {
       positionMs,
     }).catch(handleError);
+    // jump the Discord progress bar to the new position too
+    pushDiscordPresence();
   }
 
   const visualizer = new Visualizer();
@@ -244,14 +246,13 @@
     REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
   });
 
-  // Discord Rich Presence — update on track / play-state change (not every
-  // second: elapsed is read untracked so this doesn't re-run on the ticker).
-  // Only shown while actually playing; pausing/stopping/idling clears it, so
-  // Discord never keeps counting elapsed time past the song.
-  $effect(() => {
+  // Discord Rich Presence. Only shown while actually playing; pausing/stopping/
+  // idling clears it, so Discord never keeps counting elapsed time past the
+  // song. Re-anchored on track/state change AND on seek (so the progress bar
+  // jumps with you) — but NOT every ticker second.
+  function pushDiscordPresence() {
     const track = loadedTrack;
-    const state = playerState;
-    if (state !== "playing" || !track?.name) {
+    if (playerState !== "playing" || !track?.name) {
       invoke("clear_discord_activity").catch(() => {});
       return;
     }
@@ -260,12 +261,17 @@
       artist: track.artist,
       album: track.album ?? "",
       albumArt: track.albumArt ?? null,
-      playlistIndex: untrack(() => playlistPos.index),
-      playlistLength: untrack(() => playlistPos.length),
-      elapsedMs: untrack(() => Math.round(seekPosition)),
+      playlistIndex: playlistPos.index,
+      playlistLength: playlistPos.length,
+      elapsedMs: Math.round(seekPosition),
       durationMs: Math.round(track.durationInMs ?? 0),
       playing: true,
     }).catch(() => {});
+  }
+  $effect(() => {
+    loadedTrack;
+    playerState;
+    untrack(pushDiscordPresence);
   });
 
   // The playlist window owns the actual next/previous navigation, so push the
