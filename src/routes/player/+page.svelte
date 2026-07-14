@@ -245,11 +245,13 @@
   });
 
   // Discord Rich Presence — update on track / play-state change (not every
-  // second: elapsed is read untracked so this doesn't re-run on the ticker)
+  // second: elapsed is read untracked so this doesn't re-run on the ticker).
+  // Only shown while actually playing; pausing/stopping/idling clears it, so
+  // Discord never keeps counting elapsed time past the song.
   $effect(() => {
     const track = loadedTrack;
     const state = playerState;
-    if (state === "stopped" || state === "unavailable" || !track?.name) {
+    if (state !== "playing" || !track?.name) {
       invoke("clear_discord_activity").catch(() => {});
       return;
     }
@@ -262,7 +264,7 @@
       playlistLength: untrack(() => playlistPos.length),
       elapsedMs: untrack(() => Math.round(seekPosition)),
       durationMs: Math.round(track.durationInMs ?? 0),
-      playing: state === "playing",
+      playing: true,
     }).catch(() => {});
   });
 
