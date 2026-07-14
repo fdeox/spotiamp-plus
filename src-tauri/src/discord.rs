@@ -7,7 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use discord_rich_presence::{DiscordIpc, DiscordIpcClient, activity};
+use discord_rich_presence::{DiscordIpc, DiscordIpcClient, activity, activity::ActivityType};
 
 /// The Discord *application* client id that Rich Presence shows under. Create a
 /// free app at <https://discord.com/developers/applications> (the app name is
@@ -33,7 +33,13 @@ fn ensure_connected(guard: &mut Option<DiscordIpcClient>) -> bool {
 }
 
 #[tauri::command]
-pub fn set_discord_activity(name: String, artist: String, elapsed_ms: i64, playing: bool) {
+pub fn set_discord_activity(
+    name: String,
+    artist: String,
+    elapsed_ms: i64,
+    duration_ms: i64,
+    playing: bool,
+) {
     let Ok(mut guard) = CLIENT.lock() else {
         return;
     };
@@ -47,16 +53,22 @@ pub fn set_discord_activity(name: String, artist: String, elapsed_ms: i64, playi
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let timestamps = activity::Timestamps::new().start(now - elapsed_ms / 1000);
+    // start + end give Discord a Spotify-style progress bar
+    let start = now - elapsed_ms / 1000;
+    let timestamps = activity::Timestamps::new()
+        .start(start)
+        .end(start + duration_ms / 1000);
     let assets = activity::Assets::new()
         .large_image("logo")
         .large_text("Spotiamp+");
 
+    // "Listening to Spotiamp+" (type 2), like Spotify — not "Playing"
     let mut act = activity::Activity::new()
+        .activity_type(ActivityType::Listening)
         .details(&name)
         .state(&state)
         .assets(assets);
-    if playing {
+    if playing && duration_ms > 0 {
         act = act.timestamps(timestamps);
     }
 

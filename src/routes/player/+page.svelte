@@ -252,6 +252,7 @@
       name: track.name,
       artist: track.artist,
       elapsedMs: untrack(() => Math.round(seekPosition)),
+      durationMs: Math.round(track.durationInMs ?? 0),
       playing: state === "playing",
     }).catch(() => {});
   });
