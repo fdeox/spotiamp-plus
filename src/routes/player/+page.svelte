@@ -191,6 +191,9 @@
    * @param {number} positionMs
    */
   async function seek(positionMs) {
+    // the backend command wants an integer u32; the interpolated position is a
+    // float, so round before sending (otherwise Tauri rejects the call)
+    positionMs = Math.round(positionMs);
     // To make the UI a bit snappier and to not glitch between new and old value
     setPosition(positionMs);
     sliderSeekPosition = positionMs;
