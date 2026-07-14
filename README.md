@@ -26,10 +26,18 @@ skins, a WebGL visualizer, and much more.
   Library. Double-clicking a search result **adds it to the end of the current
   playlist** (it doesn't replace what's playing), so you can build a playlist by
   searching for songs one after another.
-- 🧲 **Docking windows** — the Playlist, Library and Visualizer snap to the main
-  window and move together, just like classic Winamp.
+- 🧲 **Docking windows** — the Playlist, Equalizer, Library and Visualizer snap
+  to the main window and move together, just like classic Winamp.
+- 🎚️ **10-band Equalizer** — a pixel-perfect Winamp EQ window with a **real DSP**
+  behind it (biquad peaking filters on the decoded audio), preamp, presets and
+  the animated response curve. Plus a **balance** slider next to the volume.
 - 🎨 **Skins** — right-click the playlist to switch skins live: **Classic**,
-  **Cherry**, **Amber**, **Emerald**. Persisted across restarts.
+  **Cherry**, **Amber**, **Emerald**, plus **three bundled classics** right in
+  the menu (the *Classified* series by
+  [Victhor](https://victhor.deviantart.com/) — all rights remain with their
+  original authors). Or **load any classic Winamp 2.x skin (`.wsz`)** with
+  *load .wsz…* — thousands are free at the
+  [Winamp Skin Museum](https://skins.webamp.org/). Persisted across restarts.
 - 🌀 **Milkdrop-style visualizer** — a WebGL window with **20 audio-reactive
   patterns** that cycle on click, on a timer, and on every track change.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
