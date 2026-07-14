@@ -81,6 +81,8 @@
   // the currently-playing track uri (from backend events), broadcast to the
   // lyrics window along with the interpolated position
   let currentTrackUri = $state(null);
+  // track's place in the playlist, for Discord's "(N of M)" party
+  let playlistPos = $state({ index: 0, length: 0 });
   let doubleSizeActive = $state(initialDoubleSizeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
@@ -253,6 +255,8 @@
       artist: track.artist,
       album: track.album ?? "",
       albumArt: track.albumArt ?? null,
+      playlistIndex: untrack(() => playlistPos.index),
+      playlistLength: untrack(() => playlistPos.length),
       elapsedMs: untrack(() => Math.round(seekPosition)),
       durationMs: Math.round(track.durationInMs ?? 0),
       playing: state === "playing",
@@ -308,6 +312,13 @@
       "eqWindow",
       (event) => {
         if (event.CloseRequested !== undefined) showEq = false;
+      },
+    );
+
+    const trackPositionSubscription = subscribeToWindowEvent(
+      "trackPosition",
+      (event) => {
+        playlistPos = { index: event.index ?? 0, length: event.length ?? 0 };
       },
     );
 
@@ -398,6 +409,7 @@
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       eqWindowEventSubscription.then((unlisten) => unlisten());
+      trackPositionSubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };

@@ -39,6 +39,8 @@ pub fn set_discord_activity(
     artist: String,
     album: String,
     album_art: Option<String>,
+    playlist_index: i32,
+    playlist_length: i32,
     elapsed_ms: i64,
     duration_ms: i64,
     playing: bool,
@@ -89,6 +91,15 @@ pub fn set_discord_activity(
         .buttons(buttons);
     if playing && duration_ms > 0 {
         act = act.timestamps(timestamps);
+    }
+    // "(N of M)" — the track's spot in the playlist (Spotify's presence can't
+    // show this either)
+    if playlist_index > 0 && playlist_length > 0 {
+        act = act.party(
+            activity::Party::new()
+                .id("spotiamp-playlist")
+                .size([playlist_index, playlist_length]),
+        );
     }
 
     // a failed update usually means Discord went away — drop the client so we

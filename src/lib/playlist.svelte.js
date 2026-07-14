@@ -94,6 +94,12 @@ export class TrackRow extends PlaylistRow {
             if (this.track) {
                 this.playlist.loadedRow = this;
                 await emitWindowEvent("playlistWindow", { TrackLoaded: this.track });
+                // broadcast the track's position for Discord's "(N of M)" party
+                const rows = this.playlist.rows;
+                await emitWindowEvent("trackPosition", {
+                    index: rows.indexOf(this) + 1,
+                    length: rows.length,
+                });
                 return this.track;
             }
         } catch (e) {
