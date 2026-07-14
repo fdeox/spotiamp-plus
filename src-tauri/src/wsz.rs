@@ -26,6 +26,18 @@ const BUNDLED_SKINS: &[(&str, &[u8])] = &[
         "Winamp5 Classified",
         include_bytes!("../../skins/Winamp5_Classified_v5.5.wsz"),
     ),
+    (
+        "Nucleo NLog",
+        include_bytes!("../../skins/Nucleo-NLog-2G1.wsz"),
+    ),
+    (
+        "Sony CDX-MP3",
+        include_bytes!("../../skins/Sony CDX-MP3.wsz"),
+    ),
+    (
+        "Sony Esprit V2",
+        include_bytes!("../../skins/Sony_Esprit_V2.wsz"),
+    ),
 ];
 
 /// Extra skin files that aren't 1:1 sprite sheets: GEN.BMP is cropped into the

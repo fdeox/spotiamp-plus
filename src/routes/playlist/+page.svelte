@@ -678,12 +678,17 @@
       }}
     ></div>
     <div class="ctx-menu" style:left="{menu.x}px" style:top="{menu.y}px">
-      <div class="ctx-head">SKIN</div>
-      {#each SKINS as s}
+      <div class="ctx-head">COLORS</div>
+      {#each ["cherry", "amber", "emerald"] as s}
         <button class="ctx-item" onclick={() => chooseSkin(s)}>
           <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
         </button>
       {/each}
+      <div class="ctx-head">SKINS</div>
+      <button class="ctx-item" onclick={() => chooseSkin("classic")}>
+        <span class="ctx-dot">{currentSkin === "classic" ? "●" : ""}</span
+        >classic
+      </button>
       {#each bundledSkins as name}
         <button class="ctx-item" onclick={() => chooseBundledSkin(name)}>
           <span class="ctx-dot"></span>{prettySkinName(name)}
@@ -1014,6 +1019,8 @@
     position: fixed;
     z-index: 201;
     min-width: 118px;
+    max-height: 92vh;
+    overflow-y: auto;
     background: #d4d0c8;
     border: 1px solid #000;
     box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
