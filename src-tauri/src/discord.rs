@@ -39,7 +39,6 @@ pub fn set_discord_activity(
     artist: String,
     album: String,
     album_art: Option<String>,
-    track_url: String,
     elapsed_ms: i64,
     duration_ms: i64,
     playing: bool,
@@ -74,15 +73,12 @@ pub fn set_discord_activity(
         assets = assets.small_image("logo").small_text("Spotiamp+");
     }
 
-    // clickable buttons — Spotify's presence can't do this
-    let mut buttons = Vec::new();
-    if track_url.starts_with("http") {
-        buttons.push(activity::Button::new("▶  Open in Spotify", &track_url));
-    }
-    buttons.push(activity::Button::new(
+    // a single clickable button visible to anyone viewing your profile —
+    // Spotify's own presence can't do this
+    let buttons = vec![activity::Button::new(
         "⚡  Get Spotiamp+",
         "https://github.com/fdeox/spotiamp-plus",
-    ));
+    )];
 
     // "Listening to Spotiamp+" (type 2), like Spotify — not "Playing"
     let mut act = activity::Activity::new()

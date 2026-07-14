@@ -253,9 +253,6 @@
       artist: track.artist,
       album: track.album ?? "",
       albumArt: track.albumArt ?? null,
-      trackUrl: currentTrackUri
-        ? `https://open.spotify.com/track/${currentTrackUri.split(":").pop()}`
-        : "",
       elapsedMs: untrack(() => Math.round(seekPosition)),
       durationMs: Math.round(track.durationInMs ?? 0),
       playing: state === "playing",
