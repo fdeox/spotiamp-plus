@@ -200,6 +200,15 @@ pub async fn search(query: &str, player: State<'_, SharedPlayer>) -> Result<Vec<
 }
 
 #[tauri::command]
+pub async fn get_lyrics(
+    uri: &str,
+    player: State<'_, SharedPlayer>,
+) -> Result<crate::spotify::LyricsData, String> {
+    let session = player.lock().await.session_handle();
+    crate::spotify::fetch_lyrics(&session, uri).await
+}
+
+#[tauri::command]
 pub async fn seek(position_ms: u32, player: State<'_, SharedPlayer>) -> Result<(), String> {
     player.lock().await.seek(position_ms);
     Ok(())

@@ -1,10 +1,90 @@
 import {
   getCurrentWindow,
   PhysicalPosition,
+  Window,
 } from "@tauri-apps/api/window";
+import { emitWindowEvent } from "./events.svelte.js";
 
 export const SNAP_DISTANCE = 10;
 export const STICKY_SNAP_DISTANCE = 25;
+
+/** Every window that participates in docking. */
+export const DOCKABLE_LABELS = [
+  "player",
+  "playlist",
+  "library",
+  "visualizer",
+  "eq",
+  "lyrics",
+];
+
+/**
+ * Rects of every open, visible window except `selfLabel` — so a dragged window
+ * can magnetically snap to any of the others (not only the player).
+ * @param {string} selfLabel
+ * @returns {Promise<WindowRect[]>}
+ */
+export async function collectSnapRects(selfLabel) {
+  const rects = [];
+  await Promise.all(
+    DOCKABLE_LABELS.filter((label) => label !== selfLabel).map(async (label) => {
+      try {
+        const win = await Window.getByLabel(label);
+        if (!win || !(await win.isVisible())) return;
+        const [position, size] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+        ]);
+        rects.push(rectFromPositionAndSize(position, size));
+      } catch (e) {
+        /* window not open — skip */
+      }
+    }),
+  );
+  return rects;
+}
+
+/**
+ * Wire a window's titlebar so it snaps to ANY other window while dragging and
+ * broadcasts its drag on `eventName` (drives the native player-anchored dock).
+ * @param {HTMLElement} element
+ * @param {string} selfLabel
+ * @param {string} eventName
+ */
+export function makeDockedDraggable(element, selfLabel, eventName) {
+  makeTauriWindowDraggable(element, {
+    async onStart({ startPosition, windowSize }) {
+      await emitWindowEvent(eventName, { DragStarted: null });
+      const snapRects = await collectSnapRects(selfLabel);
+      const startRect = rectFromPositionAndSize(startPosition, windowSize);
+      return {
+        snapRects,
+        windowSize,
+        docked: snapRects.some((rect) => isDocked(startRect, rect)),
+      };
+    },
+    mapPosition(rawPosition, context) {
+      const rawRect = {
+        ...rawPosition,
+        width: context.windowSize.width,
+        height: context.windowSize.height,
+      };
+      const snapDistance = context.docked
+        ? STICKY_SNAP_DISTANCE
+        : SNAP_DISTANCE;
+      let snapped;
+      for (const rect of context.snapRects) {
+        snapped = snapPosition(rawRect, rect, snapDistance);
+        if (snapped) break;
+      }
+      context.docked = snapped !== undefined;
+      return snapped ?? rawPosition;
+    },
+    async onEnd() {
+      await emitWindowEvent(eventName, { DragEnded: null });
+    },
+  });
+}
 
 /**
  * @typedef {{ x: number, y: number, width: number, height: number }} WindowRect

@@ -272,5 +272,26 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         }
     }
 
+    // Most classic 2.x skins ship no GENEX.BMP (the media-library palette came
+    // later). Without it the library would keep the BASE genex colours, so it
+    // wouldn't follow the loaded skin. Derive the library palette from the
+    // skin's playlist colours (PLEDIT.TXT) instead, so EVERY skin re-colours it.
+    if !sprites.contains_key("genexwndbg") {
+        let derive = |sprites: &mut HashMap<String, String>, key: &str, from: &str| {
+            if let Some(v) = sprites.get(from).cloned() {
+                sprites.entry(key.to_string()).or_insert(v);
+            }
+        };
+        derive(&mut sprites, "genexwndbg", "plbg");
+        derive(&mut sprites, "genexitembg", "plbg");
+        derive(&mut sprites, "genexhdrbg", "plbg");
+        derive(&mut sprites, "genexitemfg", "plnormal");
+        derive(&mut sprites, "genexwndtext", "plnormal");
+        derive(&mut sprites, "genexhdrtext", "plnormal");
+        derive(&mut sprites, "genexbtntext", "plnormal");
+        derive(&mut sprites, "genexselbg", "plselbg");
+        derive(&mut sprites, "genexdivider", "plselbg");
+    }
+
     Ok(sprites)
 }

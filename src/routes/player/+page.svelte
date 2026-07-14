@@ -17,7 +17,7 @@
   } from "$lib/spotify.svelte.js";
   import TextTicker from "../../TextTicker.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { Visualizer } from "$lib/visualizer.svelte";
   import {
     currentMonitor,
@@ -76,6 +76,11 @@
   }
   let showPlaylist = $state(initialShowPlaylist());
   let showEq = $state(false);
+  // 🦙 hidden about screen (click the titlebar logo)
+  let showLlama = $state(false);
+  // the currently-playing track uri (from backend events), broadcast to the
+  // lyrics window along with the interpolated position
+  let currentTrackUri = $state(null);
   let doubleSizeActive = $state(initialDoubleSizeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
@@ -234,6 +239,23 @@
     REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
   });
 
+  // Discord Rich Presence — update on track / play-state change (not every
+  // second: elapsed is read untracked so this doesn't re-run on the ticker)
+  $effect(() => {
+    const track = loadedTrack;
+    const state = playerState;
+    if (state === "stopped" || state === "unavailable" || !track?.name) {
+      invoke("clear_discord_activity").catch(() => {});
+      return;
+    }
+    invoke("set_discord_activity", {
+      name: track.name,
+      artist: track.artist,
+      elapsedMs: untrack(() => Math.round(seekPosition)),
+      playing: state === "playing",
+    }).catch(() => {});
+  });
+
   // The playlist window owns the actual next/previous navigation, so push the
   // shuffle/repeat toggles over to it whenever they change.
   $effect(() => {
@@ -252,6 +274,13 @@
         seekPosition =
           positionAnchorMs + (performance.now() - positionAnchorAt);
       }
+      // feed the lyrics window the current track + position each tick; it
+      // interpolates locally between ticks for smooth line highlighting
+      emitWindowEvent("lyrics", {
+        uri: currentTrackUri,
+        positionMs: Math.round(seekPosition),
+        playing: playerState == "playing",
+      });
     }, 1000);
 
     const playlistWindowEventSubscription = subscribeToWindowEvent(
@@ -282,6 +311,17 @@
     const playerEventsSubscription = subscribeToWindowEvent(
       "player",
       (event) => {
+        // every playback event carries the track uri — keep the latest for
+        // the lyrics window
+        const payload =
+          event.Playing ||
+          event.Paused ||
+          event.PositionChanged ||
+          event.PositionCorrection ||
+          event.Seeked ||
+          event.Stopped;
+        if (payload?.uri) currentTrackUri = payload.uri;
+
         if (event.Playing) {
           const { position_ms } = event.Playing;
           playerState = "playing";
@@ -451,6 +491,25 @@
 
 <main>
   <div class="sprite main-sprite"></div>
+
+  <!-- 🦙 easter egg: click the Winamp titlebar logo -->
+  <button
+    class="llama-trigger"
+    data-no-drag
+    onclick={() => (showLlama = true)}
+    aria-label="About"
+  ></button>
+  {#if showLlama}
+    <button class="llama-about" data-no-drag onclick={() => (showLlama = false)}>
+      <div class="llama-art">🦙</div>
+      <div class="llama-phrase">IT REALLY WHIPS THE LLAMA'S ASS!</div>
+      <div class="llama-credits">
+        Spotiamp+ · a Winamp for Spotify<br />
+        fork of tedsteen/Spotiamp · by fdeox
+      </div>
+      <div class="llama-hint">(click to close)</div>
+    </button>
+  {/if}
 
   <div class="sprite stereo-mono-sprite stereo-mono-sprite-mono"></div>
   <div
@@ -702,6 +761,68 @@
   }
   button.eq-btn-enabled {
     background-position-y: -73px;
+  }
+
+  /* 🦙 easter egg — invisible hit area over the titlebar Winamp logo */
+  .llama-trigger {
+    position: absolute;
+    left: calc(6px * var(--zoom));
+    top: calc(3px * var(--zoom));
+    width: calc(9px * var(--zoom));
+    height: calc(9px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 50;
+  }
+  .llama-about {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(3px * var(--zoom));
+    border: none;
+    background: rgba(2, 8, 2, 0.92);
+    color: #00ff41;
+    font-family: "px sans nouveaux", monospace;
+    -webkit-font-smoothing: none;
+    cursor: pointer;
+    transform-origin: top left;
+    transform: scale(var(--zoom));
+    width: 275px;
+    height: 116px;
+  }
+  .llama-art {
+    font-size: 34px;
+    line-height: 1;
+    animation: llama-bob 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes llama-bob {
+    from {
+      transform: translateY(0) rotate(-4deg);
+    }
+    to {
+      transform: translateY(-3px) rotate(4deg);
+    }
+  }
+  .llama-phrase {
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-shadow: 0 0 5px rgba(0, 255, 65, 0.6);
+  }
+  .llama-credits {
+    font-size: 7px;
+    color: #3f9a55;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .llama-hint {
+    font-size: 6px;
+    color: #2a6a3a;
   }
 
   /* SHUFREP.BMP: shuffle (47x15) + repeat (28x15), 4 states each

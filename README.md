@@ -40,6 +40,10 @@ skins, a WebGL visualizer, and much more.
   [Winamp Skin Museum](https://skins.webamp.org/). Persisted across restarts.
 - 🌀 **Milkdrop-style visualizer** — a WebGL window with **20 audio-reactive
   patterns** that cycle on click, on a timer, and on every track change.
+- 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
+  line in time with playback (right-click the playlist → *Lyrics…*).
+- 🎮 **Discord Rich Presence** — shows the track, artist and elapsed time on
+  your Discord profile while it plays.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.

@@ -1,20 +1,9 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { Window } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
-  import {
-    emitWindowEvent,
-    subscribeToWindowEvent,
-  } from "$lib/events.svelte.js";
-  import {
-    makeTauriWindowDraggable,
-    isDocked,
-    rectFromPositionAndSize,
-    SNAP_DISTANCE,
-    snapPosition,
-    STICKY_SNAP_DISTANCE,
-  } from "$lib/window-docking.svelte.js";
+  import { subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
 
   let canvas;
   const MODE_NAMES = [
@@ -335,40 +324,7 @@
   });
 
   function makeVizDraggable(element) {
-    makeTauriWindowDraggable(element, {
-      async onStart({ startPosition, windowSize }) {
-        const playerWindow = await Window.getByLabel("player");
-        if (!playerWindow) return false;
-        await emitWindowEvent("visualizerWindow", { DragStarted: null });
-        const [pp, ps] = await Promise.all([
-          playerWindow.outerPosition(),
-          playerWindow.outerSize(),
-        ]);
-        const playerRect = rectFromPositionAndSize(pp, ps);
-        return {
-          playerRect,
-          vizSize: windowSize,
-          docked: isDocked(
-            rectFromPositionAndSize(startPosition, windowSize),
-            playerRect,
-          ),
-        };
-      },
-      mapPosition(rawPosition, context) {
-        const rawRect = {
-          ...rawPosition,
-          width: context.vizSize.width,
-          height: context.vizSize.height,
-        };
-        const d = context.docked ? STICKY_SNAP_DISTANCE : SNAP_DISTANCE;
-        const snapped = snapPosition(rawRect, context.playerRect, d);
-        context.docked = snapped !== undefined;
-        return snapped ?? rawPosition;
-      },
-      async onEnd() {
-        await emitWindowEvent("visualizerWindow", { DragEnded: null });
-      },
-    });
+    makeDockedDraggable(element, "visualizer", "visualizerWindow");
   }
 
   function makeVizResizable(element) {

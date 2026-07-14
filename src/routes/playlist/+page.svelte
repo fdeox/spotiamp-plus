@@ -10,15 +10,7 @@
   import { onMount } from "svelte";
   import { Playlist } from "$lib/playlist.svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { Window } from "@tauri-apps/api/window";
-  import {
-    isDocked,
-    makeTauriWindowDraggable,
-    rectFromPositionAndSize,
-    SNAP_DISTANCE,
-    snapPosition,
-    STICKY_SNAP_DISTANCE,
-  } from "$lib/window-docking.svelte.js";
+  import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
 
   /** @type {{data: import('./$types').PageData}} */
   const { data: playlistSettings } = $props();
@@ -206,64 +198,7 @@
    * @param {HTMLElement} element
    */
   function makeWindowDraggable(element) {
-    makeTauriWindowDraggable(element, {
-      async onStart({ startPosition, windowSize }) {
-        const playerWindow = await Window.getByLabel("player");
-        if (!playerWindow) {
-          return false;
-        }
-        await emitWindowEvent("playlistWindow", { DragStarted: null });
-
-        const [playerPosition, playerSize] = await Promise.all([
-          playerWindow.outerPosition(),
-          playerWindow.outerSize(),
-        ]);
-        // snap to the EQ too (when it's open), so the playlist can dock under
-        // it in the classic player/EQ/playlist stack. EQ first = it wins when
-        // both edges are in range.
-        const snapRects = [];
-        try {
-          const eqWindow = await Window.getByLabel("eq");
-          if (eqWindow && (await eqWindow.isVisible())) {
-            const [eqPosition, eqSize] = await Promise.all([
-              eqWindow.outerPosition(),
-              eqWindow.outerSize(),
-            ]);
-            snapRects.push(rectFromPositionAndSize(eqPosition, eqSize));
-          }
-        } catch (e) {
-          /* no EQ window — player only */
-        }
-        snapRects.push(rectFromPositionAndSize(playerPosition, playerSize));
-        const startRect = rectFromPositionAndSize(startPosition, windowSize);
-        return {
-          snapRects,
-          playlistSize: windowSize,
-          docked: snapRects.some((rect) => isDocked(startRect, rect)),
-        };
-      },
-      mapPosition(rawPosition, context) {
-        const rawRect = {
-          ...rawPosition,
-          width: context.playlistSize.width,
-          height: context.playlistSize.height,
-        };
-        const snapDistance = context.docked
-          ? STICKY_SNAP_DISTANCE
-          : SNAP_DISTANCE;
-        let snappedPosition;
-        for (const rect of context.snapRects) {
-          snappedPosition = snapPosition(rawRect, rect, snapDistance);
-          if (snappedPosition) break;
-        }
-        context.docked = snappedPosition !== undefined;
-
-        return snappedPosition ?? rawPosition;
-      },
-      async onEnd() {
-        await emitWindowEvent("playlistWindow", { DragEnded: null });
-      },
-    });
+    makeDockedDraggable(element, "playlist", "playlistWindow");
   }
   let scroll = $state(0);
   const PLAYLIST_ROW_HEIGHT = 14.5;
@@ -772,6 +707,13 @@
           closeMenu();
           invoke("set_visualizer_window_visible", { visible: true });
         }}>Visualizer…</button
+      >
+      <button
+        class="ctx-item"
+        onclick={() => {
+          closeMenu();
+          invoke("set_lyrics_window_visible", { visible: true });
+        }}>Lyrics…</button
       >
       <button
         class="ctx-item"

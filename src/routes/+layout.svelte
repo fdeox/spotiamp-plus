@@ -41,6 +41,11 @@
       document.body.dataset.skin = "custom";
       invoke("get_custom_skin")
         .then((sprites) => {
+          // clear any vars a previous custom skin set but this one doesn't,
+          // so nothing stale leaks between skins
+          for (const name of CUSTOM_SKIN_VARS) {
+            document.body.style.removeProperty(`--skin-${name}`);
+          }
           for (const [name, value] of Object.entries(sprites)) {
             document.body.style.setProperty(
               `--skin-${name}`,

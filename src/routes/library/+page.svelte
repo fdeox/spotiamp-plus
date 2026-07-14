@@ -1,17 +1,9 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { Window } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
-  import {
-    makeTauriWindowDraggable,
-    isDocked,
-    rectFromPositionAndSize,
-    SNAP_DISTANCE,
-    snapPosition,
-    STICKY_SNAP_DISTANCE,
-  } from "$lib/window-docking.svelte.js";
+  import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
 
   let playlists = $state([]);
   let loading = $state(true);
@@ -227,48 +219,9 @@
 
   const close = () => invoke("set_library_window_visible", { visible: false });
 
-  // Drag the library window, snapping to the player like the playlist does.
+  // Drag the library window, snapping to any other open window.
   function makeLibraryDraggable(element) {
-    makeTauriWindowDraggable(element, {
-      async onStart({ startPosition, windowSize }) {
-        const playerWindow = await Window.getByLabel("player");
-        if (!playerWindow) return false;
-        await emitWindowEvent("libraryWindow", { DragStarted: null });
-        const [playerPosition, playerSize] = await Promise.all([
-          playerWindow.outerPosition(),
-          playerWindow.outerSize(),
-        ]);
-        const playerRect = rectFromPositionAndSize(playerPosition, playerSize);
-        return {
-          playerRect,
-          librarySize: windowSize,
-          docked: isDocked(
-            rectFromPositionAndSize(startPosition, windowSize),
-            playerRect,
-          ),
-        };
-      },
-      mapPosition(rawPosition, context) {
-        const rawRect = {
-          ...rawPosition,
-          width: context.librarySize.width,
-          height: context.librarySize.height,
-        };
-        const snapDistance = context.docked
-          ? STICKY_SNAP_DISTANCE
-          : SNAP_DISTANCE;
-        const snappedPosition = snapPosition(
-          rawRect,
-          context.playerRect,
-          snapDistance,
-        );
-        context.docked = snappedPosition !== undefined;
-        return snappedPosition ?? rawPosition;
-      },
-      async onEnd() {
-        await emitWindowEvent("libraryWindow", { DragEnded: null });
-      },
-    });
+    makeDockedDraggable(element, "library", "libraryWindow");
   }
 
   // Resize from the bottom-right corner, like the Winamp playlist.

@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
-  import { makeTauriWindowDraggable } from "$lib/window-docking.svelte.js";
+  import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
 
   // Classic Winamp presets, dB per band (60,170,310,600,1k,3k,6k,12k,14k,16k)
   const PRESETS = {
@@ -150,15 +150,7 @@
   });
 
   function makeEqDraggable(element) {
-    makeTauriWindowDraggable(element, {
-      async onStart() {
-        await emitWindowEvent("eqWindow", { DragStarted: null });
-        return {};
-      },
-      async onEnd() {
-        await emitWindowEvent("eqWindow", { DragEnded: null });
-      },
-    });
+    makeDockedDraggable(element, "eq", "eqWindow");
   }
 </script>
 

@@ -13,10 +13,10 @@ use crate::{
 use futures_util::{StreamExt, stream};
 use librespot::{
     core::{
-        Error, SpotifyUri, authentication::Credentials, cache::Cache, config::SessionConfig,
-        session::Session,
+        Error, SpotifyId, SpotifyUri, authentication::Credentials, cache::Cache,
+        config::SessionConfig, session::Session,
     },
-    metadata::{Album, Metadata, Playlist, Track},
+    metadata::{Album, Lyrics, Metadata, Playlist, Track, lyrics::SyncType},
     playback::{
         config::{AudioFormat, Bitrate, NormalisationMethod, NormalisationType, PlayerConfig},
         dither::{TriangularDitherer, mk_ditherer},
@@ -369,6 +369,43 @@ pub enum PlayError {
 // a brief lock and run the network I/O here WITHOUT the player mutex, so
 // play/pause/stop stay responsive while a playlist or search is loading.
 // ---------------------------------------------------------------------------
+
+/// One line of lyrics sent to the frontend (start time + text).
+#[derive(serde::Serialize)]
+pub struct LyricsLine {
+    pub time_ms: u32,
+    pub text: String,
+}
+
+/// Lyrics for a track. `synced` = the provider gave per-line timestamps, so the
+/// frontend can highlight/scroll in time with playback.
+#[derive(serde::Serialize)]
+pub struct LyricsData {
+    pub synced: bool,
+    pub provider: String,
+    pub lines: Vec<LyricsLine>,
+}
+
+pub async fn fetch_lyrics(session: &Session, uri: &str) -> Result<LyricsData, String> {
+    let sp_uri = SpotifyUri::from_uri(uri).map_err(|e| format!("Bad track uri ({e:?})"))?;
+    let id = SpotifyId::try_from(&sp_uri).map_err(|e| format!("Bad track id ({e:?})"))?;
+    let lyrics = Lyrics::get(session, &id)
+        .await
+        .map_err(|e| format!("No lyrics ({e:?})"))?;
+    let inner = lyrics.lyrics;
+    Ok(LyricsData {
+        synced: matches!(inner.sync_type, SyncType::LineSynced),
+        provider: inner.provider_display_name,
+        lines: inner
+            .lines
+            .iter()
+            .map(|line| LyricsLine {
+                time_ms: line.start_time_ms.parse().unwrap_or(0),
+                text: line.words.clone(),
+            })
+            .collect(),
+    })
+}
 
 pub async fn fetch_track(session: &Session, track_uri: SpotifyUri) -> Result<Track, PlayError> {
     match track_uri {

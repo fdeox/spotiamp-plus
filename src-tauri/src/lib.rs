@@ -10,9 +10,11 @@ use thiserror::Error;
 use crate::oauth::OAuthError;
 use crate::spotify::{SpotifySession, pending_auth_url};
 mod app_window;
+mod discord;
 mod eq;
 mod eq_window;
 mod library_window;
+mod lyrics_window;
 mod oauth;
 mod player_window;
 mod playlist_window;
@@ -188,6 +190,7 @@ pub fn run() {
             player_window::get_track_ids,
             player_window::get_user_playlists,
             player_window::search,
+            player_window::get_lyrics,
             player_window::play,
             player_window::pause,
             player_window::stop,
@@ -211,6 +214,9 @@ pub fn run() {
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,
+            lyrics_window::set_lyrics_window_visible,
+            discord::set_discord_activity,
+            discord::clear_discord_activity,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
