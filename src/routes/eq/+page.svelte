@@ -277,6 +277,17 @@
         <stop offset="100%" stop-color="#d3221b" />
       </linearGradient>
     </defs>
+    <!-- preamp reference line: a flat line behind the band spline that rides
+         up and down with the preamp (like classic Winamp) -->
+    <line
+      x1={SP_X0 - 2}
+      y1={splineY(preamp)}
+      x2={SP_X0 + 9 * SP_STEP + 2}
+      y2={splineY(preamp)}
+      stroke="url(#eqspline)"
+      stroke-width="1"
+      opacity="0.45"
+    />
     <path
       d={splinePath}
       fill="none"
