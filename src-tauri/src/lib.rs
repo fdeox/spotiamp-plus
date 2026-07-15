@@ -106,6 +106,7 @@ impl SpotiampPlayerEvent {
 #[derive(Clone, Deserialize)]
 enum PlayerWindowEvent {
     CloseRequested,
+    DragStarted,
     DragEnded,
 }
 
@@ -226,7 +227,7 @@ pub fn run() {
                         PlayerWindowEvent::CloseRequested => {
                             std::process::exit(0);
                         }
-                        PlayerWindowEvent::DragEnded => {}
+                        PlayerWindowEvent::DragStarted | PlayerWindowEvent::DragEnded => {}
                     },
                     Err(e) => log::debug!(
                         "Could not deserialize playlistWindow event: '{:?}' ({e:?}) - ignoring",

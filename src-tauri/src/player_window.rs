@@ -1,6 +1,6 @@
 use librespot::{core::SpotifyUri, metadata::Track};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 use crate::{
     app_window, playlist_window,
@@ -233,33 +233,16 @@ pub async fn set_playlist_window_visible(visible: bool, app_handle: AppHandle) -
             ),
         )
         .expect("a playlist window to be created");
-        app_window::dock_windows(
-            &player_window,
-            &playlist_window,
-            "playerWindow",
-            "playlistWindow",
-            1,
-        );
+        app_window::register_dock_window(&playlist_window);
         playlist_window
     };
     Settings::current_mut().player.show_playlist = visible;
     if visible {
         playlist_window.show().expect("Playlist window to show");
-        app_handle
-            .emit(
-                "playlistWindow",
-                serde_json::json!({ "VisibilityChanged": { "visible": true } }),
-            )
-            .expect("Playlist window visibility event to emit");
     } else {
         playlist_window.hide().expect("Playlist window to hide");
-        app_handle
-            .emit(
-                "playlistWindow",
-                serde_json::json!({ "VisibilityChanged": { "visible": false } }),
-            )
-            .expect("Playlist window visibility event to emit");
     }
+    app_window::set_dock_visible(&playlist_window, visible);
     Ok(())
 }
 
@@ -283,6 +266,10 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
             .window_state
             .set_position(position);
     });
+
+    // Register the player as the docking master: dragging it moves the whole
+    // connected group of windows in lockstep.
+    app_window::register_dock_window(&window);
 
     Ok(window)
 }

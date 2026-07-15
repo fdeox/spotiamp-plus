@@ -19,8 +19,8 @@ pub fn build_window(
 //NOTE: async so Windows can create the window inside the command.
 #[tauri::command]
 pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
-    let (window, created) = match app_handle.get_webview_window("eq") {
-        Some(window) => (window, false),
+    let window = match app_handle.get_webview_window("eq") {
+        Some(window) => window,
         None => {
             // open it just below the player window
             let anchor = app_handle
@@ -32,9 +32,9 @@ pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Resu
             let scale_factor = anchor.scale_factor().unwrap_or(1.0);
             let window =
                 build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
-            // dock to the player (subclass id 4, alongside playlist/library/viz)
-            app_window::dock_windows(&anchor, &window, "playerWindow", "eqWindow", 4);
-            (window, true)
+            // Register with the docking manager so it snaps into the group.
+            app_window::register_dock_window(&window);
+            window
         }
     };
 
@@ -44,37 +44,18 @@ pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Resu
     } else {
         window.hide().map_err(|_| ())?;
     }
-    // let the (player → eq) docking pair track visibility, same as the playlist
-    // does — a hidden EQ must not be dragged along or docked against.
-    let _ = app_handle.emit(
-        "eqWindow",
-        serde_json::json!({ "VisibilityChanged": { "visible": visible } }),
-    );
+    app_window::set_dock_visible(&window, visible);
 
     // All follow-up geometry runs on the main thread: window getters/setters
     // called off the main thread block until the main thread services them and
-    // can deadlock against the window-event handlers that run there (see the
-    // note in app_window::verify_attachment_after_resize).
+    // can deadlock against the window-event handlers that run there.
     let app = app_handle.clone();
     let _ = window.run_on_main_thread(move || {
-        // Classic Winamp stacking: player / EQ / playlist.
+        // Classic Winamp stacking: player / EQ / playlist. Push the playlist
+        // below the EQ (or pull it back up) to make room.
         shift_docked_playlist(&app, visible);
-
-        if created {
-            // Chain the stack natively: the playlist also docks to the EQ
-            // (subclass id 5), so dragging the player moves player → EQ →
-            // playlist in one native motion. Chained = position-only; the
-            // playlist's native owner stays with its primary pair (player).
-            if let (Some(eq), Some(playlist)) = (
-                app.get_webview_window("eq"),
-                app.get_webview_window("playlist"),
-            ) {
-                app_window::dock_windows_chained(&eq, &playlist, "eqWindow", "playlistWindow", 5);
-            }
-        }
-
-        // Re-evaluate the playlist's attachments (player pair + eq pair) at its
-        // new spot, exactly as if the user had just dropped it there.
+        // The playlist just moved programmatically; re-sync the docking group and
+        // native ownership at its new spot, as if the user had dropped it there.
         let _ = app.emit("playlistWindow", serde_json::json!({ "DragEnded": null }));
     });
     Ok(())

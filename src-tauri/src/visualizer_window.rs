@@ -43,8 +43,8 @@ pub async fn set_visualizer_window_visible(
             let scale_factor = anchor.scale_factor().unwrap_or(1.0);
             let window =
                 build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
-            // dock to the player (subclass id 3, alongside playlist=1, library=2)
-            app_window::dock_windows(&anchor, &window, "playerWindow", "visualizerWindow", 3);
+            // Register with the docking manager so it snaps into the group.
+            app_window::register_dock_window(&window);
             window
         }
     };
@@ -55,5 +55,6 @@ pub async fn set_visualizer_window_visible(
     } else {
         window.hide().map_err(|_| ())?;
     }
+    app_window::set_dock_visible(&window, visible);
     Ok(())
 }

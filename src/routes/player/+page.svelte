@@ -432,6 +432,9 @@
   function makeWindowDraggable(element) {
     makeTauriWindowDraggable(element, {
       async onStart({ startPosition, windowSize }) {
+        // Tell the native dock manager to freeze the player's connected group so
+        // the whole stack moves in lockstep for this drag.
+        await emitWindowEvent("playerWindow", { DragStarted: null });
         const playlistWindow = await Window.getByLabel("playlist");
         const [playlistPosition, playlistSize, monitor] = await Promise.all([
           playlistWindow?.outerPosition(),

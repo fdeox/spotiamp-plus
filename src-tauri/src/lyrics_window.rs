@@ -32,8 +32,8 @@ pub async fn set_lyrics_window_visible(visible: bool, app_handle: AppHandle) -> 
             let scale_factor = anchor.scale_factor().unwrap_or(1.0);
             let window =
                 build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
-            // dock to the player (subclass id 6, alongside playlist/library/viz/eq)
-            app_window::dock_windows(&anchor, &window, "playerWindow", "lyricsWindow", 6);
+            // Register with the docking manager so it snaps into the group.
+            app_window::register_dock_window(&window);
             window
         }
     };
@@ -44,5 +44,6 @@ pub async fn set_lyrics_window_visible(visible: bool, app_handle: AppHandle) -> 
     } else {
         window.hide().map_err(|_| ())?;
     }
+    app_window::set_dock_visible(&window, visible);
     Ok(())
 }
