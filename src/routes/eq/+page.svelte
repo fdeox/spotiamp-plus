@@ -140,6 +140,21 @@
     menuOpen = false;
   }
 
+  // Load a classic Winamp .EQF preset file. The file's ±20 dB range is clamped
+  // to this EQ's ±12 dB sliders.
+  async function loadEqf() {
+    menuOpen = false;
+    try {
+      const preset = await invoke("import_eqf");
+      if (!preset) return; // cancelled
+      const clamp = (db) => Math.max(-12, Math.min(12, Math.round(db)));
+      bands = preset.bands.map(clamp);
+      preamp = clamp(preset.preamp);
+    } catch {
+      /* invalid file — leave the current curve untouched */
+    }
+  }
+
   // ask the player to untoggle (it owns the EQ button's lit state and will
   // hide us through set_eq_window_visible)
   const close = () => emitWindowEvent("eqWindow", { CloseRequested: null });
@@ -191,6 +206,16 @@
           {name}
         </div>
       {/each}
+      <div class="eq-menu-sep"></div>
+      <div
+        class="eq-menu-item"
+        role="button"
+        tabindex="0"
+        onclick={loadEqf}
+        onkeydown={(e) => e.key === "Enter" && loadEqf()}
+      >
+        Load .EQF…
+      </div>
     </div>
   {/if}
 
@@ -371,6 +396,11 @@
   .eq-menu-item:hover {
     background: #2b6fd6;
     color: #fff;
+  }
+  .eq-menu-sep {
+    height: 1px;
+    margin: 2px 3px;
+    background: #4a4a6a;
   }
 
   .eq-curve {

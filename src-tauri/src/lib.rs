@@ -13,6 +13,7 @@ mod app_window;
 mod discord;
 mod eq;
 mod eq_window;
+mod eqf;
 mod library_window;
 mod lyrics_window;
 mod oauth;
@@ -215,6 +216,7 @@ pub fn run() {
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,
+            eqf::import_eqf,
             lyrics_window::set_lyrics_window_visible,
             discord::set_discord_activity,
             discord::clear_discord_activity,
