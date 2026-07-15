@@ -261,80 +261,36 @@ fn update_owners(dock: &mut Dock) {
     }
 }
 
-// On Windows an owned window does not move with its owner, so we subclass the
-// player's window procedure and reposition the whole group inside its move
-// message. This happens synchronously, before the frame is painted, giving
-// lockstep movement with no trailing.
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn master_subclass_proc(
-    hwnd: windows::Win32::Foundation::HWND,
-    msg: u32,
-    wparam: windows::Win32::Foundation::WPARAM,
-    lparam: windows::Win32::Foundation::LPARAM,
-    _id: usize,
-    _refdata: usize,
-) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::Shell::DefSubclassProc;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, WINDOWPOS,
-        WM_WINDOWPOSCHANGED,
-    };
-
-    if msg == WM_WINDOWPOSCHANGED {
-        let window_pos = unsafe { &*(lparam.0 as *const WINDOWPOS) };
-        // Only react to real moves; the player never resizes.
-        if window_pos.flags.0 & SWP_NOMOVE.0 == 0 {
-            // Compute every follower move (and release the lock) before touching
-            // the OS so the followers' resulting move messages cannot deadlock
-            // against us. Followers are not subclassed, so moving them does not
-            // re-enter this procedure.
-            //
-            // Use `try_lock`, never a blocking lock: this runs on the UI thread,
-            // and a main-thread dock handler that holds the lock can synchronously
-            // send us a WM_WINDOWPOSCHANGED (e.g. changing a follower's owner
-            // nudges the player's z-order). A blocking lock there would deadlock
-            // against ourselves; skipping the frame is correct — outside a drag
-            // there is nothing to move anyway.
-            let moves: Vec<(isize, i32, i32)> = match dock().try_lock() {
-                Ok(dock) if dock.dragging.as_deref() == Some(MASTER) => {
-                    let (px, py) = (window_pos.x, window_pos.y);
-                    dock.group_offsets
-                        .iter()
-                        .filter_map(|(label, (dx, dy))| {
-                            dock.hwnds.get(label).map(|h| (*h, px + dx, py + dy))
-                        })
-                        .collect()
-                }
-                _ => Vec::new(),
-            };
-            for (follower_hwnd, x, y) in moves {
-                unsafe {
-                    let _ = SetWindowPos(
-                        HWND(follower_hwnd as *mut core::ffi::c_void),
-                        Some(HWND_TOP),
-                        x,
-                        y,
-                        0,
-                        0,
-                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-                    );
-                }
-            }
+/// Reposition every frozen group member to follow the player to `pos`. Called
+/// from the player's `Moved` event, which fires on the main thread, so the
+/// follower `set_position` calls run inline. `try_lock` (never a blocking lock)
+/// avoids re-entrant deadlocks: a main-thread dock handler can hold the lock and
+/// synchronously nudge the player; skipping is correct since outside a drag there
+/// is nothing to move.
+///
+/// (A raw Win32 `WM_WINDOWPOSCHANGED` subclass would move the group with zero
+/// trailing, but subclassing the player's window procedure at creation time races
+/// with WebView2's own subclassing and wedges the UI thread — see git history.
+/// `on_window_event` is the safe, supported path.)
+fn move_group_with_master(pos: PhysicalPosition<i32>) {
+    let moves: Vec<(WebviewWindow, PhysicalPosition<i32>)> = {
+        let Ok(dock) = dock().try_lock() else {
+            return;
+        };
+        if dock.dragging.as_deref() != Some(MASTER) {
+            return;
         }
-    }
-
-    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
-}
-
-#[cfg(target_os = "windows")]
-fn install_master_subclass(window: &WebviewWindow) {
-    use windows::Win32::UI::Shell::SetWindowSubclass;
-    let Ok(hwnd) = window.hwnd() else {
-        return;
+        dock.group_offsets
+            .iter()
+            .filter_map(|(label, (dx, dy))| {
+                dock.windows
+                    .get(label)
+                    .map(|w| (w.clone(), PhysicalPosition::new(pos.x + dx, pos.y + dy)))
+            })
+            .collect()
     };
-    unsafe {
-        let _ = SetWindowSubclass(hwnd, Some(master_subclass_proc), 1, 0);
+    for (window, position) in moves {
+        let _ = window.set_position(position);
     }
 }
 
@@ -357,8 +313,7 @@ pub fn register_dock_window(window: &WebviewWindow) {
         dock.visible.insert(label.clone(), visible);
     }
 
-    // Record the native handle and, for the player, install the group-move
-    // subclass — both need the main thread.
+    // Record the native handle (needed for owner management), on the main thread.
     #[cfg(target_os = "windows")]
     {
         let window = window.clone();
@@ -370,9 +325,16 @@ pub fn register_dock_window(window: &WebviewWindow) {
                     .expect("docking state lock")
                     .hwnds
                     .insert(label.clone(), hwnd.0 as isize);
-                if label == MASTER {
-                    install_master_subclass(&window);
-                }
+            }
+        });
+    }
+
+    // The player drags the whole group: whenever it moves, reposition every
+    // frozen group member to follow. (Non-player windows move only themselves.)
+    if label == MASTER {
+        window.clone().on_window_event(move |event| {
+            if let tauri::WindowEvent::Moved(position) = event {
+                move_group_with_master(*position);
             }
         });
     }
