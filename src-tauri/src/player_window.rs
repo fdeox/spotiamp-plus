@@ -192,6 +192,12 @@ pub async fn search(query: &str, player: State<'_, SharedPlayer>) -> Result<Vec<
 }
 
 #[tauri::command]
+pub async fn get_liked_songs(player: State<'_, SharedPlayer>) -> Result<Vec<String>, String> {
+    let session = player.lock().await.session_handle();
+    crate::spotify::fetch_liked_songs(&session).await
+}
+
+#[tauri::command]
 pub async fn get_lyrics(
     uri: &str,
     player: State<'_, SharedPlayer>,

@@ -549,3 +549,36 @@ pub async fn fetch_search(session: &Session, query: &str) -> Result<Vec<String>,
     }
     Ok(uris)
 }
+
+/// Fetch the user's "Liked Songs" (the saved-tracks collection) as track URIs,
+/// via the same internal context-resolve endpoint used for search. Newest first.
+pub async fn fetch_liked_songs(session: &Session) -> Result<Vec<String>, String> {
+    let bytes = session
+        .spclient()
+        .request_as_json(
+            &http::Method::GET,
+            "/context-resolve/v1/spotify:collection:tracks",
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| format!("Failed to fetch liked songs: {e:?}"))?;
+
+    let text = String::from_utf8_lossy(bytes.as_ref());
+    let pat = "spotify:track:";
+    let mut uris: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = text[search_from..].find(pat) {
+        let id_start = search_from + rel + pat.len();
+        let id: String = text[id_start..].chars().take(22).collect();
+        search_from = id_start;
+        if id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            let uri = format!("{pat}{id}");
+            if seen.insert(uri.clone()) {
+                uris.push(uri);
+            }
+        }
+    }
+    Ok(uris)
+}

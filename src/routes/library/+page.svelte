@@ -117,6 +117,42 @@
     }
   }
 
+  // Load the user's Spotify "Liked Songs" into the right pane (newest first).
+  async function selectLiked() {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = "liked";
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      const ids = await invoke("get_liked_songs");
+      if (token !== loadToken) return;
+      trackUris = ids;
+      await loadTrackMetas(ids, token);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+
+  // Double-click the Favorite Songs node: send the whole collection to the
+  // player (just the uris — no need to wait for names to resolve).
+  async function loadLikedIntoMain() {
+    try {
+      const ids = await invoke("get_liked_songs");
+      if (ids.length) {
+        emitWindowEvent("playerWindow", { UrlsDropped: ids.map(trackUrl) });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Search the Spotify catalogue (Enter in the search box); results land in the
   // right pane and play like any other track.
   async function doSearch() {
@@ -210,11 +246,13 @@
   }
 
   const headTitle = $derived(
-    searchMode
-      ? `Search: ${searchQuery}`
-      : selectedUri
-        ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
-        : "Audio",
+    activeNode === "liked"
+      ? "Favorite Songs"
+      : searchMode
+        ? `Search: ${searchQuery}`
+        : selectedUri
+          ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
+          : "Audio",
   );
 
   const close = () => invoke("set_library_window_visible", { visible: false });
@@ -255,6 +293,19 @@
   <div class="ml-body">
     <!-- left: navigation tree -->
     <div class="ml-tree" style="flex-basis: {treeWidth}px;">
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "liked"}
+        role="button"
+        tabindex="0"
+        title="your Spotify Liked Songs — double-click to load all"
+        onclick={selectLiked}
+        ondblclick={loadLikedIntoMain}
+        onkeydown={(e) => e.key === "Enter" && selectLiked()}
+      >
+        <span class="ml-ic ml-ic-fav"></span>Favorite Songs
+      </div>
+
       <div
         class="ml-node ml-root"
         role="button"
@@ -579,6 +630,16 @@
     margin-left: 2px;
     margin-right: 6px;
     opacity: 0.9;
+  }
+  .ml-ic-fav {
+    background: none;
+    color: #e0455e;
+    font-size: 11px;
+    line-height: 12px;
+    text-align: center;
+  }
+  .ml-ic-fav::before {
+    content: "♥";
   }
   .ml-ic-pl {
     background: color-mix(in srgb, currentColor 35%, transparent);
