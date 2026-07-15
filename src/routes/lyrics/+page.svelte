@@ -92,6 +92,25 @@
   function makeLyricsDraggable(element) {
     makeDockedDraggable(element, "lyrics", "lyricsWindow");
   }
+
+  // Resize from the bottom-right corner, like the playlist / library / visualizer.
+  function makeLyricsResizable(element) {
+    element.onpointerdown = function (event) {
+      event.preventDefault();
+      element.setPointerCapture(event.pointerId);
+      document.onpointermove = function (e) {
+        const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
+        const width = Math.max(Math.round(e.clientX / zoom) + 3, 200);
+        const height = Math.max(Math.round(e.clientY / zoom) + 3, 140);
+        REACTIVE_WINDOW_SIZE.setSize(width, height);
+      };
+      document.onpointerup = function () {
+        document.onpointermove = null;
+        element.releasePointerCapture(event.pointerId);
+      };
+    };
+    element.onselectstart = () => false;
+  }
 </script>
 
 <div class="lyr">
@@ -129,6 +148,8 @@
       {/if}
     {/if}
   </div>
+
+  <div class="lyr-resize" use:makeLyricsResizable></div>
 </div>
 
 <style>
@@ -252,5 +273,24 @@
     margin-top: 14px;
     font-size: 8px;
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 35%, transparent);
+  }
+
+  /* bottom-right resize grip */
+  .lyr-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    z-index: 3;
+    background: linear-gradient(
+      135deg,
+      transparent 0 8px,
+      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 8px 9px,
+      transparent 9px 11px,
+      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 11px 12px,
+      transparent 12px
+    );
   }
 </style>
