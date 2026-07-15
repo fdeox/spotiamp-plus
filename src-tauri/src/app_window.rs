@@ -22,7 +22,12 @@ pub fn build_frameless_window(
         .shadow(false)
         .closable(false)
         .maximizable(false)
-        .minimizable(false)
+        // Keep windows minimizable: a frameless, NON-minimizable window that
+        // Windows minimizes anyway (Show Desktop / Win+D / a taskbar toggle)
+        // gets stranded at (-32000,-32000) and can't be brought back by clicking
+        // the taskbar. Minimizable windows minimize to the taskbar and restore
+        // normally (the owned sub-windows follow the player).
+        .minimizable(true)
         .resizable(false)
         .disable_drag_drop_handler()
         .accept_first_mouse(true)
