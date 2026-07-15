@@ -289,7 +289,14 @@ unsafe extern "system" fn master_subclass_proc(
             // the OS so the followers' resulting move messages cannot deadlock
             // against us. Followers are not subclassed, so moving them does not
             // re-enter this procedure.
-            let moves: Vec<(isize, i32, i32)> = match dock().lock() {
+            //
+            // Use `try_lock`, never a blocking lock: this runs on the UI thread,
+            // and a main-thread dock handler that holds the lock can synchronously
+            // send us a WM_WINDOWPOSCHANGED (e.g. changing a follower's owner
+            // nudges the player's z-order). A blocking lock there would deadlock
+            // against ourselves; skipping the frame is correct — outside a drag
+            // there is nothing to move anyway.
+            let moves: Vec<(isize, i32, i32)> = match dock().try_lock() {
                 Ok(dock) if dock.dragging.as_deref() == Some(MASTER) => {
                     let (px, py) = (window_pos.x, window_pos.y);
                     dock.group_offsets
