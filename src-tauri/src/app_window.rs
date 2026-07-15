@@ -48,6 +48,11 @@ pub fn remember_position(
     let window = window.clone();
     window.clone().on_window_event(move |window_event| {
         if let tauri::WindowEvent::Moved(physical_position) = window_event {
+            // Windows parks minimized windows at (-32000,-32000); persisting that
+            // would relaunch the app off-screen ("it never appears"). Skip it.
+            if physical_position.x <= -30000 || physical_position.y <= -30000 {
+                return;
+            }
             save_position(
                 physical_position.to_logical(
                     window.scale_factor().unwrap_or_else(|_| {

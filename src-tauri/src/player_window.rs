@@ -277,5 +277,23 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
     // connected group of windows in lockstep.
     app_window::register_dock_window(&window);
 
+    // Safeguard: shortly after launch, force the player un-minimized, on-screen
+    // and focused, so it can never come up invisible (a stray minimize or a
+    // stale off-screen saved position). Owned sub-windows follow it.
+    {
+        let window = window.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+            let _ = window.unminimize();
+            if let Ok(position) = window.outer_position() {
+                if position.x <= -30000 || position.y <= -30000 {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(200, 200));
+                }
+            }
+            let _ = window.show();
+            let _ = window.set_focus();
+        });
+    }
+
     Ok(window)
 }
