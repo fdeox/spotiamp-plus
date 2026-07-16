@@ -119,6 +119,10 @@ pub struct PlayerSettings {
     pub double_size_active: bool,
     pub volume: u16,
     pub show_playlist: bool,
+    /// Name of the chosen audio output device, or None for the system default.
+    /// `serde(default)` keeps older settings files (without this field) loading.
+    #[serde(default)]
+    pub audio_device: Option<String>,
 }
 
 impl Default for PlayerSettings {
@@ -128,6 +132,7 @@ impl Default for PlayerSettings {
             double_size_active: Default::default(),
             volume: 80,
             show_playlist: true,
+            audio_device: None,
         }
     }
 }

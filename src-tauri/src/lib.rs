@@ -171,7 +171,7 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
 /// Pump playback events from a player's channel out to the player window.
 /// Ends on its own when the channel closes (e.g. when a stale player is
 /// replaced during a reconnect).
-fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: PlayerEventChannel) {
+pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: PlayerEventChannel) {
     tauri::async_runtime::spawn(async move {
         while let Some(player_event) = channel.recv().await {
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
@@ -207,6 +207,8 @@ pub fn run() {
             player_window::set_eq,
             player_window::set_balance,
             player_window::set_volume,
+            player_window::list_audio_devices,
+            player_window::set_audio_device,
             player_window::set_double_size,
             player_window::take_latest_spectrum,
             player_window::seek,

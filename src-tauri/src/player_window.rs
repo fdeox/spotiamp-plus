@@ -88,6 +88,34 @@ pub async fn set_volume(volume: u16, player: State<'_, SharedPlayer>) -> Result<
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct AudioDevices {
+    devices: Vec<String>,
+    current: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_audio_devices() -> AudioDevices {
+    AudioDevices {
+        devices: crate::spotify::list_output_devices(),
+        current: Settings::current().player.audio_device.clone(),
+    }
+}
+
+//NOTE: async so window ops (get_webview_window) run cleanly; rebuilds the player
+//      on the chosen device and re-attaches the UI event forwarder.
+#[tauri::command]
+pub async fn set_audio_device(
+    device: Option<String>,
+    player: State<'_, SharedPlayer>,
+    app_handle: AppHandle,
+) -> Result<(), ()> {
+    let player_window = app_handle.get_webview_window("player").ok_or(())?;
+    let channel = player.lock().await.set_audio_device(device);
+    crate::spawn_event_forwarder(player_window, channel);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_double_size(active: bool) {
     Settings::current_mut().player.double_size_active = active;

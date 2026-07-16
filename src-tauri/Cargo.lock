@@ -4765,6 +4765,7 @@ dependencies = [
  "audioviz",
  "axum",
  "base64 0.22.1",
+ "cpal",
  "directories",
  "discord-rich-presence",
  "env_logger",

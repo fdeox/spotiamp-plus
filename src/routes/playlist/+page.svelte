@@ -7,6 +7,7 @@
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
+  import { emit } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { Playlist } from "$lib/playlist.svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -65,6 +66,7 @@
 
   function openMenu(e) {
     e.preventDefault();
+    loadAudioDevices();
     const mw = 130,
       mh = 250;
     menu = {
@@ -72,6 +74,27 @@
       x: Math.min(e.clientX, Math.max(2, window.innerWidth - mw)),
       y: Math.min(e.clientY, Math.max(2, window.innerHeight - mh)),
     };
+  }
+
+  // --- audio output device picker ---
+  let audioDevices = $state([]);
+  let currentAudioDevice = $state(null);
+  async function loadAudioDevices() {
+    try {
+      const info = await invoke("list_audio_devices");
+      audioDevices = info.devices || [];
+      currentAudioDevice = info.current ?? null;
+    } catch {
+      audioDevices = [];
+    }
+  }
+  async function pickAudioDevice(name) {
+    closeMenu();
+    currentAudioDevice = name;
+    await invoke("set_audio_device", { device: name }).catch(() => {});
+    // the player was rebuilt on the new device — ask the player window to
+    // resume the current track there.
+    await emit("audioDeviceChanged", {});
   }
   const closeMenu = () => (menu.show = false);
   async function chooseSkin(skin) {
@@ -727,6 +750,15 @@
           playlist.clear();
         }}>Clear playlist</button
       >
+      <div class="ctx-head">AUDIO OUTPUT</div>
+      <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
+        <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
+      </button>
+      {#each audioDevices as dev}
+        <button class="ctx-item" title={dev} onclick={() => pickAudioDevice(dev)}>
+          <span class="ctx-dot">{currentAudioDevice === dev ? "●" : ""}</span>{dev}
+        </button>
+      {/each}
     </div>
   {/if}
 </span>
@@ -1019,6 +1051,7 @@
     position: fixed;
     z-index: 201;
     min-width: 118px;
+    max-width: 230px;
     max-height: 92vh;
     overflow-y: auto;
     background: #d4d0c8;
@@ -1047,6 +1080,8 @@
     font-size: 11px;
     cursor: default;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .ctx-item:hover {
     background: #000080;

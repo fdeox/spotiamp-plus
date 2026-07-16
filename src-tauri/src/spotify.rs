@@ -162,6 +162,10 @@ pub struct SpotifyPlayer {
     eq: Arc<Mutex<EqState>>,
 
     visualizer: Arc<Mutex<Visualizer>>,
+    /// Chosen audio output device name (None = system default). Read by the sink
+    /// builder each time librespot opens a new sink, so a change takes effect on
+    /// the next track (the frontend reloads the current track to apply it now).
+    audio_device: Arc<Mutex<Option<String>>>,
 }
 
 impl SpotifyPlayer {
@@ -170,8 +174,14 @@ impl SpotifyPlayer {
         let volume = Arc::new(AtomicU16::new(Settings::current().player.volume));
         let visualizer = Arc::new(Mutex::new(Visualizer::new()));
         let eq = Arc::new(Mutex::new(EqState::default()));
-        let player =
-            Self::build_player(&session.inner, volume.clone(), visualizer.clone(), eq.clone());
+        let audio_device = Arc::new(Mutex::new(Settings::current().player.audio_device.clone()));
+        let player = Self::build_player(
+            &session.inner,
+            volume.clone(),
+            visualizer.clone(),
+            eq.clone(),
+            audio_device.clone(),
+        );
 
         Self {
             player,
@@ -179,6 +189,7 @@ impl SpotifyPlayer {
             volume,
             eq,
             visualizer,
+            audio_device,
         }
     }
 
@@ -190,6 +201,7 @@ impl SpotifyPlayer {
         volume: Arc<AtomicU16>,
         visualizer: Arc<Mutex<Visualizer>>,
         eq: Arc<Mutex<EqState>>,
+        audio_device: Arc<Mutex<Option<String>>>,
     ) -> Arc<Player> {
         let player_config = PlayerConfig {
             // Emit a position update every second so the UI can re-sync its
@@ -231,11 +243,12 @@ impl SpotifyPlayer {
                 let visualizer = visualizer.clone();
                 let volume = volume.clone();
                 let eq = eq.clone();
+                let audio_device = audio_device.clone();
                 move || {
-                    let audio_format = AudioFormat::F32;
+                    let device = audio_device.lock().unwrap().clone();
                     Box::new(SpotiampSink::new(
-                        None,
-                        audio_format,
+                        device,
+                        AudioFormat::F32,
                         visualizer,
                         volume,
                         eq,
@@ -267,6 +280,7 @@ impl SpotifyPlayer {
             self.volume.clone(),
             self.visualizer.clone(),
             self.eq.clone(),
+            self.audio_device.clone(),
         );
         self.session = session;
         Ok(self.player.get_player_event_channel())
@@ -327,6 +341,25 @@ impl SpotifyPlayer {
         self.volume.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Switch the audio output device (None = system default). The librespot sink
+    /// builder runs only once, at player creation, so we rebuild the player to
+    /// open a fresh sink on the chosen device and return the new event channel
+    /// for the UI forwarder to re-subscribe. The frontend reloads the current
+    /// track afterwards so the change is heard immediately.
+    pub fn set_audio_device(&mut self, device: Option<String>) -> PlayerEventChannel {
+        *self.audio_device.lock().unwrap() = device.clone();
+        Settings::current_mut().player.audio_device = device;
+        self.player.stop();
+        self.player = Self::build_player(
+            &self.session.inner,
+            self.volume.clone(),
+            self.visualizer.clone(),
+            self.eq.clone(),
+            self.audio_device.clone(),
+        );
+        self.player.get_player_event_channel()
+    }
+
     pub fn seek(&self, position_ms: u32) {
         self.player.seek(position_ms);
     }
@@ -337,6 +370,16 @@ impl SpotifyPlayer {
 
     pub fn get_player_event_channel(&self) -> PlayerEventChannel {
         self.player.get_player_event_channel()
+    }
+}
+
+/// Names of the available audio output devices, for the device picker. Uses the
+/// same cpal default host as the rodio backend, so the names round-trip.
+pub fn list_output_devices() -> Vec<String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    match cpal::default_host().output_devices() {
+        Ok(devices) => devices.filter_map(|device| device.name().ok()).collect(),
+        Err(_) => Vec::new(),
     }
 }
 

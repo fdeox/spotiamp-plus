@@ -27,6 +27,9 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 librespot = { version = "0.8", default-features = false, features = ["rodio-backend", "rustls-tls-native-roots"] }
+# Same cpal that librespot's rodio backend resolves — used to enumerate output
+# devices for the audio-device picker (so device names match what rodio expects).
+cpal = "0.16"
 audioviz = { version = "0.6", default-features = false, features = ["spectrum"] }
 
 oauth2 = "5.0"

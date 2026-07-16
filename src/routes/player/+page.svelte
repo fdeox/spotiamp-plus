@@ -18,6 +18,7 @@
   import TextTicker from "../../TextTicker.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
   import { onMount, untrack } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { Visualizer } from "$lib/visualizer.svelte";
   import {
     currentMonitor,
@@ -185,6 +186,18 @@
     sliderSeekPosition = 0;
     playerState = "stopped"; // To make the UI a bit snappier
     await invoke("stop").catch(handleError);
+  }
+
+  // The audio-output device was changed (from the playlist menu), which rebuilds
+  // the player on a fresh sink. Reload the current track on the new device at the
+  // same spot so the switch is heard without the user pressing play again.
+  async function reapplyAfterDeviceChange() {
+    if (!loadedTrack || loadedTrack.unavailable) return;
+    const wasPlaying = playerState === "playing";
+    const position = Math.round(seekPosition);
+    await invoke("load_track", { uri: loadedTrack.uri.asString }).catch(() => {});
+    if (position > 0) await invoke("seek", { positionMs: position }).catch(() => {});
+    if (!wasPlaying) await invoke("pause").catch(() => {});
   }
 
   /**
@@ -415,8 +428,13 @@
     };
     document.addEventListener("keydown", onPlayerKeyDown);
 
+    const audioDeviceSubscription = listen("audioDeviceChanged", () =>
+      reapplyAfterDeviceChange(),
+    );
+
     return () => {
       clearInterval(tickerInterval);
+      audioDeviceSubscription.then((unlisten) => unlisten());
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       eqWindowEventSubscription.then((unlisten) => unlisten());
