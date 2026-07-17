@@ -15,6 +15,7 @@ mod eq;
 mod eq_window;
 mod eqf;
 mod library_window;
+mod lists;
 mod lyrics_window;
 mod oauth;
 mod player_window;
@@ -209,6 +210,10 @@ pub fn run() {
             player_window::set_volume,
             player_window::list_audio_devices,
             player_window::set_audio_device,
+            lists::get_saved_lists,
+            lists::save_list,
+            lists::delete_list,
+            lists::add_to_list,
             player_window::set_double_size,
             player_window::take_latest_spectrum,
             player_window::seek,

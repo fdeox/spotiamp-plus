@@ -137,6 +137,13 @@ impl Default for PlayerSettings {
     }
 }
 
+/// A user-named list of track URIs, saved inside Spotiamp+ (not on Spotify).
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+pub struct SavedList {
+    pub name: String,
+    pub uris: Vec<String>,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Hash)]
 pub struct Settings {
     pub player: PlayerSettings,
@@ -144,6 +151,9 @@ pub struct Settings {
     /// Active skin name ("" / "classic" = the default base-2.91 set).
     #[serde(default)]
     pub skin: String,
+    /// App-local named lists (Winamp-style playlists kept in the app).
+    #[serde(default)]
+    pub saved_lists: Vec<SavedList>,
 }
 
 impl Settings {

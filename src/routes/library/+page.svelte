@@ -240,6 +240,39 @@
     emitWindowEvent("playerWindow", { UrlsDropped: trackUris.map(trackUrl) });
   }
 
+  // Add the selected track to an app-local list (kept in Spotiamp+, not Spotify).
+  let savedLists = $state([]);
+  let showListMenu = $state(false);
+  let newLibListName = $state("");
+  async function loadSavedListsLib() {
+    try {
+      savedLists = await invoke("get_saved_lists");
+    } catch {
+      savedLists = [];
+    }
+  }
+  function toggleListMenu() {
+    showListMenu = !showListMenu;
+    if (showListMenu) loadSavedListsLib();
+  }
+  function selectedUriString() {
+    const i = selectedTrack >= 0 ? selectedTrack : 0;
+    return trackUris[i] || null;
+  }
+  async function addSelectedToList(name) {
+    const uri = selectedUriString();
+    if (!uri) return;
+    await invoke("add_to_list", { name, uri }).catch(() => {});
+    showListMenu = false;
+  }
+  async function createListWithSelected() {
+    const name = newLibListName.trim();
+    if (!name) return;
+    await addSelectedToList(name);
+    newLibListName = "";
+    await loadSavedListsLib();
+  }
+
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -454,6 +487,33 @@
     <button class="ml-btn" onclick={playSelected}>Play</button>
     <button class="ml-btn" onclick={enqueueSelected}>Enqueue</button>
     <button class="ml-btn" onclick={playAll}>Play all</button>
+    <div class="ml-listwrap">
+      <button class="ml-btn" onclick={toggleListMenu} title="add the selected track to a list">
+        + List
+      </button>
+      {#if showListMenu}
+        <div class="ml-listbackdrop" onpointerdown={() => (showListMenu = false)}></div>
+        <div class="ml-listmenu">
+          <div class="ml-listnewrow">
+            <input
+              class="ml-listinput"
+              bind:value={newLibListName}
+              placeholder="new list…"
+              onkeydown={(e) => e.key === "Enter" && createListWithSelected()}
+            />
+            <button class="ml-listadd" onclick={createListWithSelected}>+</button>
+          </div>
+          {#if savedLists.length === 0}
+            <div class="ml-listempty">no lists yet</div>
+          {/if}
+          {#each savedLists as list}
+            <button class="ml-listitem" onclick={() => addSelectedToList(list.name)}>
+              {list.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
     <span class="ml-count">
       {tracks.length}
       {tracks.length === 1 ? "item" : "items"}
@@ -876,6 +936,76 @@
     margin-left: auto;
     color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 170, 0)));
     padding-right: 8px;
+  }
+
+  /* "+ List" popup — add the selected track to an app-local list */
+  .ml-listwrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .ml-listbackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .ml-listmenu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 3px;
+    z-index: 41;
+    min-width: 130px;
+    max-height: 180px;
+    overflow-y: auto;
+    background: #1a1c22;
+    border: 1px solid var(--skin-genexdivider, #3a3d4a);
+    padding: 3px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+  .ml-listnewrow {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 3px;
+  }
+  .ml-listinput {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    background: #0c0d12;
+    color: #d8d8e8;
+    border: 1px solid #3a3d4a;
+    padding: 1px 3px;
+  }
+  .ml-listadd {
+    width: 18px;
+    border: 1px solid #3a3d4a;
+    background: #2a2d3a;
+    color: #d8d8e8;
+    cursor: pointer;
+  }
+  .ml-listitem {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--skin-plnormal, #c8c8d4);
+    font-size: 11px;
+    padding: 2px 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ml-listitem:hover {
+    background: var(--skin-genexselbg, #2b6fd6);
+    color: #fff;
+  }
+  .ml-listempty {
+    color: #808080;
+    font-size: 10px;
+    padding: 2px 5px;
+    font-style: italic;
   }
 
   /* ---- splitter between tree and content ---- */

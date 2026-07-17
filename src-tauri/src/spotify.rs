@@ -245,7 +245,16 @@ impl SpotifyPlayer {
                 let eq = eq.clone();
                 let audio_device = audio_device.clone();
                 move || {
-                    let device = audio_device.lock().unwrap().clone();
+                    // A saved device may have been unplugged since it was chosen;
+                    // librespot's rodio backend `.unwrap()`s on a missing named
+                    // device, which would panic the player. Only pass the name if
+                    // it's actually present right now — otherwise fall back to the
+                    // system default (None).
+                    let device = audio_device
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .filter(|name| list_output_devices().iter().any(|d| d == name));
                     Box::new(SpotiampSink::new(
                         device,
                         AudioFormat::F32,
