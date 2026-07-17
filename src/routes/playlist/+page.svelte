@@ -67,8 +67,8 @@
   function openMenu(e) {
     e.preventDefault();
     loadAudioDevices();
-    const mw = 130,
-      mh = 250;
+    const mw = 200,
+      mh = 220;
     menu = {
       show: true,
       x: Math.min(e.clientX, Math.max(2, window.innerWidth - mw)),
@@ -109,6 +109,12 @@
     closeMenu();
   }
   const closeMenu = () => (menu.show = false);
+  let menuTab = $state("skins");
+  const DISCORD_INVITE = "https://discord.gg/8Rq5Xycny4";
+  async function openDiscord() {
+    closeMenu();
+    await invoke("open_url", { url: DISCORD_INVITE }).catch(() => {});
+  }
   async function chooseSkin(skin) {
     currentSkin = skin;
     closeMenu();
@@ -713,74 +719,89 @@
       }}
     ></div>
     <div class="ctx-menu" style:left="{menu.x}px" style:top="{menu.y}px">
-      <div class="ctx-head">COLORS</div>
-      {#each ["cherry", "amber", "emerald"] as s}
-        <button class="ctx-item" onclick={() => chooseSkin(s)}>
-          <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
-        </button>
-      {/each}
-      <div class="ctx-head">SKINS</div>
-      <button class="ctx-item" onclick={() => chooseSkin("classic")}>
-        <span class="ctx-dot">{currentSkin === "classic" ? "●" : ""}</span
-        >classic
-      </button>
-      {#each bundledSkins as name}
-        <button class="ctx-item" onclick={() => chooseBundledSkin(name)}>
-          <span class="ctx-dot"></span>{prettySkinName(name)}
-        </button>
-      {/each}
-      <button class="ctx-item" onclick={loadWszSkin}>
-        <span class="ctx-dot">{currentSkin === "custom" ? "●" : ""}</span>load
-        .wsz…
-      </button>
-      <div class="ctx-sep"></div>
-      <button
-        class="ctx-item"
-        onclick={() => {
-          closeMenu();
-          openLibraryWindow();
-        }}>Library…</button
-      >
-      <button
-        class="ctx-item"
-        onclick={() => {
-          closeMenu();
-          invoke("set_visualizer_window_visible", { visible: true });
-        }}>Visualizer…</button
-      >
-      <button
-        class="ctx-item"
-        onclick={() => {
-          closeMenu();
-          invoke("set_lyrics_window_visible", { visible: true });
-        }}>Lyrics…</button
-      >
-      <button
-        class="ctx-item"
-        onclick={() => {
-          closeMenu();
-          playlist.clear();
-        }}>Clear playlist</button
-      >
-      <div class="ctx-head">SAVE AS LIST</div>
-      <div class="ctx-listrow" onpointerdown={(e) => e.stopPropagation()}>
-        <input
-          class="ctx-listinput"
-          bind:value={newListName}
-          placeholder="name… (see it in Library ▸ Spotiamp+)"
-          onkeydown={(e) => e.key === "Enter" && saveCurrentAsList()}
-        />
-        <button class="ctx-listbtn" onclick={saveCurrentAsList}>Save</button>
+      <div class="ctx-tabs">
+        {#each [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"]] as [id, label]}
+          <button
+            class="ctx-tab"
+            class:active={menuTab === id}
+            onclick={() => (menuTab = id)}>{label}</button
+          >
+        {/each}
       </div>
-      <div class="ctx-head">AUDIO OUTPUT</div>
-      <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
-        <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
-      </button>
-      {#each audioDevices as dev}
-        <button class="ctx-item" title={dev} onclick={() => pickAudioDevice(dev)}>
-          <span class="ctx-dot">{currentAudioDevice === dev ? "●" : ""}</span>{dev}
+
+      {#if menuTab === "skins"}
+        <button class="ctx-item" onclick={() => chooseSkin("classic")}>
+          <span class="ctx-dot">{currentSkin === "classic" ? "●" : ""}</span>classic
         </button>
-      {/each}
+        {#each bundledSkins as name}
+          <button class="ctx-item" onclick={() => chooseBundledSkin(name)}>
+            <span class="ctx-dot"></span>{prettySkinName(name)}
+          </button>
+        {/each}
+        <button class="ctx-item" onclick={loadWszSkin}>
+          <span class="ctx-dot">{currentSkin === "custom" ? "●" : ""}</span>load .wsz…
+        </button>
+      {:else if menuTab === "colors"}
+        {#each ["cherry", "amber", "emerald"] as s}
+          <button class="ctx-item" onclick={() => chooseSkin(s)}>
+            <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
+          </button>
+        {/each}
+      {:else if menuTab === "windows"}
+        <button
+          class="ctx-item"
+          onclick={() => {
+            closeMenu();
+            openLibraryWindow();
+          }}>Library…</button
+        >
+        <button
+          class="ctx-item"
+          onclick={() => {
+            closeMenu();
+            invoke("set_visualizer_window_visible", { visible: true });
+          }}>Visualizer…</button
+        >
+        <button
+          class="ctx-item"
+          onclick={() => {
+            closeMenu();
+            invoke("set_lyrics_window_visible", { visible: true });
+          }}>Lyrics…</button
+        >
+        <button
+          class="ctx-item"
+          onclick={() => {
+            closeMenu();
+            playlist.clear();
+          }}>Clear playlist</button
+        >
+      {:else if menuTab === "audio"}
+        <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
+          <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
+        </button>
+        {#each audioDevices as dev}
+          <button class="ctx-item" title={dev} onclick={() => pickAudioDevice(dev)}>
+            <span class="ctx-dot">{currentAudioDevice === dev ? "●" : ""}</span>{dev}
+          </button>
+        {/each}
+      {:else if menuTab === "list"}
+        <div class="ctx-listrow" onpointerdown={(e) => e.stopPropagation()}>
+          <input
+            class="ctx-listinput"
+            bind:value={newListName}
+            placeholder="save queue as…"
+            onkeydown={(e) => e.key === "Enter" && saveCurrentAsList()}
+          />
+          <button class="ctx-listbtn" onclick={saveCurrentAsList}>Save</button>
+        </div>
+        <div class="ctx-hint">browse lists in Library ▸ Spotiamp+</div>
+      {/if}
+
+      <div class="ctx-sep"></div>
+      <button class="ctx-item ctx-discord" onclick={openDiscord}>
+        💬 Join our Discord
+      </button>
     </div>
   {/if}
 </span>
@@ -1072,7 +1093,7 @@
   .ctx-menu {
     position: fixed;
     z-index: 201;
-    min-width: 118px;
+    min-width: 196px;
     max-width: 230px;
     max-height: 92vh;
     overflow-y: auto;
@@ -1089,6 +1110,41 @@
     color: #505050;
     font-size: 10px;
     font-weight: bold;
+  }
+  .ctx-tabs {
+    display: flex;
+    gap: 1px;
+    margin: -1px -1px 3px;
+  }
+  .ctx-tab {
+    flex: 1;
+    font-family: inherit;
+    font-size: 10px;
+    padding: 2px 2px;
+    border: 1px solid #808080;
+    border-top: none;
+    background: #bdb9ad;
+    color: #000;
+    cursor: pointer;
+  }
+  .ctx-tab.active {
+    background: #d4d0c8;
+    font-weight: bold;
+    border-color: #000;
+  }
+  .ctx-hint {
+    padding: 2px 6px;
+    color: #707070;
+    font-size: 9px;
+    font-style: italic;
+  }
+  .ctx-discord {
+    color: #5865f2;
+    font-weight: bold;
+  }
+  .ctx-discord:hover {
+    background: #5865f2;
+    color: #fff;
   }
   .ctx-item {
     display: block;

@@ -121,6 +121,29 @@ fn get_auth_url() -> Result<String, String> {
         .ok_or_else(|| "no pending auth URL".to_string())
 }
 
+/// Open a URL in the user's default browser (e.g. the Discord invite).
+#[tauri::command]
+fn open_url(url: String) {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        use windows::core::PCWSTR;
+        let file: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+        let op: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+        let _ = ShellExecuteW(
+            None,
+            PCWSTR(op.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = url;
+}
+
 async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     let session = SpotifySession::default();
     session
@@ -188,6 +211,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_auth_url,
+            open_url,
             player_window::get_track_metadata,
             player_window::load_track,
             player_window::get_track_ids,
