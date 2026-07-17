@@ -153,6 +153,11 @@ export class Playlist {
     shuffle = false;
     /** 0 = off, 1 = repeat all (wrap at ends), 2 = repeat one (loop track). */
     repeat = 0;
+    /** When the queue runs out (repeat off), keep playing Spotify radio seeded
+     *  from the last track. Toggled from the playlist menu. */
+    autoplay = $state(false);
+    /** Guards against firing autoplay twice for one end-of-queue. */
+    autoplayBusy = false;
 
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
@@ -275,7 +280,10 @@ export class Playlist {
                     return;
                 }
                 this.next(true).then((endReached) => {
-                    if (endReached) {
+                    if (!endReached) return;
+                    if (this.autoplay) {
+                        this.autoplayFromRadio();
+                    } else {
                         emitWindowEvent("playlistWindow", { EndReached: null });
                     }
                 });
@@ -583,4 +591,39 @@ export class Playlist {
         return await this.move(-1, skipUnavailable);
     }
 
+    /**
+     * The queue ran out with autoplay on: append Spotify radio seeded from the
+     * last track and keep playing. Falls back to stopping if nothing comes back.
+     */
+    async autoplayFromRadio() {
+        if (this.autoplayBusy) return;
+        this.autoplayBusy = true;
+        try {
+            const seed =
+                this.loadedRow?.uri?.asString ??
+                this.rows[this.rows.length - 1]?.uri?.asString;
+            if (!seed) {
+                emitWindowEvent("playlistWindow", { EndReached: null });
+                return;
+            }
+            const uris = await invoke("get_radio", { uri: seed });
+            if (!uris || uris.length === 0) {
+                emitWindowEvent("playlistWindow", { EndReached: null });
+                return;
+            }
+            for (const uri of uris) {
+                await this.addTrackRow(SpotifyUri.fromString(uri));
+            }
+            this.persist();
+            // advance into the freshly-appended radio tracks and play
+            const endReached = await this.next(true);
+            if (endReached) {
+                emitWindowEvent("playlistWindow", { EndReached: null });
+            }
+        } catch {
+            emitWindowEvent("playlistWindow", { EndReached: null });
+        } finally {
+            this.autoplayBusy = false;
+        }
+    }
 }

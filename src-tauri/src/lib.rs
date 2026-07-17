@@ -218,6 +218,7 @@ pub fn run() {
             player_window::get_user_playlists,
             player_window::search,
             player_window::get_liked_songs,
+            player_window::get_radio,
             player_window::get_lyrics,
             player_window::play,
             player_window::pause,

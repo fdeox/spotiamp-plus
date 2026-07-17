@@ -634,3 +634,39 @@ pub async fn fetch_liked_songs(session: &Session) -> Result<Vec<String>, String>
     }
     Ok(uris)
 }
+
+/// Fetch a radio/recommendation list seeded from a track — used for autoplay when
+/// the queue runs out (repeat off). The radio endpoint returns a generated
+/// playlist uri, which we expand into concrete track uris (minus the seed).
+pub async fn fetch_radio(session: &Session, seed_uri: &str) -> Result<Vec<String>, String> {
+    let seed = SpotifyUri::from_uri(seed_uri).map_err(|e| format!("Bad seed uri: {e:?}"))?;
+    let bytes = session
+        .spclient()
+        .get_radio_for_track(&seed)
+        .await
+        .map_err(|e| format!("Failed to fetch radio: {e:?}"))?;
+
+    let text = String::from_utf8_lossy(bytes.as_ref());
+    let pat = "spotify:playlist:";
+    let playlist_uri = text
+        .find(pat)
+        .and_then(|rel| {
+            let id_start = rel + pat.len();
+            let id: String = text[id_start..].chars().take(22).collect();
+            (id.len() == 22 && id.chars().all(|c| c.is_ascii_alphanumeric()))
+                .then(|| format!("{pat}{id}"))
+        })
+        .ok_or_else(|| "No radio playlist returned".to_string())?;
+
+    let playlist_spuri =
+        SpotifyUri::from_uri(&playlist_uri).map_err(|e| format!("Bad radio playlist uri: {e:?}"))?;
+    let track_uris = fetch_track_ids(session, playlist_spuri)
+        .await
+        .map_err(|e| format!("Failed to expand radio: {e:?}"))?;
+
+    Ok(track_uris
+        .into_iter()
+        .filter_map(|u| u.to_uri().ok())
+        .filter(|u| u != seed_uri)
+        .collect())
+}

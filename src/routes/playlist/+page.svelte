@@ -799,6 +799,13 @@
       {/if}
 
       <div class="ctx-sep"></div>
+      <button
+        class="ctx-item"
+        title="when the queue ends, keep playing similar songs (Spotify radio)"
+        onclick={() => (playlist.autoplay = !playlist.autoplay)}
+      >
+        <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
+      </button>
       <button class="ctx-item ctx-discord" onclick={openDiscord}>
         💬 Join our Discord
       </button>
