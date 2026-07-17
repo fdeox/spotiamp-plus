@@ -67,7 +67,6 @@
   function openMenu(e) {
     e.preventDefault();
     loadAudioDevices();
-    loadSavedLists();
     const mw = 130,
       mh = 250;
     menu = {
@@ -98,36 +97,16 @@
     await emit("audioDeviceChanged", {});
   }
 
-  // --- app-local named lists (kept in Spotiamp+, not on Spotify) ---
-  let savedLists = $state([]);
+  // --- save the current queue as an app-local list (browse them in the Library
+  //     window's "Spotiamp+" tree node) ---
   let newListName = $state("");
-  async function loadSavedLists() {
-    try {
-      savedLists = await invoke("get_saved_lists");
-    } catch {
-      savedLists = [];
-    }
-  }
-  const uriToUrl = (uri) => {
-    const [, type, id] = uri.split(":");
-    return `https://open.spotify.com/${type}/${id}`;
-  };
   async function saveCurrentAsList() {
     const name = newListName.trim();
     if (!name) return;
     const uris = playlist.rows.map((r) => r.uri.asString);
     await invoke("save_list", { name, uris }).catch(() => {});
     newListName = "";
-    await loadSavedLists();
-  }
-  async function loadList(list) {
     closeMenu();
-    await playlist.clear();
-    await playlist.addUrls(list.uris.map(uriToUrl));
-  }
-  async function deleteList(name) {
-    await invoke("delete_list", { name }).catch(() => {});
-    await loadSavedLists();
   }
   const closeMenu = () => (menu.show = false);
   async function chooseSkin(skin) {
@@ -783,25 +762,16 @@
           playlist.clear();
         }}>Clear playlist</button
       >
-      <div class="ctx-head">LISTS</div>
+      <div class="ctx-head">SAVE AS LIST</div>
       <div class="ctx-listrow" onpointerdown={(e) => e.stopPropagation()}>
         <input
           class="ctx-listinput"
           bind:value={newListName}
-          placeholder="save current as…"
+          placeholder="name… (see it in Library ▸ Spotiamp+)"
           onkeydown={(e) => e.key === "Enter" && saveCurrentAsList()}
         />
         <button class="ctx-listbtn" onclick={saveCurrentAsList}>Save</button>
       </div>
-      {#each savedLists as list}
-        <div class="ctx-listitem">
-          <button class="ctx-item ctx-listload" title="load into the playlist" onclick={() => loadList(list)}>
-            <span class="ctx-dot"></span>{list.name}
-            <span class="ctx-count">({list.uris.length})</span>
-          </button>
-          <button class="ctx-del" title="delete list" onclick={() => deleteList(list.name)}>×</button>
-        </div>
-      {/each}
       <div class="ctx-head">AUDIO OUTPUT</div>
       <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
         <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default

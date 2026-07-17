@@ -23,8 +23,8 @@
   // tree UI state
   let expandLocal = $state(true);
   let expandPlaylists = $state(true);
-  // which tree item is active: "audio" | "search" | a playlist uri
-  let activeNode = $state("audio");
+  // which tree item is active: "search" | "liked" | "list:<name>" | a playlist uri
+  let activeNode = $state(null);
   // selected row in the track list (for the Play / Enqueue buttons)
   let selectedTrack = $state(-1);
   // width of the left tree pane (px), draggable via the splitter
@@ -67,6 +67,7 @@
   onMount(async () => {
     REACTIVE_WINDOW_SIZE.setSize(500, 380);
     REACTIVE_WINDOW_SIZE.setZoom(1);
+    loadSavedListsLib();
     try {
       playlists = await invoke("get_user_playlists");
     } catch (e) {
@@ -187,8 +188,8 @@
     searchInput?.focus();
   }
 
-  function showAudio() {
-    activeNode = "audio";
+  function clearPane() {
+    activeNode = null;
     searchMode = false;
     selectedUri = null;
     tracks = [];
@@ -200,7 +201,7 @@
 
   function clearSearch() {
     search = "";
-    if (searchMode) showAudio();
+    if (searchMode) clearPane();
   }
 
   // Reuse the existing "UrlsDropped" event the main playlist window already
@@ -273,6 +274,42 @@
     await loadSavedListsLib();
   }
 
+  // Show a saved app-local list's tracks in the right pane (its uris are already
+  // concrete tracks, so no expansion needed).
+  async function selectSavedList(list) {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = "list:" + list.name;
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      trackUris = list.uris;
+      await loadTrackMetas(list.uris, token);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+  function loadListIntoMain(list) {
+    if (list.uris.length) {
+      emitWindowEvent("playerWindow", { UrlsDropped: list.uris.map(trackUrl) });
+    }
+  }
+  async function deleteSavedList(name) {
+    await invoke("delete_list", { name }).catch(() => {});
+    await loadSavedListsLib();
+    if (activeNode === "list:" + name) {
+      tracks = [];
+      trackUris = [];
+      activeNode = null;
+    }
+  }
+
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -281,11 +318,13 @@
   const headTitle = $derived(
     activeNode === "liked"
       ? "Favorite Songs"
-      : searchMode
-        ? `Search: ${searchQuery}`
-        : selectedUri
-          ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
-          : "Audio",
+      : activeNode?.startsWith?.("list:")
+        ? activeNode.slice(5)
+        : searchMode
+          ? `Search: ${searchQuery}`
+          : selectedUri
+            ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
+            : "Spotiamp+",
   );
 
   const close = () => invoke("set_library_window_visible", { visible: false });
@@ -343,23 +382,44 @@
         class="ml-node ml-root"
         role="button"
         tabindex="0"
-        onclick={() => (expandLocal = !expandLocal)}
+        title="your Spotiamp+ lists"
+        onclick={() => {
+          expandLocal = !expandLocal;
+          if (expandLocal) loadSavedListsLib();
+        }}
         onkeydown={(e) => e.key === "Enter" && (expandLocal = !expandLocal)}
       >
         <span class="ml-tw">{expandLocal ? "▾" : "▸"}</span>
-        <span class="ml-ic ml-ic-media"></span>Local Media
+        <span class="ml-ic ml-ic-media"></span>Spotiamp+
       </div>
       {#if expandLocal}
-        <div
-          class="ml-node ml-child"
-          class:active={activeNode === "audio"}
-          role="button"
-          tabindex="0"
-          onclick={showAudio}
-          onkeydown={(e) => e.key === "Enter" && showAudio()}
-        >
-          <span class="ml-ic ml-ic-audio"></span>Audio
-        </div>
+        {#if savedLists.length === 0}
+          <div class="ml-node ml-child ml-dim">no lists yet</div>
+        {:else}
+          {#each savedLists as list}
+            <div
+              class="ml-node ml-child ml-listnode"
+              class:active={activeNode === "list:" + list.name}
+              role="button"
+              tabindex="0"
+              title="double-click to load into the player"
+              onclick={() => selectSavedList(list)}
+              ondblclick={() => loadListIntoMain(list)}
+              onkeydown={(e) => e.key === "Enter" && selectSavedList(list)}
+            >
+              <span class="ml-ic ml-ic-list"></span>{list.name}
+              <span class="ml-listcount">({list.uris.length})</span>
+              <button
+                class="ml-listdel"
+                title="delete list"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  deleteSavedList(list.name);
+                }}>×</button
+              >
+            </div>
+          {/each}
+        {/if}
       {/if}
 
       <div
@@ -1006,6 +1066,32 @@
     font-size: 10px;
     padding: 2px 5px;
     font-style: italic;
+  }
+
+  /* saved-list rows in the Spotiamp+ tree node */
+  .ml-listnode {
+    display: flex;
+    align-items: center;
+  }
+  .ml-listcount {
+    margin-left: 4px;
+    font-size: 10px;
+    color: color-mix(in srgb, currentColor 50%, transparent);
+  }
+  .ml-listdel {
+    margin-left: auto;
+    width: 14px;
+    border: none;
+    background: transparent;
+    color: #c0504a;
+    cursor: pointer;
+    opacity: 0;
+  }
+  .ml-listnode:hover .ml-listdel {
+    opacity: 1;
+  }
+  .ml-listdel:hover {
+    color: #ff6b60;
   }
 
   /* ---- splitter between tree and content ---- */
