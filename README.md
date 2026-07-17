@@ -1,5 +1,7 @@
 # Spotiamp+
 
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/8Rq5Xycny4)
+
 A Winamp-style desktop player for **Spotify** — the classic skinned windows, real
 skins, a Milkdrop-style visualizer, and full keyboard control, playing your
 Spotify Premium account natively (no browser).
