@@ -208,6 +208,15 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be registered first: if a second copy is launched, focus the
+        // existing player window instead of starting a duplicate instance.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("player") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_auth_url,

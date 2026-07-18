@@ -10,7 +10,10 @@ fn main() {
     unsafe {
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--renderer-process-limit=1 --js-flags=--max-old-space-size=96 \
+            // One shared renderer is the big memory win. The JS-heap cap stays
+            // generous (256 MB) — 96 MB was tight enough that the library/search
+            // could OOM-crash the shared renderer into a broken "!" state.
+            "--renderer-process-limit=1 --js-flags=--max-old-space-size=256 \
              --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,Translate",
         );
     }

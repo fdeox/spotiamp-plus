@@ -1,6 +1,6 @@
 [package]
 name = "spotiamp"
-version = "0.6.4"
+version = "0.6.6"
 description = "Spotify in Winamp Classic"
 authors = ["Ted Steen"]
 edition = "2024"
@@ -41,6 +41,9 @@ http = "1"
 url = "2.5"
 directories = "6.0"
 tauri-plugin-dialog = "2.7"
+# Guarantees a single running instance: a second launch focuses the existing
+# window instead of spawning a duplicate that plays over the first.
+tauri-plugin-single-instance = "2"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }

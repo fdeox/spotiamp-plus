@@ -329,5 +329,16 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         });
     }
 
+    // Closing the main window — its own X, Alt+F4, or the taskbar's right-click
+    // "Close window" — quits the app. Without this, prevent_exit() (which keeps
+    // the app alive so closing a *sub*-window doesn't kill it) would leave the
+    // process running with audio still playing invisibly in the background, and
+    // relaunching would spawn a second instance playing over the first.
+    window.on_window_event(|event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            std::process::exit(0);
+        }
+    });
+
     Ok(window)
 }
