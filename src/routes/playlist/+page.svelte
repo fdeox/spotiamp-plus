@@ -12,6 +12,9 @@
   import { Playlist } from "$lib/playlist.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
+  import { ask, message } from "@tauri-apps/plugin-dialog";
 
   /** @type {{data: import('./$types').PageData}} */
   const { data: playlistSettings } = $props();
@@ -63,6 +66,44 @@
   invoke("get_skin")
     .then((s) => (currentSkin = s || "classic"))
     .catch(() => {});
+
+  // --- in-app updates ---
+  // The manifest and the downloaded package are both signature-checked against
+  // the public key baked into tauri.conf.json, so a tampered update is refused.
+  let updateBusy = $state(false);
+  async function checkForUpdates() {
+    if (updateBusy) return;
+    updateBusy = true;
+    try {
+      const update = await check();
+      if (!update) {
+        await message("You're running the latest version.", {
+          title: "Spotiamp+",
+          kind: "info",
+        });
+        return;
+      }
+      const wanted = await ask(
+        `Spotiamp+ ${update.version} is available (you have ${update.currentVersion}).\n\nDownload and install it now?`,
+        { title: "Update available", kind: "info" },
+      );
+      if (!wanted) return;
+      await update.downloadAndInstall();
+      const restart = await ask(
+        "Update installed. Restart Spotiamp+ now to finish?",
+        { title: "Spotiamp+", kind: "info" },
+      );
+      if (restart) await relaunch();
+    } catch (e) {
+      await message(`Couldn't check for updates.\n\n${e}`, {
+        title: "Spotiamp+",
+        kind: "error",
+      });
+    } finally {
+      updateBusy = false;
+      closeMenu();
+    }
+  }
 
   // --- always on top ---
   let alwaysOnTop = $state(false);
@@ -825,6 +866,9 @@
         onclick={() => (playlist.autoplay = !playlist.autoplay)}
       >
         <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
+      </button>
+      <button class="ctx-item" onclick={checkForUpdates}>
+        {updateBusy ? "⏳ Checking…" : "⬆️ Check for updates"}
       </button>
       <button class="ctx-item ctx-discord" onclick={openDiscord}>
         💬 Join our Discord

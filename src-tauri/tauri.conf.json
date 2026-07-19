@@ -15,8 +15,17 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBQkJDREQyNUUyN0EwRjcKUldUM29DZGUwczI3MmtHNUkzMXNVdVMwL2VmczR0ei9BSU9SNjllbHQzUUxaQmdnTjlQSDIvUlcK",
+      "endpoints": [
+        "https://github.com/fdeox/spotiamp-plus/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
