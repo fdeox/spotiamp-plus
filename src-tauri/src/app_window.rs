@@ -31,7 +31,18 @@ pub fn build_frameless_window(
         .resizable(false)
         .disable_drag_drop_handler()
         .accept_first_mouse(true)
+        // Applied here so every window — including ones opened later — comes up
+        // matching the user's always-on-top choice.
+        .always_on_top(crate::settings::Settings::current().player.always_on_top)
         .build()
+}
+
+/// Toggle always-on-top across every open Spotiamp+ window, so a docked group
+/// stays together instead of one window floating above the rest.
+pub fn apply_always_on_top(app: &AppHandle, active: bool) {
+    for (_, window) in app.webview_windows() {
+        let _ = window.set_always_on_top(active);
+    }
 }
 
 pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i32>>) {

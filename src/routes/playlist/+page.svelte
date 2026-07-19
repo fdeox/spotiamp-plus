@@ -64,9 +64,26 @@
     .then((s) => (currentSkin = s || "classic"))
     .catch(() => {});
 
+  // --- always on top ---
+  let alwaysOnTop = $state(false);
+  async function loadAlwaysOnTop() {
+    try {
+      const settings = await invoke("get_player_settings");
+      alwaysOnTop = Boolean(settings?.always_on_top);
+    } catch {
+      alwaysOnTop = false;
+    }
+  }
+  async function toggleAlwaysOnTop() {
+    closeMenu();
+    alwaysOnTop = !alwaysOnTop;
+    await invoke("set_always_on_top", { active: alwaysOnTop }).catch(() => {});
+  }
+
   function openMenu(e) {
     e.preventDefault();
     loadAudioDevices();
+    loadAlwaysOnTop();
     const mw = 200,
       mh = 220;
     menu = {
@@ -776,6 +793,9 @@
             playlist.clear();
           }}>Clear playlist</button
         >
+        <button class="ctx-item" onclick={toggleAlwaysOnTop}>
+          <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
+        </button>
       {:else if menuTab === "audio"}
         <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
           <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default

@@ -113,6 +113,21 @@
   let numberDisplayHidden = $state(true);
 
   const currentTime = $derived(durationToMMSS(seekPosition));
+
+  // Windowshade seek bar: the thumb travels the track's 17px minus its own 3px.
+  const shadeProgress = $derived(
+    loadedTrack?.durationInMs
+      ? Math.min(1, Math.max(0, seekPosition / loadedTrack.durationInMs))
+      : 0,
+  );
+  /** @param {PointerEvent} e */
+  function shadeSeek(e) {
+    const duration = loadedTrack?.durationInMs;
+    if (!duration) return;
+    const rect = /** @type {HTMLElement} */ (e.currentTarget).getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    seek(fraction * duration);
+  }
   const trackDisplayText = $derived(
     loadedTrack
       ? `${loadedTrack.displayName} (${loadedTrack.displayDuration})`
@@ -800,17 +815,37 @@
       <!--
         The shade bar sprite has the transport icons drawn into it, spaced ~10px
         apart from x=166 (measured off the skin's own bitmap). These are just the
-        click targets over them, reusing the expanded window's handlers.
+        hit areas over them, reusing the expanded window's handlers.
+
+        They fire on pointerdown rather than click: the drag handle calls
+        preventDefault() on pointerdown, which suppresses the synthesized click
+        that would normally follow, so an onclick here would never run.
       -->
       {#each controlButtons as button, i}
         <button
           class="shade-ctrl"
           data-no-drag
           style:--cx={166 + i * 10}
-          onclick={button.click}
+          onpointerdown={(e) => {
+            e.stopPropagation();
+            button.click();
+          }}
           aria-label={button.label}
         ></button>
       {/each}
+      <!-- seek bar: track sprite (0,36) 17x7 with the 3x7 thumb (20,36) -->
+      {#if !stoppedOrUnavailable}
+        <button
+          class="sprite shade-position"
+          data-no-drag
+          onpointerdown={shadeSeek}
+          aria-label="Seek"
+        ></button>
+        <div
+          class="sprite shade-thumb"
+          style:--sprite-x="{226 + shadeProgress * 14}px"
+        ></div>
+      {/if}
       <button
         class="sprite unshade-btn"
         onclick={() => (shadeActive = false)}
@@ -899,6 +934,28 @@
   button.unshade-btn:active {
     background-position: -9px -27px;
   }
+  /* windowshade seek bar — sprites verified against Webamp's skin sprite map */
+  button.shade-position {
+    --sprite-url: var(--skin-titlebar);
+    --sprite-x: 226px;
+    --sprite-y: 4px;
+    width: 17px;
+    height: 7px;
+    background-position: 0px -36px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 5;
+  }
+  .shade-thumb {
+    --sprite-url: var(--skin-titlebar);
+    --sprite-y: 4px;
+    width: 3px;
+    height: 7px;
+    background-position: -20px -36px;
+    pointer-events: none;
+    z-index: 6;
+  }
   /* transparent hit areas over the transport icons drawn into the shade bar */
   button.shade-ctrl {
     position: absolute;
@@ -908,8 +965,7 @@
     width: calc(10px * var(--zoom));
     height: calc(14px * var(--zoom));
     border: none;
-    /* TEMPORARY debug tint — shows exactly where the hit areas land */
-    background: rgba(255, 0, 0, 0.4);
+    background: transparent;
     padding: 0;
     cursor: pointer;
   }

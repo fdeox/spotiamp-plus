@@ -272,6 +272,7 @@ pub fn run() {
             lists::add_to_list,
             player_window::set_double_size,
             player_window::set_windowshade,
+            player_window::set_always_on_top,
             player_window::take_latest_spectrum,
             player_window::seek,
             player_window::set_playlist_window_visible,

@@ -127,6 +127,12 @@ pub fn set_windowshade(active: bool) {
 }
 
 #[tauri::command]
+pub fn set_always_on_top(active: bool, app_handle: AppHandle) {
+    Settings::current_mut().player.always_on_top = active;
+    app_window::apply_always_on_top(&app_handle, active);
+}
+
+#[tauri::command]
 pub async fn take_latest_spectrum(player: State<'_, SharedPlayer>) -> Result<Vec<(f32, f32)>, ()> {
     Ok(player.lock().await.take_latest_spectrum())
 }

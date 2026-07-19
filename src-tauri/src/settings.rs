@@ -127,6 +127,9 @@ pub struct PlayerSettings {
     /// `serde(default)` keeps older settings files loading (defaults to off).
     #[serde(default)]
     pub windowshade_active: bool,
+    /// Keep every Spotiamp+ window above other applications.
+    #[serde(default)]
+    pub always_on_top: bool,
 }
 
 impl Default for PlayerSettings {
@@ -138,6 +141,7 @@ impl Default for PlayerSettings {
             show_playlist: true,
             audio_device: None,
             windowshade_active: false,
+            always_on_top: false,
         }
     }
 }
