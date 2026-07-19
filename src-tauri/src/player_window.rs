@@ -293,8 +293,15 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         .inner_size
         .clone()
         .unwrap_or_default();
-    let window =
-        app_window::build_frameless_window(app_handle, "player", "Player", "player", inner_size)?;
+    // The main window represents the app in the taskbar and Alt+Tab, so it
+    // carries the product name rather than "Player".
+    let window = app_window::build_frameless_window(
+        app_handle,
+        "player",
+        "Spotiamp+",
+        "player",
+        inner_size,
+    )?;
 
     app_window::apply_position(
         &window,

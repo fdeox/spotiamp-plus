@@ -79,6 +79,15 @@
   let showEq = $state(false);
   // 🦙 hidden about screen (click the titlebar logo)
   let showLlama = $state(false);
+  let appVersion = $state("");
+  // Version comes from the Rust side (Tauri config), so the About box can't
+  // drift from the version that actually shipped.
+  async function openAbout() {
+    if (!appVersion) appVersion = await invoke("app_version").catch(() => "");
+    showLlama = true;
+  }
+  /** @param {"github" | "discord" | "license"} target — must match the Rust allowlist */
+  const openLink = (target) => invoke("open_external", { target }).catch(() => {});
   // the currently-playing track uri (from backend events), broadcast to the
   // lyrics window along with the interpolated position
   let currentTrackUri = $state(null);
@@ -543,19 +552,32 @@
   <button
     class="llama-trigger"
     data-no-drag
-    onclick={() => (showLlama = true)}
+    onclick={openAbout}
     aria-label="About"
   ></button>
   {#if showLlama}
-    <button class="llama-about" data-no-drag onclick={() => (showLlama = false)}>
-      <div class="llama-art">🦙</div>
-      <div class="llama-phrase">IT REALLY WHIPS THE LLAMA'S ASS!</div>
-      <div class="llama-credits">
-        Spotiamp+ · a Winamp for Spotify<br />
-        fork of tedsteen/Spotiamp · by fdeox
+    <div class="llama-about" data-no-drag role="dialog" aria-label="About Spotiamp+">
+      <!-- click anywhere that isn't a link to close -->
+      <button class="llama-close-layer" aria-label="Close" onclick={() => (showLlama = false)}
+      ></button>
+      <div class="llama-content">
+        <div class="llama-art">🦙</div>
+        <div class="llama-phrase">IT REALLY WHIPS THE LLAMA'S ASS!</div>
+        <div class="llama-version">
+          Spotiamp+{appVersion ? ` v${appVersion}` : ""} · Spotify's music, Winamp's soul
+        </div>
+        <div class="llama-credits">
+          Built on Spotiamp by Ted Steen · extended by fdeox<br />
+          Tauri · Rust · Svelte · librespot
+        </div>
+        <div class="llama-links">
+          <button onclick={() => openLink("github")}>GitHub</button>
+          <button onclick={() => openLink("discord")}>Discord</button>
+          <button onclick={() => openLink("license")}>License</button>
+        </div>
+        <div class="llama-hint">(click to close)</div>
       </div>
-      <div class="llama-hint">(click to close)</div>
-    </button>
+    </div>
   {/if}
 
   <div class="sprite stereo-mono-sprite stereo-mono-sprite-mono"></div>
@@ -827,26 +849,63 @@
     position: absolute;
     inset: 0;
     z-index: 60;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: calc(3px * var(--zoom));
-    border: none;
     background: rgba(2, 8, 2, 0.92);
     color: #00ff41;
     font-family: "px sans nouveaux", monospace;
     -webkit-font-smoothing: none;
-    cursor: pointer;
     transform-origin: top left;
     transform: scale(var(--zoom));
     width: 275px;
     height: 116px;
   }
+  /* full-bleed click target behind the text, so clicking the box closes it */
+  .llama-close-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .llama-content {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(2px * var(--zoom));
+    /* let clicks fall through to the close layer — except on the links */
+    pointer-events: none;
+  }
   .llama-art {
-    font-size: 34px;
+    font-size: 24px;
     line-height: 1;
     animation: llama-bob 0.9s ease-in-out infinite alternate;
+  }
+  .llama-version {
+    font-size: 7px;
+    color: #6fdc8c;
+    text-align: center;
+  }
+  .llama-links {
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  .llama-links button {
+    border: none;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    font-size: 7px;
+    color: #00ff41;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .llama-links button:hover {
+    color: #baffd0;
   }
   @keyframes llama-bob {
     from {

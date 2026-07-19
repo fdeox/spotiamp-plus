@@ -1,8 +1,8 @@
 [package]
 name = "spotiamp"
 version = "0.6.6"
-description = "Spotify in Winamp Classic"
-authors = ["Ted Steen"]
+description = "Spotiamp+ — a Winamp-style Spotify desktop player"
+authors = ["Ted Steen", "fdeox"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

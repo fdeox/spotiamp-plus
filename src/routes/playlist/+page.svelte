@@ -110,10 +110,10 @@
   }
   const closeMenu = () => (menu.show = false);
   let menuTab = $state("skins");
-  const DISCORD_INVITE = "https://discord.gg/8Rq5Xycny4";
   async function openDiscord() {
     closeMenu();
-    await invoke("open_url", { url: DISCORD_INVITE }).catch(() => {});
+    // The URL itself lives in Rust's allowlist — we only name the target.
+    await invoke("open_external", { target: "discord" }).catch(() => {});
   }
   async function chooseSkin(skin) {
     currentSkin = skin;

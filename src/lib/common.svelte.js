@@ -60,7 +60,7 @@ export function* range(start, end) {
  * @param {Error} e
  */
 export async function handleError(e) {
-    await message(`${e}`, { title: "Spotiamp", kind: "error" });
+    await message(`${e}`, { title: "Spotiamp+", kind: "error" });
 }
 
 /**

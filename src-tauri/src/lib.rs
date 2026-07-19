@@ -121,10 +121,23 @@ fn get_auth_url() -> Result<String, String> {
         .ok_or_else(|| "no pending auth URL".to_string())
 }
 
-/// Open a URL in the user's default browser (e.g. the Discord invite).
+/// The fixed set of external links the UI may open. The frontend names a
+/// target and the URL is resolved *here*, so no caller can hand the shell an
+/// arbitrary URL, a local path or a `file:`/`javascript:` scheme.
 #[tauri::command]
-fn open_url(url: String) {
-    #[cfg(target_os = "windows")]
+fn open_external(target: String) -> Result<(), String> {
+    let url = match target.as_str() {
+        "github" => "https://github.com/fdeox/spotiamp-plus",
+        "discord" => "https://discord.gg/8Rq5Xycny4",
+        "license" => "https://github.com/fdeox/spotiamp-plus/blob/main/LICENSE",
+        other => return Err(format!("unknown link target: {other}")),
+    };
+    open_in_browser(url);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn open_in_browser(url: &str) {
     unsafe {
         use windows::Win32::UI::Shell::ShellExecuteW;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -140,8 +153,16 @@ fn open_url(url: String) {
             SW_SHOWNORMAL,
         );
     }
-    #[cfg(not(target_os = "windows"))]
-    let _ = url;
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_in_browser(_url: &str) {}
+
+/// The running version, read from the Tauri config — so the About box never
+/// drifts from the version the installer actually shipped.
+#[tauri::command]
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
@@ -220,7 +241,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_auth_url,
-            open_url,
+            open_external,
+            app_version,
             player_window::get_track_metadata,
             player_window::load_track,
             player_window::get_track_ids,
@@ -296,7 +318,7 @@ pub fn run() {
                         let _ = app_handle
                             .dialog()
                             .message(format!("{e}"))
-                            .title("Spotiamp - Startup Error")
+                            .title("Spotiamp+ - Startup Error")
                             .kind(tauri_plugin_dialog::MessageDialogKind::Error)
                             .blocking_show();
                     }
