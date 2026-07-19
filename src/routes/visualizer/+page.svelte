@@ -27,6 +27,16 @@
     "neongrid",
     "metaball",
     "mandala",
+    "fractal",
+    "nebula",
+    "wormhole",
+    "warpspeed",
+    "liquid",
+    "crystal",
+    "aurora",
+    "vortex",
+    "supernova",
+    "circuit",
   ];
   const MODE_COUNT = MODE_NAMES.length;
   let mode = $state(0);
@@ -55,6 +65,9 @@
                  mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x), f.y);
     }
     float fbm(vec2 p){ float v=0.0, a=0.5; for(int k=0;k<4;k++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
+    // Cosine gradient palette. Gives coherent, art-directed colour ramps
+    // instead of the full-rainbow sweep hsv() produces.
+    vec3 pal(float x, vec3 a, vec3 b, vec3 c, vec3 d){ return a + b*cos(6.28318*(c*x+d)); }
 
     void main() {
       vec2 uv = (gl_FragCoord.xy - 0.5*iResolution)/iResolution.y;
@@ -173,12 +186,125 @@
           mb += (0.09+uBass*0.09)/length(uv-c);
         }
         col = hsv(fract(mb*0.1+t*0.1+uMid), 0.7, smoothstep(1.0,2.2,mb)*(0.6+uLevel));
-      } else {
+      } else if (m == 19) {
         // mandala
         float seg = 8.0+floor(uMid*8.0);
         float aa = abs(mod(a, 6.2831/seg) - 3.1415/seg);
         float mand = sin(aa*10.0+t)*sin(r*15.0 - t*3.0 - uBass*8.0);
         col = hsv(fract(r+t*0.1+uTreble), 0.8, 0.5+0.5*mand+uLevel*0.4);
+      } else if (m == 20) {
+        // julia set, orbit-trapped — the seed drifts with bass and mids
+        vec2 z = uv*1.6;
+        vec2 c = vec2(0.36*cos(t*0.7+uBass*2.0), 0.36*sin(t*0.55+uMid*2.0));
+        float trap = 1e9, esc = 0.0;
+        for (int k=0;k<24;k++) {
+          if (dot(z,z) < 16.0) {
+            z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+            trap = min(trap, abs(length(z)-0.6));
+            esc += 1.0;
+          }
+        }
+        col = pal(fract(esc*0.03 + t*0.05 + uMid*0.3),
+                  vec3(0.5), vec3(0.5), vec3(1.0,0.9,0.7), vec3(0.0,0.15,0.35));
+        col *= exp(-trap*(6.0+uTreble*10.0))*(1.5+uBass*2.0) + 0.04;
+      } else if (m == 21) {
+        // nebula: domain-warped fbm clouds with a glowing core
+        vec2 p = uv*1.4;
+        p += 0.35*vec2(fbm(p*1.5 + t*0.4), fbm(p*1.5 - t*0.35 + 5.0));
+        float dens = pow(fbm(p*2.0 + t*0.15)*1.3, 2.0) + 0.4*fbm(p*4.0 - t*0.22 + 3.0);
+        col = pal(fract(0.62 + dens*0.5 + t*0.03 + uMid*0.2),
+                  vec3(0.35,0.25,0.45), vec3(0.45,0.35,0.5), vec3(1.0), vec3(0.0,0.25,0.5));
+        col *= dens*(1.2+uBass*1.5);
+        col += vec3(0.5,0.6,1.0)*pow(max(0.0,1.0-r*1.2),3.0)*(0.15+uTreble*0.5);
+      } else if (m == 22) {
+        // wormhole: perspective depth with twisting ribs and distance fog
+        float z = 1.0/(r+0.12);
+        float ang = a + z*0.35 + t*0.6;
+        float depth = z + t*(2.0+uBass*3.0);
+        float rings = smoothstep(0.35,0.0, abs(fract(depth*0.5)-0.5));
+        float ribs = 0.5+0.5*sin(ang*8.0);
+        float fog = exp(-z*0.16);
+        col = pal(fract(depth*0.05 + uMid*0.3), vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0,0.33,0.67));
+        col *= (rings*0.8 + ribs*0.5 + sin(ang*3.0 + z*0.8 - t*2.0)*0.2)*fog*(1.0+uBass*1.5);
+        col += vec3(1.0,0.7,0.4)*smoothstep(0.35,0.0,r)*(0.2+uBass*0.8);
+      } else if (m == 23) {
+        // warp speed: stars race outward along angular lanes
+        float lanes = 42.0;
+        float li = floor(a*lanes/6.2831 + 0.5);
+        float seed = hash(vec2(li,7.0));
+        float z = fract(seed + t*(0.25+uBass*0.9));
+        float star = smoothstep(0.05,0.0, abs(a - li*6.2831/lanes)/(r+0.1))
+                   * smoothstep(0.10*z+0.01,0.0, abs(r - z*z*1.4));
+        col = pal(fract(seed+t*0.05), vec3(0.75), vec3(0.35), vec3(1.0), vec3(0.0,0.2,0.45));
+        col *= star*(0.8+uLevel*1.2)*(0.4+z);
+        col += vec3(0.6,0.8,1.0)*0.02/(r+0.03);
+      } else if (m == 24) {
+        // liquid: iterated domain warp, iridescent banding
+        vec2 p = uv*1.8;
+        for (int k=0;k<3;k++) {
+          p += 0.5*vec2(sin(p.y*2.3 - t*1.1 + uBass*2.0), cos(p.x*2.1 + t*0.9));
+          p *= 1.08;
+        }
+        float v = sin(p.x*1.5)*cos(p.y*1.5);
+        col = pal(fract(v*0.5 + t*0.08 + uMid*0.3),
+                  vec3(0.5), vec3(0.5), vec3(1.0,1.0,0.5), vec3(0.8,0.9,0.3));
+        col *= 0.6+0.8*abs(v)+uLevel*0.5;
+        col += vec3(0.2,0.35,0.6)*pow(abs(v),4.0)*(1.0+uTreble*2.0);
+      } else if (m == 25) {
+        // crystal: folded space, faceted edges
+        vec2 p = uv*1.5;
+        float rot = t*0.25 + uBass*0.6;
+        p *= mat2(cos(rot),-sin(rot),sin(rot),cos(rot));
+        for (int k=0;k<5;k++) {
+          p = abs(p) - vec2(0.32+0.12*sin(t*0.5+uMid*2.0), 0.24);
+          p *= mat2(cos(0.7),-sin(0.7),sin(0.7),cos(0.7))*1.18;
+        }
+        float d = abs(p.x)+abs(p.y);
+        col = pal(fract(d*0.4 + t*0.06 + uTreble*0.25),
+                  vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.15,0.35,0.6));
+        col *= smoothstep(0.12,0.0,d)*(1.3+uBass*1.8) + 0.06/(d+0.08);
+      } else if (m == 26) {
+        // aurora: stacked curtains drifting on noise
+        float acc = 0.0;
+        for (int k=0;k<4;k++) {
+          float fk = float(k);
+          float wave = fbm(vec2(uv.x*1.6 + t*0.25 + fk*0.7, t*0.18 + fk*0.7))*0.9 - 0.35;
+          acc += exp(-abs(uv.y - wave + fk*0.12 - 0.15)*(7.0 - uBass*3.0))*(0.5+0.5*sin(fk+t));
+        }
+        col = pal(fract(0.42 + uv.y*0.25 + t*0.03 + uMid*0.2),
+                  vec3(0.25,0.5,0.4), vec3(0.3,0.45,0.35), vec3(1.0), vec3(0.0,0.25,0.5));
+        col *= acc*(1.2+uBass*1.6);
+        col += vec3(0.1,0.3,0.25)*acc*acc*uTreble*2.0;
+      } else if (m == 27) {
+        // vortex: filaments dragged into the core
+        float swirl = a + 2.2/(r+0.25) - t*(1.0+uBass*1.6);
+        float fil = pow(0.5+0.5*sin(swirl*(3.0+floor(uMid*5.0))), 3.0+uTreble*6.0);
+        col = pal(fract(swirl*0.06 + t*0.05),
+                  vec3(0.5), vec3(0.5), vec3(1.0,0.95,0.8), vec3(0.1,0.25,0.5));
+        col *= fil*(0.8+uLevel*1.3) + smoothstep(0.5,0.0,r)*(0.35+uBass*0.9);
+      } else if (m == 28) {
+        // supernova: expanding shockwave over a ray burst
+        float pulse = fract(t*0.35);
+        float shock = smoothstep(0.06,0.0, abs(r - pulse*1.3))*(1.0-pulse);
+        float rays = pow(0.5+0.5*sin(a*(14.0+floor(uTreble*14.0)) + t*0.6), 4.0);
+        col = pal(fract(0.08 + r*0.4 + t*0.04),
+                  vec3(0.6,0.4,0.3), vec3(0.5,0.35,0.25), vec3(1.0), vec3(0.0,0.15,0.3));
+        col *= (0.05+uBass*0.10)/(r+0.05)
+             + rays*smoothstep(1.1,0.1,r)*(0.4+uLevel)
+             + shock*(2.0+uBass*3.0);
+      } else {
+        // circuit: pulses race along the traces
+        vec2 p = uv*(3.5+uMid*2.0);
+        vec2 g = fract(p)-0.5;
+        float rnd = hash(floor(p));
+        float line = min(abs(g.x), abs(g.y));
+        if (rnd > 0.5) line = min(line, abs(abs(g.x)-abs(g.y))*0.7071);
+        float trace = smoothstep(0.055,0.0,line);
+        float flow = fract((rnd > 0.5 ? p.x+p.y : p.x-p.y)*0.5 - t*(1.0+uBass*2.2) - rnd);
+        float node = smoothstep(0.09,0.0,length(g))*(0.4+0.6*sin(t*2.0+rnd*6.28));
+        col = pal(fract(0.45 + rnd*0.12 + t*0.02),
+                  vec3(0.2,0.5,0.45), vec3(0.25,0.45,0.4), vec3(1.0), vec3(0.0,0.2,0.4));
+        col *= trace*(0.35+uLevel*0.6) + trace*pow(1.0-flow,8.0)*(1.5+uBass*2.5) + node*(0.6+uTreble*1.5);
       }
 
       col *= 0.35+0.9*uLevel+0.3*uBass;
