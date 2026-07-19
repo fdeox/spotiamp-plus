@@ -97,7 +97,13 @@ impl OAuthFlow {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         let (auth_url, _) = client
             .authorize_url(CsrfToken::new_random)
-            .add_scopes(vec![Scope::new("streaming".to_string())])
+            // `user-read-private` exposes the subscription level, so we can tell
+            // a free account it needs Premium instead of letting librespot kill
+            // the process with no explanation.
+            .add_scopes(vec![
+                Scope::new("streaming".to_string()),
+                Scope::new("user-read-private".to_string()),
+            ])
             .set_pkce_challenge(pkce_challenge)
             .url();
 

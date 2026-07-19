@@ -99,6 +99,50 @@ impl SpotifySession {
         }
     }
 
+    /// Ask Spotify what kind of account this token belongs to.
+    ///
+    /// librespot's own catalogue check calls `exit(1)` the moment it learns the
+    /// account isn't Premium — no error, no window, nothing the user can see. We
+    /// therefore look it up ourselves *before* opening a session, so a free
+    /// account gets a real explanation instead of a silent disappearance.
+    ///
+    /// A failure here is deliberately not fatal: if the profile call is blocked
+    /// or the field is missing we carry on rather than lock anyone out.
+    async fn check_account_is_premium(access_token: &str) -> Result<(), SessionError> {
+        #[derive(serde::Deserialize)]
+        struct Profile {
+            product: Option<String>,
+        }
+
+        let client = match oauth2::reqwest::Client::builder().build() {
+            Ok(client) => client,
+            Err(_) => return Ok(()),
+        };
+        let response = client
+            .get("https://api.spotify.com/v1/me")
+            .bearer_auth(access_token)
+            .send()
+            .await;
+
+        let product = match response {
+            Ok(response) if response.status().is_success() => match response.text().await {
+                Ok(body) => serde_json::from_str::<Profile>(&body)
+                    .ok()
+                    .and_then(|profile| profile.product),
+                Err(_) => None,
+            },
+            _ => None,
+        };
+
+        match product.as_deref() {
+            // "open" is Spotify's name for a free account in this field.
+            Some(product) if product != "premium" => Err(SessionError::NotPremium {
+                product: product.to_string(),
+            }),
+            _ => Ok(()),
+        }
+    }
+
     async fn get_credentials_from_oauth(app: &AppHandle) -> Result<Credentials, SessionError> {
         let oauth_flow = OAuthFlow::new(
             "https://accounts.spotify.com/authorize",
@@ -148,6 +192,10 @@ impl SpotifySession {
         *token_received.lock().unwrap() = true;
         let _ = window.close();
         let token = result.map_err(|e| SessionError::TokenExchangeFailure { e })?;
+
+        // Checked here, before any session exists — librespot would otherwise
+        // exit the process itself the instant it sees a non-Premium account.
+        Self::check_account_is_premium(token.access_token().secret()).await?;
 
         Ok(Credentials::with_access_token(
             token.access_token().secret(),
@@ -405,6 +453,11 @@ pub enum SessionError {
 
     #[error("Could not get token ({e:?}")]
     TokenExchangeFailure { e: OAuthError },
+
+    /// The account can't stream. librespot reacts to this by calling exit()
+    /// itself, so we have to catch it first to say anything useful.
+    #[error("This Spotify account is {product}, and playback needs Premium")]
+    NotPremium { product: String },
 }
 
 #[derive(Debug, Error)]

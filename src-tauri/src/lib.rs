@@ -315,8 +315,31 @@ pub fn run() {
                             }
                         }
                     );
+                    let not_premium = matches!(
+                        &e,
+                        StartError::LoginFailed {
+                            e: SessionError::NotPremium { .. }
+                        }
+                    );
                     if is_cancelled {
                         log::info!("Login cancelled by user");
+                    } else if not_premium {
+                        // The common first-run disappointment: say plainly what
+                        // is wrong instead of showing a raw error string.
+                        let _ = app_handle
+                            .dialog()
+                            .message(
+                                "Spotiamp+ plays audio through your Spotify account, and Spotify \
+                                 only allows that for Premium subscriptions — so playback won't \
+                                 work on a free account.\n\n\
+                                 This is a restriction on Spotify's side, not something Spotiamp+ \
+                                 can work around.\n\n\
+                                 If you have another account with Premium, you can sign in with \
+                                 that one instead.",
+                            )
+                            .title("Spotiamp+ - Spotify Premium required")
+                            .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                            .blocking_show();
                     } else {
                         log::error!("Failed to start ({e:?})");
                         let _ = app_handle
