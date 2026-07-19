@@ -51,6 +51,10 @@
     return playerSettings.double_size_active;
   }
 
+  function initialWindowshadeActive() {
+    return playerSettings.windowshade_active ?? false;
+  }
+
   /**
    * @type {SpotifyTrack | undefined}
    */
@@ -94,6 +98,7 @@
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
   let doubleSizeActive = $state(initialDoubleSizeActive());
+  let shadeActive = $state(initialWindowshadeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
   let repeat = $state(0);
@@ -266,6 +271,13 @@
   $effect(() => {
     invoke("set_double_size", { active: doubleSizeActive });
     REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
+  });
+
+  // Windowshade: the player collapses to the classic 275x14 title bar. The
+  // layout's size effect picks the new height up and resizes the OS window.
+  $effect(() => {
+    invoke("set_windowshade", { active: shadeActive });
+    REACTIVE_WINDOW_SIZE.setSize(275, shadeActive ? 14 : 116);
   });
 
   // Discord Rich Presence. Only shown while actually playing; pausing/stopping/
@@ -545,7 +557,7 @@
   }
 </script>
 
-<main>
+<main class:shade={shadeActive}>
   <div class="sprite main-sprite"></div>
 
   <!-- 🦙 easter egg: click the Winamp titlebar logo -->
@@ -635,6 +647,11 @@
     class="sprite minimize-btn"
     onclick={() => getCurrentWindow().minimize()}
     aria-label="Minimize"
+  ></button>
+  <button
+    class="sprite shade-btn"
+    onclick={() => (shadeActive = true)}
+    aria-label="Windowshade mode"
   ></button>
 
   <div class="sprite side-buttons"></div>
@@ -747,6 +764,51 @@
     style:height="16px"
     id="main"
   ></div> -->
+
+  <!--
+    Classic Winamp windowshade: the player collapses to a single 275x14 bar.
+    Kept self-contained so the normal layout above stays untouched — `main.shade`
+    hides every other child (see the CSS below).
+  -->
+  {#if shadeActive}
+    <div class="shade-overlay">
+      <div class="sprite shade-bar" use:makeWindowDraggable></div>
+      <TextTicker
+        unavailable={playerState == "unavailable"}
+        text={trackDisplayText}
+        textOverride={tickerOverrideText}
+        x={10}
+        y={4}
+      />
+      <div class:hidden={timeDisplayHidden}>
+        <NumberDisplay
+          number={currentTime.m.toString().padStart(2, "0")}
+          x={176}
+          y={1}
+        />
+        <NumberDisplay
+          number={currentTime.s.toString().padStart(2, "0")}
+          x={206}
+          y={1}
+        />
+      </div>
+      <button
+        class="sprite unshade-btn"
+        onclick={() => (shadeActive = false)}
+        aria-label="Leave windowshade mode"
+      ></button>
+      <button
+        class="sprite minimize-btn"
+        onclick={() => getCurrentWindow().minimize()}
+        aria-label="Minimize"
+      ></button>
+      <button
+        class="sprite close-btn"
+        onclick={() => emitWindowEvent("playerWindow", { CloseRequested: null })}
+        aria-label="Close"
+      ></button>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -776,6 +838,47 @@
 
   button.minimize-btn:active {
     background-position-y: -9px;
+  }
+
+  /* ---- windowshade mode ------------------------------------------------
+     TITLEBAR.BMP (344x87) classic layout:
+       shade bar   (27,29) 275x14   ·  shade button   (0,18) 9x9
+       pressed     (9,18)           ·  unshade button (0,27) 9x9
+     The overlay is the only visible child while shaded.                  */
+  main.shade > :not(.shade-overlay) {
+    display: none;
+  }
+  .shade-overlay {
+    position: absolute;
+    inset: 0;
+  }
+  .shade-bar {
+    --sprite-url: var(--skin-titlebar);
+    --sprite-x: 0px;
+    --sprite-y: 0px;
+    width: 275px;
+    height: 14px;
+    background-position: -27px -29px;
+  }
+  button.shade-btn,
+  button.unshade-btn {
+    --sprite-url: var(--skin-titlebar);
+    --sprite-x: 254px;
+    --sprite-y: 3px;
+    width: 9px;
+    height: 9px;
+  }
+  button.shade-btn {
+    background-position: 0px -18px;
+  }
+  button.shade-btn:active {
+    background-position: -9px -18px;
+  }
+  button.unshade-btn {
+    background-position: 0px -27px;
+  }
+  button.unshade-btn:active {
+    background-position: -9px -27px;
   }
 
   .side-buttons {

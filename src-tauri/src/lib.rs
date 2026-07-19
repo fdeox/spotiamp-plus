@@ -271,6 +271,7 @@ pub fn run() {
             lists::delete_list,
             lists::add_to_list,
             player_window::set_double_size,
+            player_window::set_windowshade,
             player_window::take_latest_spectrum,
             player_window::seek,
             player_window::set_playlist_window_visible,

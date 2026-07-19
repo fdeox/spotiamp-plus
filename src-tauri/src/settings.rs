@@ -123,6 +123,10 @@ pub struct PlayerSettings {
     /// `serde(default)` keeps older settings files (without this field) loading.
     #[serde(default)]
     pub audio_device: Option<String>,
+    /// Classic Winamp windowshade: the player collapses to a single title bar.
+    /// `serde(default)` keeps older settings files loading (defaults to off).
+    #[serde(default)]
+    pub windowshade_active: bool,
 }
 
 impl Default for PlayerSettings {
@@ -133,6 +137,7 @@ impl Default for PlayerSettings {
             volume: 80,
             show_playlist: true,
             audio_device: None,
+            windowshade_active: false,
         }
     }
 }
