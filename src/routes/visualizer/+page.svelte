@@ -78,12 +78,18 @@
       vec3 col = vec3(0.0);
 
       if (m == 0) {
-        float rr = r + sin(a*(5.0+floor(uMid*6.0))+t*2.0)*(0.06+0.22*uMid) - uBass*0.25;
-        float tun = 0.35/(rr+0.18)+t*(1.0+uBass);
-        col.r=0.5+0.5*sin(tun*3.0+a*2.0+uBass*5.0);
-        col.g=0.5+0.5*sin(tun*2.0+t*1.3+uMid*4.0+2.1);
-        col.b=0.5+0.5*sin(tun*4.0+uTreble*6.0+4.2);
-        col+=(0.25+uBass)*smoothstep(0.5,0.0,rr);
+        // tunnel: panelled walls receding into fog, bass drives the camera
+        float zd = 0.45/(r+0.09);
+        float depth = zd + t*(1.2+uBass*2.5);
+        float ang = a + sin(zd*0.25 + t*0.4)*0.35;
+        float rows = smoothstep(0.42,0.0, abs(fract(depth*0.6)-0.5));
+        float cols = smoothstep(0.45,0.05, abs(fract(ang*(6.0+floor(uMid*6.0))/6.2831)-0.5));
+        float grout = smoothstep(0.06,0.0, abs(fract(depth*0.6)-0.5));
+        float fog = exp(-zd*0.11);
+        col = pal(fract(depth*0.045 + uMid*0.25),
+                  vec3(0.5), vec3(0.45), vec3(1.0,0.95,0.85), vec3(0.0,0.2,0.45));
+        col *= (0.2 + rows*cols*1.2 + grout*0.8)*fog;
+        col += vec3(1.0,0.75,0.45)*smoothstep(0.32,0.0,r)*(0.25+uBass*1.3);
       } else if (m == 1) {
         float aa = abs(mod(a, 1.0472) - 0.5236);
         vec2 p = vec2(cos(aa), sin(aa))*r;
@@ -107,9 +113,20 @@
         float v = sin(uv.x*8.0+t*2.0)+sin(uv.y*8.0+t*1.5)+sin((uv.x+uv.y)*8.0+t)+sin(r*10.0-t*2.0-uBass*8.0);
         col = hsv(fract(v*0.1+t*0.05+uTreble), 0.7, 0.5+0.4*sin(v+uBass*4.0)+uLevel*0.3);
       } else if (m == 6) {
-        // pulsing concentric rings
-        float ring = sin(r*(14.0+uBass*20.0) - t*4.0);
-        col = hsv(fract(r*0.5-t*0.1+uMid), 0.75, smoothstep(0.0,1.0,ring)*(0.4+uLevel+uBass));
+        // ripples: expanding wavefronts, each with a specular crest
+        float w = 0.0;
+        for (int k=0;k<3;k++) {
+          float fk = float(k);
+          float rr = fract(t*(0.35+fk*0.12) + fk*0.37);
+          w += (1.0-rr)*(0.6+uBass*0.9)
+             * exp(-abs(r-rr*1.5)*(14.0-uMid*6.0))
+             * sin((r-rr*1.5)*40.0);
+        }
+        float crest = smoothstep(0.0,0.6,abs(w));
+        col = pal(fract(0.55 + r*0.35 - t*0.05 + uMid*0.2),
+                  vec3(0.4,0.45,0.55), vec3(0.35,0.4,0.45), vec3(1.0), vec3(0.0,0.2,0.4));
+        col *= 0.2 + crest*(1.4+uLevel);
+        col += vec3(0.7,0.85,1.0)*pow(crest,6.0)*(0.4+uTreble*1.6);
       } else if (m == 7) {
         // hexagon grid
         vec2 p = uv*(4.0+uBass*3.0);
@@ -127,9 +144,20 @@
         }
         col = hsv(fract(md+t*0.1+uMid), 0.7, (1.0-md)*(0.4+uLevel+uBass));
       } else if (m == 9) {
-        // radial lightning
-        float b = 0.02/abs(sin(a*3.0+t)*0.5 - r + 0.3 + uBass*0.3);
-        col = hsv(fract(0.55+uTreble), 0.5, b*(0.5+uLevel)) + vec3(0.1,0.2,0.4)*b;
+        // lightning: fbm-jittered bolts, hot core inside a cool corona
+        float glow = 0.0;
+        for (int k=0;k<3;k++) {
+          float fk = float(k);
+          float seed = fk*7.3 + floor(t*(2.0+uBass*4.0));   // re-strikes on beats
+          float jag = (fbm(vec2(uv.y*3.5 + seed, seed*0.7 + t*0.6)) - 0.5)*1.3
+                    + (fbm(vec2(uv.y*11.0 + seed, t*1.4)) - 0.5)*0.45;
+          float d = abs(uv.x - ((fk-1.0)*0.42 + jag*(0.5+uMid)));
+          float flicker = 0.45 + 0.55*hash(vec2(seed, floor(t*14.0)));
+          glow += (0.006+uBass*0.012)/(d+0.006)*flicker;
+        }
+        col = vec3(0.35,0.55,1.0)*glow*0.5;
+        col += vec3(1.0)*pow(glow*0.5, 2.2);
+        col += vec3(0.25,0.4,0.9)*uTreble*0.35*glow;
       } else if (m == 10) {
         // warped checkerboard
         vec2 p = uv*(3.0+uMid*3.0);
@@ -138,10 +166,23 @@
         float c = mod(floor(p.x)+floor(p.y), 2.0);
         col = hsv(fract(t*0.1+uTreble), 0.6, (0.2+0.8*c)*(0.4+uLevel+uBass*0.5));
       } else if (m == 11) {
-        // radial spectrum bars
-        float bars = step(0.5, fract(a*(6.0+floor(uMid*8.0))/6.2831));
-        float lvl = 0.3+uBass*0.6+uTreble*0.4;
-        col = hsv(fract(a/6.2831+t*0.2), 0.8, step(r,lvl)*bars*(0.6+uLevel));
+        // spectrum analyser: a height per band, with peak caps riding on top
+        float bands = 24.0;
+        float bi = floor((uv.x+0.9)*bands/1.8);
+        float bx = fract((uv.x+0.9)*bands/1.8);
+        float f = bi/bands;                               // 0 = low .. 1 = high
+        float band = mix(mix(uBass, uMid, smoothstep(0.0,0.55,f)),
+                         uTreble, smoothstep(0.45,1.0,f));
+        float h = band*(0.55+0.45*noise(vec2(bi*0.7, t*2.2))) + 0.03;
+        float y = uv.y + 0.42;
+        float inBar = step(0.12,bx)*step(bx,0.88)*step(0.0,y);
+        float bar = inBar*step(y,h);
+        float peak = inBar*smoothstep(0.02,0.0, abs(y-(h+0.03)));
+        col = pal(fract(0.02 + y*0.55 + f*0.1),
+                  vec3(0.5,0.35,0.25), vec3(0.5,0.4,0.3), vec3(1.0), vec3(0.0,0.12,0.25));
+        col *= bar*(0.8+uLevel*0.8);
+        col += vec3(0.9,0.5,0.2)*bar*smoothstep(h,0.0,y)*0.4;   // hotter at the base
+        col += vec3(1.0,0.95,0.85)*peak*(0.7+uTreble);
       } else if (m == 12) {
         // moire interference
         vec2 p = uv*20.0;
@@ -156,16 +197,35 @@
         float f = fbm(p*2.0+t);
         col = hsv(fract(f+t*0.1+uTreble), 0.7, f*(0.5+uLevel+uBass));
       } else if (m == 14) {
-        // rotating polygon rings
-        float n = 3.0+floor(uMid*6.0);
+        // nested polygons rushing outward, each ring counter-rotating
+        float n = 3.0+floor(uMid*5.0);
         float ang = 6.2831/n;
-        float d = cos(floor(0.5+a/ang)*ang - a)*r;
-        float poly = smoothstep(0.03,0.0, abs(fract(d*(6.0+uBass*8.0)-t)-0.5));
-        col = hsv(fract(a/6.2831+t*0.1), 0.7, poly*(0.5+uLevel+uBass));
+        float acc = 0.0;
+        for (int k=0;k<6;k++) {
+          float fk = float(k);
+          float scale = fract(t*0.22 + fk/6.0);
+          float aa = a + t*(0.5-fk*0.12) + fk;
+          float d = abs(cos(floor(0.5+aa/ang)*ang - aa)*r - scale*1.25);
+          acc += (1.0-scale)*(0.004+uBass*0.010)/(d+0.006);
+        }
+        col = pal(fract(0.15 + t*0.05 + uTreble*0.2),
+                  vec3(0.5), vec3(0.5), vec3(1.0,0.9,0.75), vec3(0.1,0.3,0.55));
+        col *= acc*(0.7+uLevel*0.9);
       } else if (m == 15) {
-        // radial audio waveform ring
-        float wave = 0.35 + 0.12*sin(a*8.0+t*4.0) + 0.18*uBass + 0.1*sin(a*20.0-t*6.0)*uTreble;
-        col = hsv(fract(a/6.2831+t*0.2), 0.8, smoothstep(0.05,0.0, abs(r-wave))*(0.6+uLevel));
+        // oscilloscope: phosphor trace over a faint graticule
+        float wave = 0.0;
+        for (int k=1;k<=4;k++) {
+          float fk = float(k);
+          wave += sin(uv.x*(7.0*fk) + t*(3.0+fk))*(uBass/fk)*0.35;
+          wave += sin(uv.x*(23.0*fk) - t*(5.0+fk))*(uTreble/fk)*0.12;
+        }
+        wave += sin(uv.x*13.0 + t*4.0)*uMid*0.18;
+        float trace = (0.0035+uLevel*0.006)/(abs(uv.y - wave)+0.004);
+        float grid = smoothstep(0.03,0.0, abs(fract(uv.x*5.0)-0.5))
+                   + smoothstep(0.03,0.0, abs(fract(uv.y*5.0)-0.5));
+        col = vec3(0.15,0.9,0.35)*trace;
+        col += vec3(1.0)*pow(trace*0.6, 2.5);
+        col += vec3(0.05,0.3,0.12)*grid*0.35;
       } else if (m == 16) {
         // marble
         float mrb = sin((uv.x + fbm(uv*3.0+t))*8.0 + uBass*6.0);
