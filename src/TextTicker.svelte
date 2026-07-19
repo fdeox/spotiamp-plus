@@ -7,10 +7,11 @@
    * @property {boolean} unavailable
    * @property {number} x
    * @property {number} y
+   * @property {number} [chars] visible width in characters (windowshade needs a narrow one)
    */
 
   /** @type {Props} */
-  let { text, textOverride, unavailable, x, y } = $props();
+  let { text, textOverride, unavailable, x, y, chars = 31 } = $props();
 
   /**
    * @type {Record<string, [number, number]>}
@@ -90,7 +91,7 @@
     ü: [0, 20],
   };
 
-  const tickerActive = $derived(text.length > 31);
+  const tickerActive = $derived(text.length > chars);
 
   let xShift = $state(0);
   const SEPARATOR = " *** ";
@@ -127,7 +128,7 @@
 
   const textWindow = $derived.by(() => {
     const xOffset = textOverride ? 0 : xShift;
-    return letters.slice(xOffset, xOffset + Math.min(31, letters.length));
+    return letters.slice(xOffset, xOffset + Math.min(chars, letters.length));
   });
   onDestroy(() => clearInterval(ticker));
 </script>
@@ -136,6 +137,7 @@
   class="text-container"
   style:--x={x}
   style:--y={y}
+  style:--chars={chars}
   style:opacity={unavailable ? "50%" : "100%"}
 >
   {#each textWindow as lut, index}
@@ -152,7 +154,7 @@
   .text-container {
     position: absolute;
     overflow: hidden;
-    width: calc(31 * 5px * var(--zoom));
+    width: calc(var(--chars) * 5px * var(--zoom));
     height: calc(6px * var(--zoom));
     left: calc(var(--x) * var(--zoom) * 1px);
     top: calc(var(--y) * var(--zoom) * 1px);

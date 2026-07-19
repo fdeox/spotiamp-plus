@@ -1,4 +1,6 @@
-# Spotiamp+
+<p align="center">
+  <img src="docs/brand/banner.png" alt="Spotiamp+ — boost your music" width="100%">
+</p>
 
 [![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/8Rq5Xycny4)
 

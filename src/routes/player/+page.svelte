@@ -773,25 +773,44 @@
   {#if shadeActive}
     <div class="shade-overlay">
       <div class="sprite shade-bar" use:makeWindowDraggable></div>
+      <!--
+        Classic shade layout (verified against the skin sprite's own recesses
+        and Webamp's reference CSS): the title sits in the recess at x=79, and
+        the time is the small TEXT.BMP "mini time" at x=127 — not the big
+        NUMBERS.BMP digits the expanded window uses.
+      -->
       <TextTicker
         unavailable={playerState == "unavailable"}
         text={trackDisplayText}
         textOverride={tickerOverrideText}
-        x={10}
+        x={79}
         y={4}
+        chars={9}
       />
       <div class:hidden={timeDisplayHidden}>
-        <NumberDisplay
-          number={currentTime.m.toString().padStart(2, "0")}
-          x={176}
-          y={1}
-        />
-        <NumberDisplay
-          number={currentTime.s.toString().padStart(2, "0")}
-          x={206}
-          y={1}
+        <TextTicker
+          unavailable={false}
+          text=""
+          textOverride={`${currentTime.m}:${currentTime.s.toString().padStart(2, "0")}`}
+          x={127}
+          y={4}
+          chars={6}
         />
       </div>
+      <!--
+        The shade bar sprite has the transport icons drawn into it, spaced ~10px
+        apart from x=166 (measured off the skin's own bitmap). These are just the
+        click targets over them, reusing the expanded window's handlers.
+      -->
+      {#each controlButtons as button, i}
+        <button
+          class="shade-ctrl"
+          data-no-drag
+          style:--cx={166 + i * 10}
+          onclick={button.click}
+          aria-label={button.label}
+        ></button>
+      {/each}
       <button
         class="sprite unshade-btn"
         onclick={() => (shadeActive = false)}
@@ -879,6 +898,20 @@
   }
   button.unshade-btn:active {
     background-position: -9px -27px;
+  }
+  /* transparent hit areas over the transport icons drawn into the shade bar */
+  button.shade-ctrl {
+    position: absolute;
+    z-index: 5;
+    left: calc(var(--cx) * 1px * var(--zoom));
+    top: 0;
+    width: calc(10px * var(--zoom));
+    height: calc(14px * var(--zoom));
+    border: none;
+    /* TEMPORARY debug tint — shows exactly where the hit areas land */
+    background: rgba(255, 0, 0, 0.4);
+    padding: 0;
+    cursor: pointer;
   }
 
   .side-buttons {
