@@ -72,13 +72,19 @@ export function makeDockedDraggable(element, selfLabel, eventName) {
       const snapDistance = context.docked
         ? STICKY_SNAP_DISTANCE
         : SNAP_DISTANCE;
-      let snapped;
+      // Snap to the CLOSEST window in range, not the first one that happens to
+      // be near — otherwise a window sitting between two others could grab the
+      // wrong neighbour (e.g. the library jumping onto the visualizer instead
+      // of docking to the playlist it was next to).
+      let best;
       for (const rect of context.snapRects) {
-        snapped = snapPosition(rawRect, rect, snapDistance);
-        if (snapped) break;
+        const result = snapPosition(rawRect, rect, snapDistance);
+        if (result && (!best || result.distance < best.distance)) {
+          best = result;
+        }
       }
-      context.docked = snapped !== undefined;
-      return snapped ?? rawPosition;
+      context.docked = best !== undefined;
+      return best?.position ?? rawPosition;
     },
     async onEnd() {
       await emitWindowEvent(eventName, { DragEnded: null });
@@ -264,8 +270,11 @@ export function snapPosition(windowRect, otherRect, snapDistance) {
   ].sort((a, b) => a.distance - b.distance);
 
   const candidate = candidates[0];
+  // Returns the snapped position *and* how close the snap was, so a caller
+  // choosing among several windows can pick the nearest one rather than the
+  // first that happens to be in range.
   return candidate.snaps && candidate.distance <= snapDistance
-    ? candidate.position
+    ? { position: candidate.position, distance: candidate.distance }
     : undefined;
 }
 

@@ -620,13 +620,13 @@
           const snapDistance = context.docked
             ? STICKY_SNAP_DISTANCE
             : SNAP_DISTANCE;
-          const snappedPosition = snapPosition(
+          const snapped = snapPosition(
             rawRect,
             context.playlistRect,
             snapDistance,
           );
-          position = snappedPosition ?? rawPosition;
-          context.docked = snappedPosition !== undefined;
+          position = snapped?.position ?? rawPosition;
+          context.docked = snapped !== undefined;
         }
 
         if (context.screenBounds) {
