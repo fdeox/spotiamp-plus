@@ -163,6 +163,12 @@ pub struct Settings {
     /// App-local named lists (Winamp-style playlists kept in the app).
     #[serde(default)]
     pub saved_lists: Vec<SavedList>,
+    /// Controller ("free") mode: instead of streaming through librespot —
+    /// which a non-Premium account can't do — Spotiamp+ mirrors and drives
+    /// the official Spotify app through the Windows media session. Persisted
+    /// so a free account isn't sent through OAuth again on every launch.
+    #[serde(default)]
+    pub controller_mode: bool,
 }
 
 impl Settings {

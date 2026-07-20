@@ -21,6 +21,7 @@ mod oauth;
 mod player_window;
 mod playlist_window;
 mod settings;
+mod smtc;
 mod visualizer_window;
 mod sink;
 pub mod spotify;
@@ -165,12 +166,63 @@ fn app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+/// Whether this run is controller ("free") mode — the frontend adapts its
+/// transport, ticker and menus to mirror the official Spotify app.
+#[tauri::command]
+fn is_controller_mode() -> bool {
+    settings::Settings::current().controller_mode
+}
+
+/// The user got Premium (or wants to retry the sign-in): forget controller
+/// mode so the next launch goes through the normal OAuth + librespot path.
+#[tauri::command]
+fn leave_controller_mode() {
+    settings::Settings::current_mut().controller_mode = false;
+}
+
+/// Controller ("free") mode: no librespot session at all — the player window
+/// mirrors and drives the official Spotify app via the system media session.
+fn start_controller_mode(app_handle: &AppHandle) -> Result<(), StartError> {
+    player_window::build_window(app_handle).map_err(|e| StartError::WindowCreationFailed {
+        window_name: "Player".to_string(),
+        e,
+    })?;
+    Ok(())
+}
+
 async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
+    // A free account chose controller mode on an earlier run: skip login
+    // entirely (no OAuth browser tab on every launch) and start the mirror.
+    if settings::Settings::current().controller_mode {
+        return start_controller_mode(app_handle);
+    }
+
     let session = SpotifySession::default();
-    session
-        .login(app_handle)
-        .await
-        .map_err(|e| StartError::LoginFailed { e })?;
+    match session.login(app_handle).await {
+        Ok(()) => {}
+        Err(SessionError::NotPremium { .. }) => {
+            // A free account can't stream (librespot would exit the process on
+            // connect), but it CAN mirror the official app. Explain, remember
+            // the choice, and carry on in controller mode instead of dying.
+            let _ = app_handle
+                .dialog()
+                .message(
+                    "This Spotify account doesn't have Premium, which Spotify requires for \
+                     apps like Spotiamp+ to stream audio directly.\n\n\
+                     Spotiamp+ will start in Free Mode instead: keep the official Spotify \
+                     app playing, and Spotiamp+ becomes its Winamp face — track info, \
+                     seek bar and transport buttons all control it.\n\n\
+                     If you get Premium later, use \"Premium sign-in\" in the right-click \
+                     menu to switch to full mode.",
+                )
+                .title("Spotiamp+ - Free Mode")
+                .kind(tauri_plugin_dialog::MessageDialogKind::Info)
+                .blocking_show();
+            settings::Settings::current_mut().controller_mode = true;
+            return start_controller_mode(app_handle);
+        }
+        Err(e) => return Err(StartError::LoginFailed { e }),
+    }
 
     let player_window =
         player_window::build_window(app_handle).map_err(|e| StartError::WindowCreationFailed {
@@ -245,6 +297,14 @@ pub fn run() {
             get_auth_url,
             open_external,
             app_version,
+            is_controller_mode,
+            leave_controller_mode,
+            smtc::smtc_now_playing,
+            smtc::smtc_play,
+            smtc::smtc_pause,
+            smtc::smtc_next,
+            smtc::smtc_previous,
+            smtc::smtc_seek,
             player_window::get_track_metadata,
             player_window::load_track,
             player_window::get_track_ids,
@@ -315,31 +375,8 @@ pub fn run() {
                             }
                         }
                     );
-                    let not_premium = matches!(
-                        &e,
-                        StartError::LoginFailed {
-                            e: SessionError::NotPremium { .. }
-                        }
-                    );
                     if is_cancelled {
                         log::info!("Login cancelled by user");
-                    } else if not_premium {
-                        // The common first-run disappointment: say plainly what
-                        // is wrong instead of showing a raw error string.
-                        let _ = app_handle
-                            .dialog()
-                            .message(
-                                "Spotiamp+ plays audio through your Spotify account, and Spotify \
-                                 only allows that for Premium subscriptions — so playback won't \
-                                 work on a free account.\n\n\
-                                 This is a restriction on Spotify's side, not something Spotiamp+ \
-                                 can work around.\n\n\
-                                 If you have another account with Premium, you can sign in with \
-                                 that one instead.",
-                            )
-                            .title("Spotiamp+ - Spotify Premium required")
-                            .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
-                            .blocking_show();
                     } else {
                         log::error!("Failed to start ({e:?})");
                         let _ = app_handle

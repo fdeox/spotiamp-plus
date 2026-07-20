@@ -39,6 +39,11 @@
   /** @type {{data: import('./$types').PageData}} */
   const { data: playerSettings } = $props();
 
+  // Controller ("free") mode: no librespot player exists — the page mirrors
+  // and drives the official Spotify app through the smtc_* commands instead.
+  // Every player-backend invoke below is guarded on this.
+  const controllerMode = playerSettings.controller_mode === true;
+
   function initialVolume() {
     return playerSettings.volume;
   }
@@ -154,10 +159,18 @@
   });
 
   function emitPreviousPressed() {
+    if (controllerMode) {
+      invoke("smtc_previous").catch(() => {});
+      return;
+    }
     emitWindowEvent("playerWindow", { PreviousPressed: null });
   }
 
   function emitNextPressed() {
+    if (controllerMode) {
+      invoke("smtc_next").catch(() => {});
+      return;
+    }
     emitWindowEvent("playerWindow", { NextPressed: null });
   }
 
@@ -186,6 +199,11 @@
   }
 
   async function play() {
+    if (controllerMode) {
+      playerState = "playing"; // snappy UI; the SMTC poll corrects if refused
+      await invoke("smtc_play").catch(() => {});
+      return;
+    }
     if (playerState == "paused") {
       await invoke("play").catch(handleError);
     } else if (loadedTrack) {
@@ -204,6 +222,11 @@
   }
 
   async function pause() {
+    if (controllerMode) {
+      playerState = "paused";
+      await invoke("smtc_pause").catch(() => {});
+      return;
+    }
     if (playerState == "playing") {
       playerState = "paused"; // To make the UI a bit snappier
       await invoke("pause").catch(handleError);
@@ -211,6 +234,12 @@
   }
 
   async function stop() {
+    if (controllerMode) {
+      // The official Spotify app has no real "stop" — pause is the honest map.
+      playerState = "paused";
+      await invoke("smtc_pause").catch(() => {});
+      return;
+    }
     setPosition(0);
     sliderSeekPosition = 0;
     playerState = "stopped"; // To make the UI a bit snappier
@@ -239,9 +268,13 @@
     // To make the UI a bit snappier and to not glitch between new and old value
     setPosition(positionMs);
     sliderSeekPosition = positionMs;
-    await invoke("seek", {
-      positionMs,
-    }).catch(handleError);
+    if (controllerMode) {
+      await invoke("smtc_seek", { positionMs }).catch(() => {});
+    } else {
+      await invoke("seek", {
+        positionMs,
+      }).catch(handleError);
+    }
     // jump the Discord progress bar to the new position too
     pushDiscordPresence();
   }
@@ -250,19 +283,22 @@
   $effect(() => {
     if (playerState != "playing") {
       visualizer.stop(stoppedOrUnavailable);
-    } else {
+    } else if (!controllerMode) {
+      // No spectrum source in controller mode (the audio never passes through
+      // us), so the analyser stays dark instead of erroring every frame.
       visualizer.start();
     }
   });
 
   $effect(() => {
-    invoke("set_volume", { volume });
+    // No player backend exists in controller mode — the sliders stay visual.
+    if (!controllerMode) invoke("set_volume", { volume });
   });
 
   // snap the balance to centre when it's close, like Winamp's detent
   const balanceRow = $derived(Math.round((Math.abs(balance) / 100) * 27));
   $effect(() => {
-    invoke("set_balance", { balance: balance / 100 });
+    if (!controllerMode) invoke("set_balance", { balance: balance / 100 });
   });
 
   $effect(() => {
@@ -330,6 +366,39 @@
   });
   $effect(() => {
     emitWindowEvent("playerWindow", { RepeatChanged: repeat });
+  });
+
+  // Controller mode: mirror the official Spotify app once a second. The data
+  // is poured into the same state the normal player uses (loadedTrack,
+  // playerState, seek position), so the ticker, time display, seek bar and
+  // windowshade all just work without their own controller branches.
+  onMount(() => {
+    if (!controllerMode) return;
+    const poll = async () => {
+      const np = await invoke("smtc_now_playing").catch(() => null);
+      if (!np?.available || !np.title) {
+        playerState = "stopped";
+        loadedTrack = undefined;
+        return;
+      }
+      if (np.title !== loadedTrack?.name || np.artist !== loadedTrack?.artist) {
+        loadedTrack = /** @type {any} */ ({
+          name: np.title,
+          artist: np.artist,
+          album: np.album,
+          albumArt: null,
+          durationInMs: np.duration_ms,
+          displayName: `${np.artist} - ${np.title}`,
+          displayDuration: durationToString(np.duration_ms),
+          unavailable: false,
+        });
+      }
+      playerState = np.playing ? "playing" : "paused";
+      if (uiInputState != "seeking") setPosition(np.position_ms);
+    };
+    poll();
+    const smtcInterval = setInterval(poll, 1000);
+    return () => clearInterval(smtcInterval);
   });
 
   onMount(() => {
@@ -458,7 +527,11 @@
           break;
         case "l":
           acted();
-          invoke("set_library_window_visible", { visible: true });
+          // The library browses via the librespot session, which controller
+          // mode doesn't have.
+          if (!controllerMode) {
+            invoke("set_library_window_visible", { visible: true });
+          }
           break;
       }
     };
@@ -623,7 +696,10 @@
   <button
     class="sprite eq-btn"
     class:eq-btn-enabled={showEq}
-    onclick={() => (showEq = !showEq)}
+    onclick={() => {
+      // The EQ needs our own audio pipeline, which controller mode doesn't have.
+      if (!controllerMode) showEq = !showEq;
+    }}
     aria-label="Toggle equalizer"
   ></button>
   <button
@@ -712,8 +788,11 @@
   <!-- double-click the spectrum to pop the milkdrop-style visualizer window -->
   <button
     class="viz-open-btn"
-    ondblclick={() =>
-      invoke("set_visualizer_window_visible", { visible: true })}
+    ondblclick={() => {
+      if (!controllerMode) {
+        invoke("set_visualizer_window_visible", { visible: true });
+      }
+    }}
     aria-label="Open visualizer"
     title="double-click for the visualizer"
   ></button>

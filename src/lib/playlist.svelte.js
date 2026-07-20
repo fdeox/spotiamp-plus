@@ -171,8 +171,12 @@ export class Playlist {
 
     /**
      * @argument {string[]} uris
+     * @argument {boolean} [persistEnabled] false in controller mode, where the
+     *   playlist runs empty — persisting would wipe the URIs saved for
+     *   Premium mode.
      */
-    constructor(uris) {
+    constructor(uris, persistEnabled = true) {
+        this.persistEnabled = persistEnabled;
         $effect(() => {
             const focusedRow = this.focusedRow;
             if (!focusedRow?.element) {
@@ -329,6 +333,7 @@ export class Playlist {
      * Persist the current playlist as the ordered list of track URIs.
      */
     persist() {
+        if (!this.persistEnabled) return;
         invoke("set_uris", { uris: this.rows.map((r) => r.uri.asString) });
     }
 

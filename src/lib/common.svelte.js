@@ -127,9 +127,9 @@ export function handleDrop(urlCallback) {
  */
 
 /**
- * @typedef {{ volume: number, double_size_active: boolean, windowshade_active?: boolean, show_playlist: boolean, window_state: WindowState }} PlayerSettings
+ * @typedef {{ volume: number, double_size_active: boolean, windowshade_active?: boolean, controller_mode?: boolean, show_playlist: boolean, window_state: WindowState }} PlayerSettings
  */
 
 /**
- * @typedef {{ uris: string[], window_state: WindowState }} PlaylistSettings
+ * @typedef {{ uris: string[], window_state: WindowState, controller_mode?: boolean }} PlaylistSettings
  */

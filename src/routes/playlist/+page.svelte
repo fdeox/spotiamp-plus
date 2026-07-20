@@ -28,8 +28,14 @@
     REACTIVE_WINDOW_SIZE.setSize(width, height);
   }
 
+  // Controller ("free") mode: no librespot session exists, so loading the
+  // saved tracks (each needs session metadata) would only produce errors —
+  // the playlist starts empty and the saved URIs stay untouched in settings
+  // for when the user returns to Premium mode.
+  const controllerMode = playlistSettings.controller_mode === true;
+
   function createInitialPlaylist() {
-    return new Playlist(playlistSettings.uris);
+    return new Playlist(controllerMode ? [] : playlistSettings.uris, !controllerMode);
   }
 
   applyInitialWindowSize();
@@ -172,6 +178,14 @@
     closeMenu();
     // The URL itself lives in Rust's allowlist — we only name the target.
     await invoke("open_external", { target: "discord" }).catch(() => {});
+  }
+
+  // Controller mode → Premium: forget the mode flag and relaunch into the
+  // normal OAuth + librespot path.
+  async function switchToPremium() {
+    closeMenu();
+    await invoke("leave_controller_mode").catch(() => {});
+    await relaunch().catch(() => {});
   }
   async function chooseSkin(skin) {
     currentSkin = skin;
@@ -778,7 +792,10 @@
     ></div>
     <div class="ctx-menu" style:left="{menu.x}px" style:top="{menu.y}px">
       <div class="ctx-tabs">
-        {#each [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"]] as [id, label]}
+        <!-- controller mode: no audio pipeline of our own, so no device picker -->
+        {#each (controllerMode
+          ? [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"]]
+          : [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"]]) as [id, label]}
           <button
             class="ctx-tab"
             class:active={menuTab === id}
@@ -806,27 +823,30 @@
           </button>
         {/each}
       {:else if menuTab === "windows"}
-        <button
-          class="ctx-item"
-          onclick={() => {
-            closeMenu();
-            openLibraryWindow();
-          }}>Library…</button
-        >
-        <button
-          class="ctx-item"
-          onclick={() => {
-            closeMenu();
-            invoke("set_visualizer_window_visible", { visible: true });
-          }}>Visualizer…</button
-        >
-        <button
-          class="ctx-item"
-          onclick={() => {
-            closeMenu();
-            invoke("set_lyrics_window_visible", { visible: true });
-          }}>Lyrics…</button
-        >
+        <!-- these three browse/render through the librespot session -->
+        {#if !controllerMode}
+          <button
+            class="ctx-item"
+            onclick={() => {
+              closeMenu();
+              openLibraryWindow();
+            }}>Library…</button
+          >
+          <button
+            class="ctx-item"
+            onclick={() => {
+              closeMenu();
+              invoke("set_visualizer_window_visible", { visible: true });
+            }}>Visualizer…</button
+          >
+          <button
+            class="ctx-item"
+            onclick={() => {
+              closeMenu();
+              invoke("set_lyrics_window_visible", { visible: true });
+            }}>Lyrics…</button
+          >
+        {/if}
         <button
           class="ctx-item"
           onclick={() => {
@@ -860,13 +880,24 @@
       {/if}
 
       <div class="ctx-sep"></div>
-      <button
-        class="ctx-item"
-        title="when the queue ends, keep playing similar songs (Spotify radio)"
-        onclick={() => (playlist.autoplay = !playlist.autoplay)}
-      >
-        <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
-      </button>
+      {#if controllerMode}
+        <!-- back to the OAuth + librespot path on next launch -->
+        <button
+          class="ctx-item"
+          title="have Premium now? switch back to full streaming mode"
+          onclick={switchToPremium}
+        >
+          ★ Premium sign-in…
+        </button>
+      {:else}
+        <button
+          class="ctx-item"
+          title="when the queue ends, keep playing similar songs (Spotify radio)"
+          onclick={() => (playlist.autoplay = !playlist.autoplay)}
+        >
+          <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
+        </button>
+      {/if}
       <button class="ctx-item" onclick={checkForUpdates}>
         {updateBusy ? "⏳ Checking…" : "⬆️ Check for updates"}
       </button>
