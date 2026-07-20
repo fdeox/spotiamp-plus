@@ -381,7 +381,9 @@
         loadedTrack = undefined;
         return;
       }
-      if (np.title !== loadedTrack?.name || np.artist !== loadedTrack?.artist) {
+      const trackChanged =
+        np.title !== loadedTrack?.name || np.artist !== loadedTrack?.artist;
+      if (trackChanged) {
         loadedTrack = /** @type {any} */ ({
           name: np.title,
           artist: np.artist,
@@ -393,8 +395,19 @@
           unavailable: false,
         });
       }
+      const stateChanged = (playerState === "playing") !== np.playing;
       playerState = np.playing ? "playing" : "paused";
-      if (uiInputState != "seeking") setPosition(np.position_ms);
+      // The local clock ticks smoothly between polls; only re-anchor it when
+      // something real happened (new track, play/pause, or an external seek —
+      // seen as a drift the local clock can't have produced). Re-anchoring on
+      // every poll made the counter stutter and leap.
+      const drift = Math.abs(np.position_ms - seekPosition);
+      if (
+        uiInputState != "seeking" &&
+        (trackChanged || stateChanged || !np.playing || drift > 2000)
+      ) {
+        setPosition(np.position_ms);
+      }
     };
     poll();
     const smtcInterval = setInterval(poll, 1000);

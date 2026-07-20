@@ -80,6 +80,28 @@ mod imp {
             let to_ms = |t: windows::Foundation::TimeSpan| (t.Duration / 10_000).max(0) as u64;
             out.position_ms = timeline.Position().map(to_ms).unwrap_or(0);
             out.duration_ms = timeline.EndTime().map(to_ms).unwrap_or(0);
+
+            // Spotify only refreshes the timeline every few seconds, so the
+            // raw Position is stale most of the time — shown as-is it sticks,
+            // then leaps. LastUpdatedTime says when Position was captured;
+            // while playing, extrapolate to now for a smooth clock.
+            if out.playing
+                && let Ok(updated) = timeline.LastUpdatedTime()
+            {
+                // DateTime counts 100ns ticks since 1601-01-01 UTC; Unix time
+                // starts 11644473600s later.
+                if let Ok(since_epoch) =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                {
+                    let now_ticks =
+                        (since_epoch.as_millis() as i64) * 10_000 + 11_644_473_600_000 * 10_000;
+                    let elapsed_ms = (now_ticks - updated.UniversalTime) / 10_000;
+                    if elapsed_ms > 0 {
+                        out.position_ms = (out.position_ms + elapsed_ms as u64)
+                            .min(out.duration_ms.max(out.position_ms));
+                    }
+                }
+            }
         }
         out
     }
