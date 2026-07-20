@@ -19,6 +19,11 @@ pub fn build_window(
 //NOTE: async so Windows can create the window inside the command.
 #[tauri::command]
 pub async fn set_lyrics_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // Lyrics come through the librespot session — nothing to show in
+    // controller mode, so the window stays closed whatever asked for it.
+    if visible && crate::settings::Settings::current().controller_mode {
+        return Ok(());
+    }
     let window = match app_handle.get_webview_window("lyrics") {
         Some(window) => window,
         None => {

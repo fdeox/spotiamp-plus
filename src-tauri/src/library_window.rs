@@ -23,6 +23,11 @@ pub fn build_window(
 //      windows in it (see the same note in player_window::set_playlist_window_visible).
 #[tauri::command]
 pub async fn set_library_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // Controller mode has no librespot session for the library to browse
+    // through — refuse to open it no matter which button or key asked.
+    if visible && crate::settings::Settings::current().controller_mode {
+        return Ok(());
+    }
     let library_window = match app_handle.get_webview_window("library") {
         Some(window) => window,
         None => {

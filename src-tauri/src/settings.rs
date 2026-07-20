@@ -169,6 +169,15 @@ pub struct Settings {
     /// so a free account isn't sent through OAuth again on every launch.
     #[serde(default)]
     pub controller_mode: bool,
+    /// Crash backstop: set just before a librespot connect and cleared a
+    /// little after it survives. librespot kills the whole process (exit(1),
+    /// no dialog) when it learns mid-session that an account can't stream,
+    /// so if this flag is still set at the next startup, the last run died
+    /// during connect — almost always a non-Premium account that slipped
+    /// past the profile check — and the user gets offered Free Mode instead
+    /// of an endless silent-crash loop.
+    #[serde(default)]
+    pub pending_connect: bool,
 }
 
 impl Settings {

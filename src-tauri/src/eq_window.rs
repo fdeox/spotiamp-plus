@@ -19,6 +19,11 @@ pub fn build_window(
 //NOTE: async so Windows can create the window inside the command.
 #[tauri::command]
 pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // The EQ shapes audio we produce ourselves — controller mode has no
+    // pipeline, so the window stays closed whatever asked for it.
+    if visible && crate::settings::Settings::current().controller_mode {
+        return Ok(());
+    }
     let window = match app_handle.get_webview_window("eq") {
         Some(window) => window,
         None => {

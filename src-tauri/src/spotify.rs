@@ -76,27 +76,48 @@ impl SpotifySession {
             }
         };
 
-        match self.inner.connect(credentials, true).await {
-            Ok(_) => {
-                log::debug!("Successfully connected with cached credentials");
-                Ok(())
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to connect with cached credentials ({e:?}), re-authenticating..."
-                );
-                if let Some(config_dir) = get_config_dir() {
-                    let _ = std::fs::remove_file(config_dir.join("credentials.json"));
+        // librespot's own account gate kills the process shortly AFTER connect
+        // returns (exit(1) from the packet handler, no dialog we could show).
+        // Flag the attempt so the next startup can tell "died during connect"
+        // apart from a clean run, and only clear it once the session has
+        // demonstrably survived past that window. An ordinary error return
+        // clears it immediately — the process being alive to return one is
+        // itself the proof this wasn't the silent death.
+        crate::settings::Settings::current_mut().pending_connect = true;
+        let connected: Result<(), SessionError> = async {
+            match self.inner.connect(credentials, true).await {
+                Ok(_) => {
+                    log::debug!("Successfully connected with cached credentials");
+                    Ok(())
                 }
-                let new_credentials = Self::get_credentials_from_oauth(app).await?;
-                self.inner
-                    .connect(new_credentials, true)
-                    .await
-                    .map_err(|e| SessionError::ConnectError { e })?;
-                log::debug!("Successfully connected after re-authentication");
-                Ok(())
+                Err(e) => {
+                    log::warn!(
+                        "Failed to connect with cached credentials ({e:?}), re-authenticating..."
+                    );
+                    if let Some(config_dir) = get_config_dir() {
+                        let _ = std::fs::remove_file(config_dir.join("credentials.json"));
+                    }
+                    let new_credentials = Self::get_credentials_from_oauth(app).await?;
+                    self.inner
+                        .connect(new_credentials, true)
+                        .await
+                        .map_err(|e| SessionError::ConnectError { e })?;
+                    log::debug!("Successfully connected after re-authentication");
+                    Ok(())
+                }
             }
         }
+        .await;
+        match &connected {
+            Ok(()) => {
+                tauri::async_runtime::spawn(async {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    crate::settings::Settings::current_mut().pending_connect = false;
+                });
+            }
+            Err(_) => crate::settings::Settings::current_mut().pending_connect = false,
+        }
+        connected
     }
 
     /// Ask Spotify what kind of account this token belongs to.

@@ -197,6 +197,36 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
         return start_controller_mode(app_handle);
     }
 
+    // The last run died during a librespot connect (the flag never got
+    // cleared) — almost always a non-Premium account that slipped past the
+    // profile check, which librespot answers by killing the process with no
+    // dialog. Offer the way out instead of repeating the silent crash.
+    if settings::Settings::current().pending_connect {
+        settings::Settings::current_mut().pending_connect = false;
+        let use_free_mode = app_handle
+            .dialog()
+            .message(
+                "Spotiamp+ closed unexpectedly while connecting to Spotify last time.\n\n\
+                 This usually means the account doesn't have Premium, which Spotify \
+                 requires for direct streaming.\n\n\
+                 Start in Free Mode instead? Keep the official Spotify app playing and \
+                 Spotiamp+ becomes its Winamp face. Choose \"Try again\" if you believe \
+                 this account has Premium.",
+            )
+            .title("Spotiamp+ - Startup problem")
+            .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+            .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                "Free Mode".to_string(),
+                "Try again".to_string(),
+            ))
+            .blocking_show();
+        if use_free_mode {
+            settings::Settings::current_mut().controller_mode = true;
+            return start_controller_mode(app_handle);
+        }
+        // fall through into the normal sign-in attempt
+    }
+
     let session = SpotifySession::default();
     match session.login(app_handle).await {
         Ok(()) => {}
