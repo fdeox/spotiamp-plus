@@ -20,6 +20,37 @@
   let tracksError = $state("");
   let loadToken = 0;
 
+  // Column sorting (click a header). null = the natural list order.
+  /** @type {"artist" | "album" | "title" | "time" | null} */
+  let sortCol = $state(null);
+  let sortDir = $state(1); // 1 asc, -1 desc
+  /** @param {"artist" | "album" | "title" | "time"} col */
+  function sortBy(col) {
+    if (sortCol === col) {
+      sortDir = -sortDir;
+    } else {
+      sortCol = col;
+      sortDir = 1;
+    }
+    selectedTrack = -1; // indices change under a re-sort
+  }
+  // The rows actually shown: `tracks` in natural order, or sorted by a column.
+  // Every row op below reads through this so clicks map to the right track.
+  const displayTracks = $derived.by(() => {
+    const col = sortCol;
+    if (!col) return tracks;
+    const field = col === "title" ? "name" : col;
+    /** @param {any} t */
+    const key = (t) => (col === "time" ? (t.duration ?? 0) : (t[field] ?? ""));
+    return [...tracks].sort((a, b) => {
+      const ka = key(a);
+      const kb = key(b);
+      const c =
+        typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb), undefined, { sensitivity: "base" });
+      return sortDir * c;
+    });
+  });
+
   // tree UI state
   let expandLocal = $state(true);
   let expandPlaylists = $state(true);
@@ -214,31 +245,34 @@
   //  - playlist tracks → play it and queue the rest of that playlist
   function loadTrackIntoMain(index) {
     selectedTrack = index;
+    const uri = displayTracks[index]?.uri;
+    if (!uri) return;
     if (searchMode) {
-      emitWindowEvent("playerWindow", {
-        UrlsAppended: [trackUrl(trackUris[index])],
-      });
+      emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
     } else {
+      // play from here down the list *as currently sorted*
       emitWindowEvent("playerWindow", {
-        UrlsDropped: trackUris.slice(index).map(trackUrl),
+        UrlsDropped: displayTracks.slice(index).map((t) => trackUrl(t.uri)),
       });
     }
   }
 
   // Bottom-bar buttons operate on the selected row (falling back to the first).
   function playSelected() {
-    const i = selectedTrack >= 0 ? selectedTrack : 0;
-    if (!trackUris[i]) return;
-    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(trackUris[i])] });
+    const uri = displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri;
+    if (!uri) return;
+    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(uri)] });
   }
   function enqueueSelected() {
-    const i = selectedTrack >= 0 ? selectedTrack : 0;
-    if (!trackUris[i]) return;
-    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(trackUris[i])] });
+    const uri = displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri;
+    if (!uri) return;
+    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
   }
   function playAll() {
-    if (trackUris.length === 0) return;
-    emitWindowEvent("playerWindow", { UrlsDropped: trackUris.map(trackUrl) });
+    if (displayTracks.length === 0) return;
+    emitWindowEvent("playerWindow", {
+      UrlsDropped: displayTracks.map((t) => trackUrl(t.uri)),
+    });
   }
 
   // Add the selected track to an app-local list (kept in Spotiamp+, not Spotify).
@@ -257,8 +291,7 @@
     if (showListMenu) loadSavedListsLib();
   }
   function selectedUriString() {
-    const i = selectedTrack >= 0 ? selectedTrack : 0;
-    return trackUris[i] || null;
+    return displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri || null;
   }
   async function addSelectedToList(name) {
     const uri = selectedUriString();
@@ -490,10 +523,18 @@
       <div class="ml-view-head">{headTitle}</div>
 
       <div class="ml-cols">
-        <div class="ml-col ml-c-artist">Artist</div>
-        <div class="ml-col ml-c-album">Album</div>
-        <div class="ml-col ml-c-title">Title</div>
-        <div class="ml-col ml-c-time">Time</div>
+        <button class="ml-col ml-c-artist ml-colbtn" onclick={() => sortBy("artist")}>
+          Artist{sortCol === "artist" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        </button>
+        <button class="ml-col ml-c-album ml-colbtn" onclick={() => sortBy("album")}>
+          Album{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        </button>
+        <button class="ml-col ml-c-title ml-colbtn" onclick={() => sortBy("title")}>
+          Title{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        </button>
+        <button class="ml-col ml-c-time ml-colbtn" onclick={() => sortBy("time")}>
+          Time{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        </button>
       </div>
 
       <div class="ml-listwrap">
@@ -503,7 +544,7 @@
             Select a playlist on the left, or search Spotify above.
           </div>
         {:else}
-          {#each tracks as t, i}
+          {#each displayTracks as t, i}
             <div
               class="ml-row"
               class:sel={selectedTrack === i}
@@ -865,6 +906,25 @@
     border-right: 1px solid var(--skin-genexdivider, #0e2214);
     height: 15px;
     line-height: 15px;
+  }
+  /* the header cells are now sort buttons — strip the native button look and
+     inherit the header's font/colour so they read as plain column labels */
+  .ml-colbtn {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--skin-genexdivider, #0e2214);
+    color: inherit;
+    font: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .ml-colbtn:hover {
+    color: var(--skin-genexitemfg, #7dffa0);
+  }
+  .ml-c-time.ml-colbtn {
+    text-align: right;
   }
   .ml-c-artist {
     flex: 0 0 26%;
