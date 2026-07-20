@@ -48,8 +48,13 @@ export class Visualizer {
     clearAfterStop = false;
     lastTick = 0;
 
-    constructor() {
+    /**
+     * @param {string} [spectrumCommand] the backend command polled for spectrum
+     *   data — the loopback source in Free Mode, the player sink otherwise.
+     */
+    constructor(spectrumCommand = "take_latest_spectrum") {
         this.running = false;
+        this.spectrumCommand = spectrumCommand;
     }
 
     runVisualizerUpdate() {
@@ -57,7 +62,7 @@ export class Visualizer {
             const now = Date.now();
             const deltaTime = now - this.lastTick;
             this.lastTick = now;
-            invoke("take_latest_spectrum", {}).then((visualizerData) => {
+            invoke(this.spectrumCommand, {}).then((visualizerData) => {
                 if (Array.isArray(visualizerData)) {
                     visualizerData.forEach((pair, index) => {
                         const bar = this.bars[index];

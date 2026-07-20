@@ -384,9 +384,21 @@
     return s;
   }
 
+  // Free Mode feeds the visualizer from the system-audio loopback instead of
+  // the librespot sink; resolved once at mount.
+  let spectrumCommand = "take_latest_spectrum";
+
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(320, 240);
     REACTIVE_WINDOW_SIZE.setZoom(1);
+    invoke("is_controller_mode")
+      .then((on) => {
+        if (on) {
+          spectrumCommand = "loopback_spectrum";
+          invoke("start_loopback").catch(() => {});
+        }
+      })
+      .catch(() => {});
 
     const gl = canvas.getContext("webgl", { antialias: false });
     if (!gl) {
@@ -429,7 +441,7 @@
 
     let pollTimer = setTimeout(function poll() {
       if (!running) return;
-      invoke("take_latest_spectrum", {})
+      invoke(spectrumCommand, {})
         .then((data) => {
           if (Array.isArray(data) && data.length) {
             const v = data.map((pr) => Math.min(Math.max(pr[1] ?? 0, 0), 1));

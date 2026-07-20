@@ -17,11 +17,18 @@ pub fn stereo_to_mono(in_v: &[f32]) -> Vec<f32> {
 
 impl Visualizer {
     pub fn new() -> Self {
+        Self::with_sample_rate(SAMPLE_RATE)
+    }
+
+    /// Same spectrum config as `new()` but at a chosen sample rate — used by the
+    /// loopback capture in Free Mode, which runs at the output device's rate
+    /// (typically 48 kHz) rather than librespot's 44.1 kHz.
+    pub fn with_sample_rate(sampling_rate: u32) -> Self {
         Self {
             stream: Stream::new(StreamConfig {
                 channel_count: 1,
                 processor: ProcessorConfig {
-                    sampling_rate: SAMPLE_RATE,
+                    sampling_rate,
                     frequency_bounds: [40, 20000],
                     resolution: Some(19),
                     volume: 0.8,
@@ -38,6 +45,13 @@ impl Visualizer {
     }
     pub fn push_samples(&mut self, samples: &[f32]) {
         self.stream.push_data(stereo_to_mono(samples));
+        self.stream.update();
+    }
+
+    /// Push already-mono samples (the loopback path downmixes itself, since the
+    /// output device can have any channel count).
+    pub fn push_mono(&mut self, mono: Vec<f32>) {
+        self.stream.push_data(mono);
         self.stream.update();
     }
 

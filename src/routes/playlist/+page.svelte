@@ -823,7 +823,8 @@
           </button>
         {/each}
       {:else if menuTab === "windows"}
-        <!-- these three browse/render through the librespot session -->
+        <!-- Library and Lyrics browse/render through the librespot session; the
+             Visualizer works in both modes (loopback audio in Free Mode). -->
         {#if !controllerMode}
           <button
             class="ctx-item"
@@ -832,13 +833,15 @@
               openLibraryWindow();
             }}>Library…</button
           >
-          <button
-            class="ctx-item"
-            onclick={() => {
-              closeMenu();
-              invoke("set_visualizer_window_visible", { visible: true });
-            }}>Visualizer…</button
-          >
+        {/if}
+        <button
+          class="ctx-item"
+          onclick={() => {
+            closeMenu();
+            invoke("set_visualizer_window_visible", { visible: true });
+          }}>Visualizer…</button
+        >
+        {#if !controllerMode}
           <button
             class="ctx-item"
             onclick={() => {

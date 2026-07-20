@@ -279,13 +279,15 @@
     pushDiscordPresence();
   }
 
-  const visualizer = new Visualizer();
+  // In controller mode the spectrum comes from the system-audio loopback
+  // (loopback.rs) instead of the librespot sink.
+  const visualizer = new Visualizer(
+    controllerMode ? "loopback_spectrum" : "take_latest_spectrum",
+  );
   $effect(() => {
     if (playerState != "playing") {
       visualizer.stop(stoppedOrUnavailable);
-    } else if (!controllerMode) {
-      // No spectrum source in controller mode (the audio never passes through
-      // us), so the analyser stays dark instead of erroring every frame.
+    } else {
       visualizer.start();
     }
   });
@@ -801,11 +803,7 @@
   <!-- double-click the spectrum to pop the milkdrop-style visualizer window -->
   <button
     class="viz-open-btn"
-    ondblclick={() => {
-      if (!controllerMode) {
-        invoke("set_visualizer_window_visible", { visible: true });
-      }
-    }}
+    ondblclick={() => invoke("set_visualizer_window_visible", { visible: true })}
     aria-label="Open visualizer"
     title="double-click for the visualizer"
   ></button>

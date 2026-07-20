@@ -30,11 +30,8 @@ pub async fn set_visualizer_window_visible(
     visible: bool,
     app_handle: AppHandle,
 ) -> Result<(), ()> {
-    // No spectrum source exists in controller mode (the audio never passes
-    // through us) — keep the window closed whatever asked for it.
-    if visible && crate::settings::Settings::current().controller_mode {
-        return Ok(());
-    }
+    // Controller mode CAN show the visualizer: it's fed from a system-audio
+    // loopback (see loopback.rs) rather than our own pipeline.
     let window = match app_handle.get_webview_window("visualizer") {
         Some(window) => window,
         None => {

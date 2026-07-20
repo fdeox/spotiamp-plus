@@ -16,6 +16,7 @@ mod eq_window;
 mod eqf;
 mod library_window;
 mod lists;
+mod loopback;
 mod lyrics_window;
 mod oauth;
 mod player_window;
@@ -183,6 +184,9 @@ fn leave_controller_mode() {
 /// Controller ("free") mode: no librespot session at all — the player window
 /// mirrors and drives the official Spotify app via the system media session.
 fn start_controller_mode(app_handle: &AppHandle) -> Result<(), StartError> {
+    // The visualizer's only audio source in this mode is the system output,
+    // captured via loopback — start it up front so it's ready when opened.
+    loopback::start_loopback();
     player_window::build_window(app_handle).map_err(|e| StartError::WindowCreationFailed {
         window_name: "Player".to_string(),
         e,
@@ -329,6 +333,8 @@ pub fn run() {
             app_version,
             is_controller_mode,
             leave_controller_mode,
+            loopback::start_loopback,
+            loopback::loopback_spectrum,
             smtc::smtc_now_playing,
             smtc::smtc_play,
             smtc::smtc_pause,
