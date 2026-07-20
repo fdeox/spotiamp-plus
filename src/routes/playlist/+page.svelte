@@ -180,6 +180,29 @@
     await invoke("open_external", { target: "discord" }).catch(() => {});
   }
 
+  // --- sleep timer ---
+  // Pauses playback after a while. Cycles Off → 15 → 30 → 45 → 60 → Off; each
+  // click restarts the countdown at that length. Works in both modes, since
+  // PauseRequested is what the player already listens for.
+  let sleepMinutes = $state(0);
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let sleepTimer;
+  const SLEEP_STEPS = [0, 15, 30, 45, 60];
+  function cycleSleep() {
+    const next = SLEEP_STEPS[(SLEEP_STEPS.indexOf(sleepMinutes) + 1) % SLEEP_STEPS.length];
+    clearTimeout(sleepTimer);
+    sleepMinutes = next;
+    if (next > 0) {
+      sleepTimer = setTimeout(
+        () => {
+          emitWindowEvent("playlistWindow", { PauseRequested: null });
+          sleepMinutes = 0;
+        },
+        next * 60 * 1000,
+      );
+    }
+  }
+
   // Controller mode → Premium: forget the mode flag and relaunch into the
   // normal OAuth + librespot path.
   async function switchToPremium() {
@@ -901,6 +924,9 @@
           <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
         </button>
       {/if}
+      <button class="ctx-item" onclick={cycleSleep}>
+        😴 Sleep timer: {sleepMinutes ? `${sleepMinutes} min` : "Off"}
+      </button>
       <button class="ctx-item" onclick={checkForUpdates}>
         {updateBusy ? "⏳ Checking…" : "⬆️ Check for updates"}
       </button>
