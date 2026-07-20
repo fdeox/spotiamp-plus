@@ -135,8 +135,12 @@ impl SpotifySession {
         };
 
         match product.as_deref() {
-            // "open" is Spotify's name for a free account in this field.
-            Some(product) if product != "premium" => Err(SessionError::NotPremium {
+            // Only the values Spotify documents for a free account trigger the
+            // fallback. Anything else — "premium", family/duo variants, or an
+            // unknown future string — stays on the Premium path: mistakenly
+            // sending a paying user into controller mode would leave them
+            // stuck there, since retrying the sign-in reads the same field.
+            Some(product @ ("free" | "open")) => Err(SessionError::NotPremium {
                 product: product.to_string(),
             }),
             _ => Ok(()),
