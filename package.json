@@ -1,6 +1,6 @@
 {
   "name": "spotiamp",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Spotiamp+ — a Winamp-style Spotify desktop player",
   "type": "module",
   "scripts": {
