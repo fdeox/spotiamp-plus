@@ -58,4 +58,15 @@ console.log(`Wrote ${out}`);
 console.log(`  version   ${version}`);
 console.log(`  installer ${installerName}`);
 console.log(`  url       ${manifest.platforms["windows-x86_64"].url}`);
-console.log("\nUpload BOTH the installer and latest.json to the GitHub release.");
+console.log(`
+────────────────────────────────────────────────────────
+  Tag the release EXACTLY:   v${version}
+────────────────────────────────────────────────────────
+  The download URL above is built from that tag, so any
+  other spelling leaves the updater finding an update it
+  then can't download (404).
+
+  Upload BOTH files to the release:
+    • ${installerName}
+    • latest.json
+`);
