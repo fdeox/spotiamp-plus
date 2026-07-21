@@ -160,6 +160,50 @@ fn open_in_browser(url: &str) {
 #[cfg(not(target_os = "windows"))]
 fn open_in_browser(_url: &str) {}
 
+/// Send logs to a file in the config directory.
+///
+/// Release builds are `windows_subsystem = "windows"`, so there is no console
+/// and stderr goes nowhere — which meant a crash left no evidence at all. The
+/// level stays at info (RUST_LOG still overrides), so the debug lines around
+/// credentials never fire and no tokens can reach the file.
+pub fn init_logging() {
+    let mut builder = env_logger::Builder::new();
+    builder.filter_level(log::LevelFilter::Info);
+    builder.parse_default_env();
+
+    if let Some(dir) = settings::get_config_dir() {
+        let path = dir.join("spotiamp.log");
+        // Don't grow forever: once past ~2 MB, keep one previous file and start
+        // fresh, so the log can never eat the disk.
+        if std::fs::metadata(&path)
+            .map(|m| m.len() > 2 * 1024 * 1024)
+            .unwrap_or(false)
+        {
+            let _ = std::fs::rename(&path, dir.join("spotiamp.log.old"));
+        }
+        if let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            builder.target(env_logger::Target::Pipe(Box::new(file)));
+        }
+    }
+    builder.init();
+    log::info!(
+        "Spotiamp+ {} starting",
+        option_env!("CARGO_PKG_VERSION").unwrap_or("?")
+    );
+}
+
+/// Record a frontend error (window.onerror / unhandled rejection) in the log —
+/// a JS failure otherwise leaves the webview showing a broken page with no
+/// trace of what happened.
+#[tauri::command]
+fn log_frontend_error(window: String, message: String) {
+    log::error!("[frontend:{window}] {message}");
+}
+
 /// The running version, read from the Tauri config — so the About box never
 /// drifts from the version the installer actually shipped.
 #[tauri::command]
@@ -331,6 +375,7 @@ pub fn run() {
             get_auth_url,
             open_external,
             app_version,
+            log_frontend_error,
             is_controller_mode,
             leave_controller_mode,
             loopback::start_loopback,

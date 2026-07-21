@@ -18,7 +18,7 @@ fn main() {
         );
     }
 
-    env_logger::init();
+    spotiamp_lib::init_logging();
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("A crypto provider");

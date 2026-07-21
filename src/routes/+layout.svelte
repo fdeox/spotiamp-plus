@@ -64,8 +64,30 @@
     else delete document.body.dataset.skin;
   }
   onMount(() => {
+    // Report JS failures to the Rust log. A crashed page otherwise just shows a
+    // broken webview with nothing recorded anywhere, which is exactly the state
+    // we've had no evidence for.
+    const label = getCurrentWindow().label;
+    /** @param {string} message */
+    const report = (message) =>
+      invoke("log_frontend_error", { window: label, message: String(message).slice(0, 1000) }).catch(
+        () => {},
+      );
+    /** @param {ErrorEvent} e */
+    const onError = (e) =>
+      report(`${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`);
+    /** @param {PromiseRejectionEvent} e */
+    const onRejection = (e) => report(`unhandled rejection: ${e.reason}`);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+
     // the login window redirects to Spotify — it has no skinnable UI
-    if (getCurrentWindow().label === "login") return;
+    if (label === "login") {
+      return () => {
+        window.removeEventListener("error", onError);
+        window.removeEventListener("unhandledrejection", onRejection);
+      };
+    }
 
     // Winamp has no browser menu: suppress the WebView2 default context menu
     // (Refresh / Save as / Print…) app-wide. Our own right-click menus render
@@ -80,6 +102,8 @@
     );
     return () => {
       document.removeEventListener("contextmenu", suppressContextMenu);
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
       unsub?.();
     };
   });
