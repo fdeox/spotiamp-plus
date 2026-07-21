@@ -92,36 +92,50 @@ fn open_default_device() -> Option<(cpal::Stream, Arc<Mutex<Visualizer>>, String
     let viz = Arc::new(Mutex::new(Visualizer::with_sample_rate(sample_rate)));
     let viz_cb = viz.clone();
 
-    // Average the interleaved channels down to mono before pushing.
-    let push = move |mono: Vec<f32>| {
+    // Downmix to mono, then normalise before handing samples to the spectrum.
+    //
+    // Loopback is captured *after* the system volume, so it arrives far quieter
+    // than the decoded audio the Premium path feeds in — at a normal listening
+    // level the bars came out around 2% of usable height, which looked like the
+    // visualizer simply not reacting. A fast-attack, slow-decay peak follower
+    // scales it back up, so the display reads the same whether the system
+    // volume is at 10% or 100%.
+    let mut peak = 0.0f32;
+    let mut process = move |data: &[f32]| {
+        let mut mono: Vec<f32> = if channels <= 1 {
+            data.to_vec()
+        } else {
+            data.chunks(channels)
+                .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                .collect()
+        };
+        let block_peak = mono.iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+        peak = peak.max(block_peak) * 0.999 + block_peak * 0.001;
+        let gain = if peak > 0.0005 {
+            (0.6 / peak).clamp(1.0, 60.0)
+        } else {
+            1.0 // silence: leave it alone rather than amplifying noise
+        };
+        for sample in &mut mono {
+            *sample = (*sample * gain).clamp(-1.0, 1.0);
+        }
         if let Ok(mut v) = viz_cb.lock() {
             v.push_mono(mono);
         }
-    };
-    let to_mono = move |data: &[f32]| -> Vec<f32> {
-        if channels <= 1 {
-            return data.to_vec();
-        }
-        data.chunks(channels)
-            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-            .collect()
     };
 
     let err_fn = |e| log::warn!("loopback stream error: {e:?}");
     let cfg: cpal::StreamConfig = config.into();
 
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => device.build_input_stream(
-            &cfg,
-            move |data: &[f32], _| push(to_mono(data)),
-            err_fn,
-            None,
-        ),
+        cpal::SampleFormat::F32 => {
+            device.build_input_stream(&cfg, move |data: &[f32], _| process(data), err_fn, None)
+        }
         cpal::SampleFormat::I16 => device.build_input_stream(
             &cfg,
             move |data: &[i16], _| {
                 let f: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                push(to_mono(&f));
+                process(&f);
             },
             err_fn,
             None,
@@ -133,7 +147,7 @@ fn open_default_device() -> Option<(cpal::Stream, Arc<Mutex<Visualizer>>, String
                     .iter()
                     .map(|&s| (s as f32 - 32768.0) / 32768.0)
                     .collect();
-                push(to_mono(&f));
+                process(&f);
             },
             err_fn,
             None,
