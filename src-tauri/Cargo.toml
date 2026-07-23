@@ -28,8 +28,13 @@ log = "0.4"
 env_logger = "0.11"
 librespot = { version = "0.8", default-features = false, features = ["rodio-backend", "rustls-tls-native-roots"] }
 # Same cpal that librespot's rodio backend resolves — used to enumerate output
-# devices for the audio-device picker (so device names match what rodio expects).
+# devices for the audio-device picker (so device names match what rodio expects),
+# and (0.7.0) to output decoded local files through the same EQ + visualizer.
 cpal = "0.16"
+# Local-file playback (0.7.0). symphonia is already in the tree — librespot pulls
+# it for Ogg/Vorbis — so this only turns on the extra decoders (MP3/FLAC/AAC/WAV)
+# and adds almost nothing to the build.
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "flac", "aac", "isomp4", "pcm", "ogg", "vorbis"] }
 audioviz = { version = "0.6", default-features = false, features = ["spectrum"] }
 
 oauth2 = "5.0"

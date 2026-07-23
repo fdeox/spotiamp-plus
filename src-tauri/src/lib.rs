@@ -16,6 +16,7 @@ mod eq_window;
 mod eqf;
 mod library_window;
 mod lists;
+mod local_player;
 mod loopback;
 mod lyrics_window;
 mod oauth;
