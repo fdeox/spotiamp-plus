@@ -23,6 +23,7 @@ mod player_window;
 mod playlist_window;
 mod settings;
 mod smtc;
+mod smtc_publish;
 mod visualizer_window;
 mod sink;
 pub mod spotify;
@@ -307,6 +308,11 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
             window_name: "Player".to_string(),
             e,
         })?;
+    // The media session hangs off the player window's handle, so it can only be
+    // registered once that window exists.
+    #[cfg(target_os = "windows")]
+    smtc_publish::init(app_handle);
+
     let player = Arc::new(tokio::sync::Mutex::new(SpotifyPlayer::new(session)));
     app_handle.manage(player.clone());
 
@@ -380,6 +386,9 @@ pub fn run() {
             leave_controller_mode,
             loopback::start_loopback,
             loopback::loopback_spectrum,
+            smtc_publish::smtc_set_track,
+            smtc_publish::smtc_set_playing,
+            smtc_publish::smtc_set_stopped,
             smtc::smtc_now_playing,
             smtc::smtc_play,
             smtc::smtc_pause,

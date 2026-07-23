@@ -27,7 +27,7 @@
   const CUSTOM_SKIN_VARS = [
     "main", "cbuttons", "monoster", "numbers", "playpaus", "pledit",
     "posbar", "shufrep", "text", "titlebar", "volume", "balance", "eqmain",
-    "gentl", "genfill", "gentr",
+    "gentl", "genfill", "gentr", "gentitle", "titlebarcolor", "titletext",
     "plnormal", "plcurrent", "plbg", "plselbg",
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",

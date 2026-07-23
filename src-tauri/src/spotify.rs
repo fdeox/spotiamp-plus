@@ -302,7 +302,12 @@ impl SpotifyPlayer {
 
         impl VolumeGetter for SpotiampVolumeGetter {
             fn attenuation_factor(&self) -> f64 {
-                self.volume.load(std::sync::atomic::Ordering::Relaxed) as f64 / 100.0
+                // Cubic, defined next to the visualizer tap that inverts it, so
+                // the two never drift apart. Previously a raw linear ratio,
+                // which made the slider unusable past ~20 %.
+                crate::sink::volume_amplitude(
+                    self.volume.load(std::sync::atomic::Ordering::Relaxed),
+                )
             }
         }
 

@@ -1,6 +1,6 @@
 [package]
 name = "spotiamp"
-version = "0.6.8"
+version = "0.6.9"
 description = "Spotiamp+ — a Winamp-style Spotify desktop player"
 authors = ["Ted Steen", "fdeox"]
 edition = "2024"
@@ -63,6 +63,10 @@ windows = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
     # Controller ("free") mode reads and drives the system media session.
     "Media_Control",
+    # Publishing our own session: the headset buttons and the Windows media
+    # panel. Interop is what binds a session to a plain desktop window handle.
+    "Media",
+    "Win32_System_WinRT",
     "Foundation",
 ] }
 

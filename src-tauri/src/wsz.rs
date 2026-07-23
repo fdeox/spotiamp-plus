@@ -10,6 +10,80 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::settings::{Settings, get_config_dir};
 
+/// Find the centre X of the title plate in a GEN.BMP titlebar, or None when the
+/// titlebar is smooth and has no distinct plate.
+///
+/// A classic titlebar is a strip of horizontal "grip" bars with a flat plate
+/// left clear in the middle for the title. Scanning down a column, a bar column
+/// crosses those bright lines (high variance) while a plate column is near-flat
+/// (low variance). The plate is the widest run of low-variance columns in the
+/// central region — but only if it stays well short of the whole width, because
+/// a smooth titlebar reads as low-variance everywhere and must NOT be mistaken
+/// for a plate. Verified against six real skins (Winamp3/5, Nucleo all resolve
+/// to the same centre; Bento and Sony CDX correctly report no plate).
+fn locate_title_plate(sheet: &image::DynamicImage) -> Option<u32> {
+    use image::GenericImageView;
+    let (w, h) = sheet.dimensions();
+    if w < 80 || h < 12 {
+        return None;
+    }
+    let bright = |x: u32, y: u32| -> f32 {
+        let p = sheet.get_pixel(x, y).0;
+        (p[0] as f32 + p[1] as f32 + p[2] as f32) / 3.0
+    };
+    // Per-column brightness variance over the plate's clear band (rows 4..=10).
+    let variance: Vec<f32> = (0..w)
+        .map(|x| {
+            let (mut s, mut s2) = (0.0f32, 0.0f32);
+            for y in 4..=10 {
+                let v = bright(x, y);
+                s += v;
+                s2 += v * v;
+            }
+            let n = 7.0;
+            (s2 / n - (s / n).powi(2)).max(0.0)
+        })
+        .collect();
+
+    // Search the centre, skipping the corner pieces on each side.
+    let lo = 24usize;
+    let hi = (w as usize).saturating_sub(28);
+    if hi <= lo {
+        return None;
+    }
+    // Adaptive threshold: a low percentile of the central variances, so it
+    // scales to whatever brightness a given skin's bars have.
+    let mut central: Vec<f32> = variance[lo..hi].to_vec();
+    central.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let threshold = central[central.len() * 35 / 100] * 3.0 + 2.0;
+
+    let (mut best, mut cur): (Option<(usize, usize)>, Option<(usize, usize)>) = (None, None);
+    for x in lo..hi {
+        if variance[x] <= threshold {
+            cur = Some(match cur {
+                Some((a, _)) => (a, x),
+                None => (x, x),
+            });
+        } else if let Some(run) = cur.take() {
+            if best.is_none_or(|b| run.1 - run.0 > b.1 - b.0) {
+                best = Some(run);
+            }
+        }
+    }
+    if let Some(run) = cur {
+        if best.is_none_or(|b| run.1 - run.0 > b.1 - b.0) {
+            best = Some(run);
+        }
+    }
+
+    let (a, b) = best?;
+    // A run spanning most of the width means a smooth titlebar, not a plate.
+    if (b - a + 1) as f32 > w as f32 * 0.45 {
+        return None;
+    }
+    Some(((a + b) / 2) as u32)
+}
+
 /// Classic skins shipped inside the binary (embedded so they always ship with
 /// the installer — external bundle resources don't survive NSIS reliably).
 /// `(display name, .wsz bytes)`.
@@ -193,18 +267,43 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         sprites.insert(var.to_string(), format!("data:image/bmp;base64,{b64}"));
     }
 
-    // The library/visualizer titlebars use three tiles cropped out of the
-    // generic-window sheet (GEN.BMP): left corner, repeating fill, right
-    // corner with the close button.
-    if let Ok(gen_bytes) = std::fs::read(dir.join("GEN.BMP"))
-        && let Ok(gen_sheet) = image::load_from_memory(&gen_bytes)
-    {
-        for (var, x, y, w, h) in [
-            ("gentl", 0u32, 0u32, 25u32, 20u32),
-            ("genfill", 82, 0, 8, 20),
-            ("gentr", 140, 0, 15, 20),
-        ] {
-            let tile = gen_sheet.crop_imm(x, y, w, h);
+    // The library / visualizer / lyrics titlebars are built from three tiles —
+    // left corner, repeating fill, right corner — plus an optional title plate.
+    //
+    // GEN.BMP is the proper source, but most classic 2.x skins never shipped it
+    // (it's a later addition), so those windows used to fall back to the default
+    // blue on the majority of loaded skins. PLEDIT.BMP, on the other hand, is in
+    // every skin — so when GEN.BMP is missing we take the equivalent pieces from
+    // the playlist titlebar instead, and the windows finally match the skin.
+    let gen_img = std::fs::read(dir.join("GEN.BMP"))
+        .ok()
+        .and_then(|b| image::load_from_memory(&b).ok());
+    let from_gen = gen_img.is_some();
+    let sheet = gen_img.or_else(|| {
+        std::fs::read(dir.join("PLEDIT.BMP"))
+            .ok()
+            .and_then(|b| image::load_from_memory(&b).ok())
+    });
+
+    if let Some(sheet) = sheet {
+        // Left corner, repeating fill, right corner. In PLEDIT the plain-bars
+        // fill is at x=127 — the title area at 26..126 has "WINAMP PLAYLIST"
+        // baked in, so it can't be used as a generic tile.
+        let tiles = if from_gen {
+            [
+                ("gentl", 0u32, 0u32, 25u32, 20u32),
+                ("genfill", 82, 0, 8, 20),
+                ("gentr", 140, 0, 15, 20),
+            ]
+        } else {
+            [
+                ("gentl", 0, 0, 25, 20),
+                ("genfill", 127, 0, 25, 20),
+                ("gentr", 153, 0, 25, 20),
+            ]
+        };
+        for (var, x, y, w, h) in tiles {
+            let tile = sheet.crop_imm(x, y, w, h);
             let mut png = Vec::new();
             if tile
                 .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
@@ -212,6 +311,63 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
             {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(png);
                 sprites.insert(var.to_string(), format!("data:image/png;base64,{b64}"));
+            }
+        }
+
+        // Sample the titlebar's own colour so the window frame and the title
+        // text key off it, not off the window body (genexwndbg). Those two are
+        // often different — which is exactly why a gold-bodied skin ended up
+        // with a gold frame wrapped around a silver titlebar. The frame then
+        // matches the titlebar, and the title text picks black or white for
+        // contrast so it stays readable on every skin (this is what fixes the
+        // unreadable dark title text some skins shipped).
+        let (fx, fw) = if from_gen { (82u32, 8u32) } else { (127u32, 25u32) };
+        {
+            use image::GenericImageView;
+            let (sw, sh) = sheet.dimensions();
+            let (mut r, mut g, mut b, mut n) = (0u64, 0u64, 0u64, 0u64);
+            for yy in 0..20u32.min(sh) {
+                for xx in fx..(fx + fw).min(sw) {
+                    let p = sheet.get_pixel(xx, yy).0;
+                    r += p[0] as u64;
+                    g += p[1] as u64;
+                    b += p[2] as u64;
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                let (r, g, b) = ((r / n) as u8, (g / n) as u8, (b / n) as u8);
+                sprites.insert("titlebarcolor".into(), format!("#{r:02X}{g:02X}{b:02X}"));
+                let lum = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+                let text = if lum > 140.0 { "#101014" } else { "#f0f2f8" };
+                sprites.insert("titletext".into(), text.into());
+            }
+        }
+
+        // The title plate is the plain area some GEN.BMP titlebars leave between
+        // the bars. Its X isn't fixed — a hardcoded offset hit the wrong pixels
+        // on other skins — so it's found by scanning (see locate_title_plate).
+        // PLEDIT has no textless plate, and neither do smooth GEN titlebars, so
+        // in those cases the title just sits on the bars (transparent plate).
+        let plate = if from_gen {
+            locate_title_plate(&sheet)
+        } else {
+            None
+        };
+        match plate {
+            Some(center) => {
+                let tile = sheet.crop_imm(center.saturating_sub(2), 0, 4, 20);
+                let mut png = Vec::new();
+                if tile
+                    .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                    .is_ok()
+                {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+                    sprites.insert("gentitle".to_string(), format!("data:image/png;base64,{b64}"));
+                }
+            }
+            None => {
+                sprites.insert("gentitle".to_string(), "transparent".to_string());
             }
         }
     }

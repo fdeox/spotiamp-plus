@@ -45,6 +45,129 @@ export async function collectSnapRects(selfLabel) {
 }
 
 /**
+ * Snap a size so the window's right and bottom edges land exactly on a
+ * neighbour's edge.
+ *
+ * Dragging has always snapped, but resizing did not, so growing a window meant
+ * lining its edge up by eye and it would happily overlap whatever sat next to
+ * it. The top-left corner is the fixed anchor while resizing, so only the far
+ * edges need to be considered.
+ *
+ * @param {WindowRect} rect the window being resized, at its current size
+ * @param {WindowRect[]} others rects to snap against
+ * @param {number} [distance]
+ * @returns {{ width: number, height: number }}
+ */
+export function snapSize(rect, others, distance = SNAP_DISTANCE) {
+  /**
+   * @param {number} start
+   * @param {number} size
+   * @param {number[]} edges
+   */
+  const snapEdge = (start, size, edges) => {
+    let best = size;
+    let bestDistance = distance;
+    for (const edge of edges) {
+      const d = Math.abs(start + size - edge);
+      // `<=` so that with two equally close edges the later one wins, matching
+      // how the drag snapping resolves ties.
+      if (d <= bestDistance) {
+        bestDistance = d;
+        best = edge - start;
+      }
+    }
+    return best;
+  };
+
+  const xEdges = others.flatMap((o) => [o.x, rectRight(o)]);
+  const yEdges = others.flatMap((o) => [o.y, rectBottom(o)]);
+  return {
+    width: snapEdge(rect.x, rect.width, xEdges),
+    height: snapEdge(rect.y, rect.height, yEdges),
+  };
+}
+
+/**
+ * Wire a resize grip so the window's far edges snap to its neighbours.
+ *
+ * Three coordinate systems meet here and getting any of them wrong shows up as
+ * a window that looks snapped but sits a few pixels past its neighbour:
+ *
+ *   * sizes inside the app are logical, and double-size scales them again;
+ *   * `setSize` sets the window's INNER size;
+ *   * neighbour rects arrive as OUTER physical pixels.
+ *
+ * So the scale comes from `scaleFactor()` and the zoom directly rather than
+ * being inferred from a ratio, and the frame thickness (outer minus inner) is
+ * measured once and added before snapping, then taken back off afterwards.
+ *
+ * @param {HTMLElement} element the grip
+ * @param {string} selfLabel
+ * @param {(e: PointerEvent) => { width: number, height: number }} measure
+ *   raw logical size from the pointer, before snapping
+ * @param {(size: { width: number, height: number }) => void} apply
+ * @param {() => number} zoom current double-size factor
+ */
+export function makeSnappingResizer(element, selfLabel, measure, apply, zoom) {
+  element.onpointerdown = function (event) {
+    event.preventDefault();
+    element.setPointerCapture(event.pointerId);
+
+    /** @type {WindowRect[]} */
+    let rects = [];
+    let origin = { x: 0, y: 0 };
+    let scale = 1;
+    let frameW = 0;
+    let frameH = 0;
+    // Gathered once per gesture: querying every window on each pointermove
+    // would hammer the window API for numbers that cannot change mid-drag.
+    (async () => {
+      try {
+        const win = getCurrentWindow();
+        const [collected, position, outer, inner, factor] = await Promise.all([
+          collectSnapRects(selfLabel),
+          win.outerPosition(),
+          win.outerSize(),
+          win.innerSize(),
+          win.scaleFactor(),
+        ]);
+        rects = collected;
+        origin = { x: position.x, y: position.y };
+        scale = factor * (zoom() || 1);
+        frameW = outer.width - inner.width;
+        frameH = outer.height - inner.height;
+      } catch {
+        /* no neighbours to snap to — resizing still works, just freely */
+      }
+    })();
+
+    document.onpointermove = function (e) {
+      const raw = measure(e);
+      // Snap the OUTER edges, because that is what the neighbours' rects
+      // describe; the inner size we actually set is derived back from it.
+      const snapped = snapSize(
+        {
+          x: origin.x,
+          y: origin.y,
+          width: raw.width * scale + frameW,
+          height: raw.height * scale + frameH,
+        },
+        rects,
+      );
+      apply({
+        width: (snapped.width - frameW) / scale,
+        height: (snapped.height - frameH) / scale,
+      });
+    };
+    document.onpointerup = function () {
+      document.onpointermove = null;
+      element.releasePointerCapture(event.pointerId);
+    };
+  };
+  element.onselectstart = () => false;
+}
+
+/**
  * Wire a window's titlebar so it snaps to ANY other window while dragging and
  * broadcasts its drag on `eventName` (drives the native player-anchored dock).
  * @param {HTMLElement} element

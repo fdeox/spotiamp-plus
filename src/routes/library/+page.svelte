@@ -3,7 +3,7 @@
   import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
-  import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
+  import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
 
   let playlists = $state([]);
   let loading = $state(true);
@@ -369,21 +369,19 @@
 
   // Resize from the bottom-right corner, like the Winamp playlist.
   function makeLibraryResizable(element) {
-    element.onpointerdown = function (event) {
-      event.preventDefault();
-      element.setPointerCapture(event.pointerId);
-      document.onpointermove = function (e) {
+    makeSnappingResizer(
+      element,
+      "library",
+      (e) => {
         const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
-        const width = Math.max(Math.round(e.clientX / zoom) + 3, 380);
-        const height = Math.max(Math.round(e.clientY / zoom) + 3, 260);
-        REACTIVE_WINDOW_SIZE.setSize(width, height);
-      };
-      document.onpointerup = function () {
-        document.onpointermove = null;
-        element.releasePointerCapture(event.pointerId);
-      };
-    };
-    element.onselectstart = () => false;
+        return {
+          width: Math.max(Math.round(e.clientX / zoom) + 3, 380),
+          height: Math.max(Math.round(e.clientY / zoom) + 3, 260),
+        };
+      },
+      ({ width, height }) => REACTIVE_WINDOW_SIZE.setSize(Math.round(width), Math.round(height)),
+      () => REACTIVE_WINDOW_SIZE.zoom || 1,
+    );
   }
 </script>
 
@@ -646,10 +644,16 @@
     display: flex;
     flex-direction: column;
     /* colours follow real Winamp plugin-window rules: GENEX.BMP palette when
-       a .wsz is loaded (fallback PLEDIT.TXT), classic green-on-black otherwise */
-    background: var(--skin-genexwndbg, var(--skin-plbg, #000));
-    border: 1px solid #0c0d12;
-    box-shadow: inset 1px 1px 0 #2a2f3a, inset -1px -1px 0 #0e0f16;
+       a .wsz is loaded (fallback PLEDIT.TXT), classic green-on-black otherwise.
+       Frame follows the skin: the border and bevel derive from the window
+       colour instead of a fixed blue, so on a gold or grey skin the edges no
+       longer clash with the titlebar. */
+    --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
+    background: var(--frame);
+    border: 1px solid color-mix(in srgb, var(--frame) 45%, #000);
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 65%, #fff),
+      inset -1px -1px 0 color-mix(in srgb, var(--frame) 55%, #000);
     font-family: "px sans nouveaux", sans-serif;
     font-size: 7px;
     -webkit-font-smoothing: none;
@@ -678,19 +682,36 @@
   .ml-title {
     position: absolute;
     left: 50%;
-    top: 4px;
+    top: 0;
     transform: translateX(-50%);
-    height: 11px;
+    /* Full titlebar height so the plate tile lines up with the bars 1:1. */
+    height: 20px;
+    /* Centre the text, then lift it clear of the titlebar's thin inner-frame
+       line along the bottom — dead centre looks low because that line eats the
+       lower edge. box-sizing keeps the padding inside the 20px (the bug the
+       plain-centre version had). The bottom padding is the knob: increase it to
+       raise the text, decrease it to lower it. */
     display: flex;
     align-items: center;
-    padding: 0 6px;
+    justify-content: center;
+    box-sizing: border-box;
+    line-height: 1;
+    padding: 0 10px 5px;
     /* match the tiny bitmap lettering of the playlist titlebar */
     font-family: "px sans nouveaux", sans-serif;
     font-size: 7px;
     -webkit-font-smoothing: none;
     letter-spacing: 1px;
-    color: #cdd6ea;
-    background: #26264a;
+    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
+    /* The skin's own title plate, located in GEN.BMP by scanning (see
+       wsz.rs::locate_title_plate) and served as --skin-gentitle. A classic
+       striped titlebar sets it to the real plate slice, so the bars stop, the
+       title sits on the plate, and the bars resume — the main-window look. A
+       smooth titlebar sets it to `transparent`, so the actual titlebar shows
+       through behind the title instead of a mismatched box. The shadow keeps
+       the text legible in the transparent case. */
+    background: var(--skin-gentitle, transparent) repeat-x;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
     z-index: 1;
   }
   .ml-close {

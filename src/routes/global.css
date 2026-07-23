@@ -27,6 +27,9 @@
     --skin-gentl: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_tr.png);
+    --skin-gentitle: url(/src/static/assets/skins/base-2.91/gen-tiles/gen_title.png);
+    --skin-titlebarcolor: #565156;
+    --skin-titletext: #f0f2f8;
     /* GENEX.BMP palette + button faces — how real Winamp colours plugin
        windows (the library). Loaded .wsz skins override these inline. */
     --skin-genexbtn: url(/src/static/assets/skins/base-2.91/gen-tiles/genexbtn.png);
@@ -57,6 +60,9 @@ body[data-skin="cherry"] {
     --skin-gentl: url(/src/static/assets/skins/cherry/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/cherry/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/cherry/gen-tiles/gen_tr.png);
+    --skin-gentitle: url(/src/static/assets/skins/cherry/gen-tiles/gen_title.png);
+    --skin-titlebarcolor: #53534E;
+    --skin-titletext: #f0f2f8;
     --skin-genexbtn: url(/src/static/assets/skins/cherry/gen-tiles/genexbtn.png);
     --skin-genexbtnp: url(/src/static/assets/skins/cherry/gen-tiles/genexbtnp.png);
     --skin-genexwndbg: #574337;
@@ -80,6 +86,9 @@ body[data-skin="amber"] {
     --skin-gentl: url(/src/static/assets/skins/amber/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/amber/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/amber/gen-tiles/gen_tr.png);
+    --skin-gentitle: url(/src/static/assets/skins/amber/gen-tiles/gen_title.png);
+    --skin-titlebarcolor: #50544B;
+    --skin-titletext: #f0f2f8;
     --skin-genexbtn: url(/src/static/assets/skins/amber/gen-tiles/genexbtn.png);
     --skin-genexbtnp: url(/src/static/assets/skins/amber/gen-tiles/genexbtnp.png);
     --skin-genexwndbg: #575537;
@@ -103,6 +112,9 @@ body[data-skin="emerald"] {
     --skin-gentl: url(/src/static/assets/skins/emerald/gen-tiles/gen_tl.png);
     --skin-genfill: url(/src/static/assets/skins/emerald/gen-tiles/gen_fill.png);
     --skin-gentr: url(/src/static/assets/skins/emerald/gen-tiles/gen_tr.png);
+    --skin-gentitle: url(/src/static/assets/skins/emerald/gen-tiles/gen_title.png);
+    --skin-titlebarcolor: #4C5455;
+    --skin-titletext: #f0f2f8;
     --skin-genexbtn: url(/src/static/assets/skins/emerald/gen-tiles/genexbtn.png);
     --skin-genexbtnp: url(/src/static/assets/skins/emerald/gen-tiles/genexbtnp.png);
     --skin-genexwndbg: #375743;

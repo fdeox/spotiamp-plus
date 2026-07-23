@@ -337,6 +337,27 @@
   // idling clears it, so Discord never keeps counting elapsed time past the
   // song. Re-anchored on track/state change AND on seek (so the progress bar
   // jumps with you) — but NOT every ticker second.
+  // Windows media session: what the headset buttons talk to, and what the
+  // panel behind the volume keys shows. The status has to be truthful —
+  // Windows routes media keys to whichever app most recently reported playing,
+  // so claiming to play while idle would quietly take the keys from whatever
+  // the user is actually listening to.
+  function pushMediaSession() {
+    const track = loadedTrack;
+    if (track?.name) {
+      invoke("smtc_set_track", {
+        title: track.name,
+        artist: track.artist ?? "",
+        album: track.album ?? "",
+      }).catch(() => {});
+    }
+    if (!track?.name || playerState === "stopped") {
+      invoke("smtc_set_stopped").catch(() => {});
+    } else {
+      invoke("smtc_set_playing", { playing: playerState === "playing" }).catch(() => {});
+    }
+  }
+
   function pushDiscordPresence() {
     const track = loadedTrack;
     if (playerState !== "playing" || !track?.name) {
@@ -358,6 +379,7 @@
   $effect(() => {
     loadedTrack;
     playerState;
+    untrack(pushMediaSession);
     untrack(pushDiscordPresence);
   });
 
@@ -507,6 +529,20 @@
       emitWindowEvent("playerWindow", { UrlsDropped: urls });
     });
 
+    // The dedicated media keys and headset buttons, forwarded from Rust because
+    // they arrive even when the app has no focus. They reuse the same actions as
+    // the in-window shortcuts below — the difference is only where the press
+    // came from. Registered on the Rust side for the Premium path only; in
+    // controller mode Spotify answers these keys itself.
+    const mediaKeySubscription = listen("mediaKey", (event) => {
+      switch (event.payload) {
+        case "playpause": playerState === "playing" ? pause() : play(); break;
+        case "next": emitNextPressed(); break;
+        case "previous": emitPreviousPressed(); break;
+        case "stop": stop(); break;
+      }
+    });
+
     // Classic Winamp keyboard shortcuts (main window)
     const onPlayerKeyDown = (e) => {
       const t = e.target;
@@ -563,6 +599,7 @@
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       eqWindowEventSubscription.then((unlisten) => unlisten());
       trackPositionSubscription.then((unlisten) => unlisten());
+      mediaKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };
