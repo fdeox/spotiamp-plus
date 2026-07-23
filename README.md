@@ -12,9 +12,10 @@ Spotiamp+ is a fork of [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spoti
 (MIT), extended with a playlist/library browser, catalogue search, docking,
 skins, a WebGL visualizer, and much more.
 
-> Requires a **Spotify Premium** account. Playback is handled by
-> [librespot](https://github.com/librespot-org/librespot); login uses Spotify's
-> own OAuth page.
+> **Premium** streams directly (playback via
+> [librespot](https://github.com/librespot-org/librespot)); **Free** accounts get
+> **Free Mode**, where Spotiamp+ becomes the Winamp face of the official Spotify
+> app and drives it. Login always uses Spotify's own OAuth page.
 
 ![Spotiamp+](docs/screenshots/classic.jpg)
 
@@ -44,16 +45,27 @@ skins, a WebGL visualizer, and much more.
   [Winamp Skin Museum](https://skins.webamp.org/). Every window — player,
   equalizer, playlist **and the media library** — reskins live and persists
   across restarts.
-- 🌀 **Milkdrop-style visualizer** — a WebGL window with **20 audio-reactive
-  patterns** that cycle on click, on a timer, and on every track change.
+- 🌀 **WebGL visualizer** — a window with **50 audio-reactive patterns**:
+  spectrum analysers, VU meters, a scrolling spectrogram, a Milkdrop-style
+  feedback mode and more, cycling on click, on a timer, and on every track
+  change.
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
   line in time with playback (right-click the playlist → *Lyrics…*).
+- 🎛️ **Media keys** — the play/pause/next keys on your keyboard and the buttons
+  on your headset control playback even when Spotiamp+ is in the background
+  (registered through the Windows media session).
 - 🎮 **Discord Rich Presence** — shows the track, artist, **album art** and a
   live progress bar on your Discord profile while it plays, and clears the moment
   playback stops.
+- 🪟 **Windowshade mode** — roll any window up to a slim title strip, classic
+  Winamp style.
+- ↕️ **Sortable library** — click a column header (Artist / Album / Title / Time)
+  to sort your tracks.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
+- 🔄 **Built-in updater** — *Check for updates* in the right-click menu downloads
+  and installs new versions (signed).
 - ⌨️ **Keyboard shortcuts** — classic Winamp keys (see below).
 
 ## Screenshots
@@ -84,7 +96,11 @@ window — player, equalizer, playlist and library — reskins live.
 1. Download the latest installer from the [**Releases**](../../releases) page.
 2. Run it. Windows SmartScreen may warn because the build is unsigned — choose
    **More info → Run anyway**.
-3. Launch Spotiamp+ and log in with your Spotify (Premium) account.
+3. Launch Spotiamp+ and log in with your Spotify account — **Premium** streams
+   directly, **Free** falls back to Free Mode.
+
+From then on, **Check for updates** in the right-click menu keeps you current —
+no need to revisit this page. Windows 10/11 (x64) only for now.
 
 ## Keyboard shortcuts
 
