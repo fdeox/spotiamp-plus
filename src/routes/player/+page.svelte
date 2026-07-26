@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
 
   import {
     handleError,
@@ -61,7 +62,10 @@
   }
 
   /**
-   * @type {SpotifyTrack | undefined}
+   * The loaded track is normally a Spotify track; local files reuse the same
+   * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
+   * transport routes on `isLocal`), so the type carries those as optional.
+   * @type {(SpotifyTrack & { isLocal?: boolean, path?: string }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -199,6 +203,14 @@
   }
 
   async function play() {
+    // Local file: its own engine (local_player.rs), same EQ + visualizer as the
+    // Spotify path. Routed here per-track via `isLocal`, so the Spotify branches
+    // below are untouched.
+    if (loadedTrack?.isLocal) {
+      playerState = "playing";
+      await invoke("local_play").catch(() => {});
+      return;
+    }
     if (controllerMode) {
       playerState = "playing"; // snappy UI; the SMTC poll corrects if refused
       await invoke("smtc_play").catch(() => {});
@@ -222,6 +234,11 @@
   }
 
   async function pause() {
+    if (loadedTrack?.isLocal) {
+      playerState = "paused";
+      await invoke("local_pause").catch(() => {});
+      return;
+    }
     if (controllerMode) {
       playerState = "paused";
       await invoke("smtc_pause").catch(() => {});
@@ -234,6 +251,13 @@
   }
 
   async function stop() {
+    if (loadedTrack?.isLocal) {
+      setPosition(0);
+      sliderSeekPosition = 0;
+      playerState = "stopped";
+      await invoke("local_stop").catch(() => {});
+      return;
+    }
     if (controllerMode) {
       // The official Spotify app has no real "stop" — pause is the honest map.
       playerState = "paused";
@@ -268,7 +292,9 @@
     // To make the UI a bit snappier and to not glitch between new and old value
     setPosition(positionMs);
     sliderSeekPosition = positionMs;
-    if (controllerMode) {
+    if (loadedTrack?.isLocal) {
+      await invoke("local_seek", { positionMs }).catch(() => {});
+    } else if (controllerMode) {
       await invoke("smtc_seek", { positionMs }).catch(() => {});
     } else {
       await invoke("seek", {
@@ -277,6 +303,69 @@
     }
     // jump the Discord progress bar to the new position too
     pushDiscordPresence();
+  }
+
+  // --- local files ---------------------------------------------------------
+  // Play a file off disk through local_player.rs. Modelled on the SMTC path: a
+  // plain loadedTrack object plus a poll for position and end-of-track, since a
+  // local file has no librespot event channel.
+  let localPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+  /**
+   * @param {string} path
+   * @param {any} [meta]
+   */
+  async function loadLocalFile(path, meta) {
+    // Only one source plays at a time — silence Spotify/SMTC before starting.
+    if (loadedTrack && !loadedTrack.isLocal) {
+      await invoke(controllerMode ? "smtc_pause" : "stop").catch(() => {});
+    }
+    const base = path.split(/[\\/]/).pop() ?? path;
+    loadedTrack = /** @type {any} */ ({
+      isLocal: true,
+      path,
+      name: meta?.name ?? base,
+      artist: meta?.artist ?? "",
+      album: meta?.album ?? "",
+      albumArt: null,
+      durationInMs: meta?.durationInMs ?? 0,
+      displayName: meta?.displayName ?? base,
+      displayDuration: durationToString(meta?.durationInMs ?? 0),
+      unavailable: false,
+    });
+    setPosition(0);
+    sliderSeekPosition = 0;
+    playerState = "playing";
+    await invoke("local_load", { path }).catch(() => {});
+    startLocalPoll();
+  }
+
+  function startLocalPoll() {
+    if (localPollTimer) return;
+    localPollTimer = setInterval(async () => {
+      if (!loadedTrack?.isLocal) return stopLocalPoll();
+      // Fill duration in once the decoder reports it (containers vary).
+      if (!loadedTrack.durationInMs) {
+        const dur = await invoke("local_duration").catch(() => 0);
+        if (dur) {
+          loadedTrack.durationInMs = dur;
+          loadedTrack.displayDuration = durationToString(dur);
+        }
+      }
+      if (playerState === "playing") {
+        const pos = await invoke("local_position").catch(() => 0);
+        setPosition(pos);
+        sliderSeekPosition = pos;
+      }
+      const events = await invoke("local_take_events").catch(() => []);
+      // Unit enum variants serialise as their name string ("EndOfTrack").
+      if (events.includes("EndOfTrack")) emitNextPressed();
+    }, 250);
+  }
+  function stopLocalPoll() {
+    if (localPollTimer) {
+      clearInterval(localPollTimer);
+      localPollTimer = null;
+    }
   }
 
   // In controller mode the spectrum comes from the system-audio loopback
@@ -529,6 +618,24 @@
       emitWindowEvent("playerWindow", { UrlsDropped: urls });
     });
 
+    // Native OS file drop (dragging an .mp3/.flac off Explorer onto the player).
+    // This is a different channel from handleDrop above: that one catches
+    // browser text/uri-list drops (Spotify links), while a real file dragged
+    // from the desktop arrives through Tauri's webview drag-drop event with an
+    // absolute path. Winamp's most natural gesture — drop a track, it plays.
+    const LOCAL_AUDIO_RE = /\.(mp3|flac|m4a|aac|wav|ogg|oga|opus)$/i;
+    let fileDropUnlisten = /** @type {null | (() => void)} */ (null);
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+        const audio = event.payload.paths.find((p) => LOCAL_AUDIO_RE.test(p));
+        if (audio) loadLocalFile(audio);
+      })
+      .then((un) => {
+        fileDropUnlisten = un;
+      })
+      .catch(() => {});
+
     // The dedicated media keys and headset buttons, forwarded from Rust because
     // they arrive even when the app has no focus. They reuse the same actions as
     // the in-window shortcuts below — the difference is only where the press
@@ -601,6 +708,8 @@
       trackPositionSubscription.then((unlisten) => unlisten());
       mediaKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
+      if (fileDropUnlisten) fileDropUnlisten();
+      stopLocalPoll();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };
   });
