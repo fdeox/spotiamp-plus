@@ -65,6 +65,12 @@
   let mode = $state(0);
   const nextMode = () => (mode = (mode + 1) % MODE_COUNT);
 
+  // Pin the current pattern: stop the auto-cycle and the per-track switch so a
+  // favourite one stays up. Clicking the canvas still changes it by hand — pin
+  // only silences the automatic changes, and re-locks onto whatever you pick.
+  let pinned = $state(false);
+  const togglePin = () => (pinned = !pinned);
+
   const close = () => invoke("set_visualizer_window_visible", { visible: false });
 
   const FRAG = `
@@ -747,6 +753,12 @@
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(320, 240);
     REACTIVE_WINDOW_SIZE.setZoom(1);
+    // Reopen at the size it was last left (falls back to the default above).
+    invoke("get_window_inner_size", { label: "visualizer" })
+      .then((s) => {
+        if (s) REACTIVE_WINDOW_SIZE.setSize(s.width, s.height);
+      })
+      .catch(() => {});
     invoke("is_controller_mode")
       .then((on) => {
         if (on) {
@@ -927,15 +939,19 @@
     }
     raf = requestAnimationFrame(frame);
 
-    // auto-cycle presets, and switch on every track change for milkdrop variety
-    const cycle = setInterval(nextMode, 25000);
+    // Auto-cycle presets (unless pinned), and switch on every track change for
+    // variety. 45s, not 25 — the older ones went by before you could enjoy
+    // them; pin holds one indefinitely.
+    const cycle = setInterval(() => {
+      if (!pinned) nextMode();
+    }, 45000);
     let lastUri = "";
     let unsub;
     subscribeToWindowEvent("player", (event) => {
       const p = event.Playing;
       if (p && p.uri && p.uri !== lastUri) {
         lastUri = p.uri;
-        mode = Math.floor(Math.random() * MODE_COUNT);
+        if (!pinned) mode = Math.floor(Math.random() * MODE_COUNT);
       }
     }).then((u2) => (unsub = u2));
 
@@ -985,6 +1001,14 @@
       title="click to change pattern"
     ></canvas>
     <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
+    <button
+      class="viz-pin"
+      class:pinned
+      data-no-drag
+      onclick={togglePin}
+      title={pinned ? "Unpin — resume auto-cycling" : "Pin — keep this pattern"}
+      aria-label={pinned ? "Unpin visualizer" : "Pin visualizer"}
+    >{pinned ? "● PINNED" : "○ PIN"}</button>
   </div>
 
   <div class="viz-resize" use:makeVizResizable></div>
@@ -1111,6 +1135,31 @@
     text-shadow: 0 0 3px #000, 0 0 2px #000;
     pointer-events: none;
     opacity: 0.75;
+  }
+  /* Pin toggle, bottom-right so it doesn't cover the preset name. Dim until
+     hovered or active, like the rest of the overlay. */
+  .viz-pin {
+    position: absolute;
+    right: 4px;
+    bottom: 3px;
+    background: none;
+    border: none;
+    padding: 1px 3px;
+    font-family: monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: #6effa0;
+    text-shadow: 0 0 3px #000, 0 0 2px #000;
+    opacity: 0.5;
+    cursor: pointer;
+    z-index: 3;
+  }
+  .viz-pin:hover {
+    opacity: 0.9;
+  }
+  .viz-pin.pinned {
+    color: #ffd24a;
+    opacity: 0.95;
   }
 
   .viz-resize {

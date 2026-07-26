@@ -98,6 +98,12 @@
   onMount(async () => {
     REACTIVE_WINDOW_SIZE.setSize(500, 380);
     REACTIVE_WINDOW_SIZE.setZoom(1);
+    // Reopen at the size it was last left (falls back to the default above).
+    invoke("get_window_inner_size", { label: "library" })
+      .then((s) => {
+        if (s) REACTIVE_WINDOW_SIZE.setSize(s.width, s.height);
+      })
+      .catch(() => {});
     loadSavedListsLib();
     try {
       playlists = await invoke("get_user_playlists");

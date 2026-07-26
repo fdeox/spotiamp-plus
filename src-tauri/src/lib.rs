@@ -432,6 +432,8 @@ pub fn run() {
             playlist_window::get_playlist_settings,
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
+            app_window::set_window_inner_size,
+            app_window::get_window_inner_size,
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,

@@ -51,6 +51,36 @@ pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i
     }
 }
 
+/// Restore a remembered position for one of the on-demand windows (library /
+/// visualizer / lyrics / eq) and keep saving it as it moves. Falls back to
+/// `default_pos` the first time, before the user has placed it. Size is
+/// restored separately, at build time, from `Settings::window_inner_size`.
+pub fn restore_and_remember(window: &WebviewWindow, label: &'static str, default_pos: LogicalPosition<i32>) {
+    let saved = crate::settings::Settings::current().window_position(label);
+    apply_position(window, Some(saved.unwrap_or(default_pos)));
+    remember_position(window, label, move |position| {
+        crate::settings::Settings::current_mut().set_window_position(label, position);
+    });
+}
+
+/// Persist an on-demand window's inner size (library / visualizer / lyrics),
+/// called from the frontend when the user resizes it. Size lives in the
+/// frontend (the resize grip drives `REACTIVE_WINDOW_SIZE`), so it comes back
+/// over the bridge rather than being read here.
+#[tauri::command]
+pub fn set_window_inner_size(label: String, width: u32, height: u32) {
+    crate::settings::Settings::current_mut()
+        .set_window_inner_size(&label, crate::settings::InnerWindowSize { width, height });
+}
+
+/// The remembered inner size for a window, or None if it's never been resized —
+/// each window reads this on mount so it opens at the size it was left, instead
+/// of snapping back to its hardcoded default.
+#[tauri::command]
+pub fn get_window_inner_size(label: String) -> Option<crate::settings::InnerWindowSize> {
+    crate::settings::Settings::current().window_inner_size(&label)
+}
+
 pub fn remember_position(
     window: &WebviewWindow,
     scale_factor_context: &'static str,

@@ -178,9 +178,42 @@ pub struct Settings {
     /// of an endless silent-crash loop.
     #[serde(default)]
     pub pending_connect: bool,
+    /// Remembered geometry for the on-demand windows (library / visualizer /
+    /// lyrics / eq), keyed by window label — so reopening one brings it back
+    /// where and how it was left. Player and playlist keep their own fields
+    /// above; this covers the rest without a struct each. A Vec, not a HashMap,
+    /// because Settings derives Hash (used to detect changes for auto-save) and
+    /// HashMap isn't Hash; there are only a handful of windows.
+    #[serde(default)]
+    pub windows: Vec<(String, WindowState)>,
 }
 
 impl Settings {
+    fn window(&self, label: &str) -> Option<&WindowState> {
+        self.windows.iter().find(|(l, _)| l == label).map(|(_, w)| w)
+    }
+    fn window_mut(&mut self, label: &str) -> &mut WindowState {
+        if let Some(i) = self.windows.iter().position(|(l, _)| l == label) {
+            &mut self.windows[i].1
+        } else {
+            self.windows.push((label.to_string(), WindowState::default()));
+            &mut self.windows.last_mut().unwrap().1
+        }
+    }
+    /// Restore a remembered position for `label`, or None if never saved.
+    pub fn window_position(&self, label: &str) -> Option<LogicalPosition<i32>> {
+        self.window(label).and_then(|w| w.get_position())
+    }
+    /// Restore a remembered inner size for `label`, or None if never saved.
+    pub fn window_inner_size(&self, label: &str) -> Option<InnerWindowSize> {
+        self.window(label).and_then(|w| w.inner_size.clone())
+    }
+    pub fn set_window_position(&mut self, label: &str, position: LogicalPosition<i32>) {
+        self.window_mut(label).set_position(position);
+    }
+    pub fn set_window_inner_size(&mut self, label: &str, size: InnerWindowSize) {
+        self.window_mut(label).inner_size = Some(size);
+    }
     fn _current() -> &'static RwLock<Settings> {
         static MEM: OnceLock<RwLock<Settings>> = OnceLock::new();
         MEM.get_or_init(|| RwLock::new(Settings::load()))

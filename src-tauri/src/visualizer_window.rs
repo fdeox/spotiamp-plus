@@ -12,14 +12,14 @@ pub fn build_window(
     app: &AppHandle,
     initial_position: LogicalPosition<i32>,
 ) -> Result<WebviewWindow, tauri::Error> {
-    let window = app_window::build_frameless_window(
-        app,
-        "visualizer",
-        "Visualizer",
-        "visualizer",
-        VIZ_SIZE,
-    )?;
-    app_window::apply_position(&window, Some(initial_position));
+    let size = crate::settings::Settings::current()
+        .window_inner_size("visualizer")
+        .unwrap_or(VIZ_SIZE);
+    let window =
+        app_window::build_frameless_window(app, "visualizer", "Visualizer", "visualizer", size)?;
+    // Reopen where and how it was last left; `initial_position` (below the
+    // player) is only used the first time, before it's been placed.
+    app_window::restore_and_remember(&window, "visualizer", initial_position);
     Ok(window)
 }
 

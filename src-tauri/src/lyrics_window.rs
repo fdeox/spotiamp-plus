@@ -11,8 +11,11 @@ pub fn build_window(
     app: &AppHandle,
     initial_position: LogicalPosition<i32>,
 ) -> Result<WebviewWindow, tauri::Error> {
-    let window = app_window::build_frameless_window(app, "lyrics", "Lyrics", "lyrics", LYRICS_SIZE)?;
-    app_window::apply_position(&window, Some(initial_position));
+    let size = crate::settings::Settings::current()
+        .window_inner_size("lyrics")
+        .unwrap_or(LYRICS_SIZE);
+    let window = app_window::build_frameless_window(app, "lyrics", "Lyrics", "lyrics", size)?;
+    app_window::restore_and_remember(&window, "lyrics", initial_position);
     Ok(window)
 }
 

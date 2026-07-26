@@ -9,17 +9,26 @@
    * @type {{children: import("svelte").Snippet}}
    */
   let { children } = $props();
+  // The on-demand resizable windows whose size we remember across restarts
+  // (player has its own field; playlist has set_playlist_inner_size; eq is
+  // fixed-size).
+  const REMEMBER_SIZE = ["library", "visualizer", "lyrics"];
   $effect(() => {
     const win = getCurrentWindow();
     // the login window is sized by Rust (600x800) and then redirects to
     // Spotify — don't shrink it to the player's dimensions
     if (win.label === "login") return;
-    win.setSize(
-      new LogicalSize(
-        REACTIVE_WINDOW_SIZE.width * REACTIVE_WINDOW_SIZE.zoom,
-        REACTIVE_WINDOW_SIZE.height * REACTIVE_WINDOW_SIZE.zoom
-      )
-    );
+    const w = REACTIVE_WINDOW_SIZE.width;
+    const h = REACTIVE_WINDOW_SIZE.height;
+    win.setSize(new LogicalSize(w * REACTIVE_WINDOW_SIZE.zoom, h * REACTIVE_WINDOW_SIZE.zoom));
+    // Persist the (unzoomed) inner size so reopening restores it.
+    if (REMEMBER_SIZE.includes(win.label)) {
+      invoke("set_window_inner_size", {
+        label: win.label,
+        width: Math.round(w),
+        height: Math.round(h),
+      }).catch(() => {});
+    }
   });
 
   // Skins: every window reads the active skin and reapplies it live when it

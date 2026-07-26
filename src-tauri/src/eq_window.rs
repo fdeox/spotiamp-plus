@@ -11,8 +11,9 @@ pub fn build_window(
     app: &AppHandle,
     initial_position: LogicalPosition<i32>,
 ) -> Result<WebviewWindow, tauri::Error> {
+    // EQ is fixed-size, so only its position is remembered (not size).
     let window = app_window::build_frameless_window(app, "eq", "Equalizer", "eq", EQ_SIZE)?;
-    app_window::apply_position(&window, Some(initial_position));
+    app_window::restore_and_remember(&window, "eq", initial_position);
     Ok(window)
 }
 
