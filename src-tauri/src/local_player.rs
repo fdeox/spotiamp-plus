@@ -559,3 +559,81 @@ fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>, depth: u32)
         }
     }
 }
+
+/// Title / artist / album / duration read from a file's tags, so a local track
+/// shows real names instead of just its filename.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct LocalMeta {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: u32,
+}
+
+/// Probe a single file for its tags + duration. Separate from the playback
+/// path (no stream is built), so it's cheap to call the moment a file loads.
+#[tauri::command]
+pub fn local_metadata(path: String) -> LocalMeta {
+    read_local_meta(&PathBuf::from(path)).unwrap_or_default()
+}
+
+fn apply_tags(rev: &symphonia::core::meta::MetadataRevision, meta: &mut LocalMeta) {
+    use symphonia::core::meta::StandardTagKey;
+    for tag in rev.tags() {
+        match tag.std_key {
+            Some(StandardTagKey::TrackTitle) if meta.title.is_empty() => {
+                meta.title = tag.value.to_string();
+            }
+            Some(StandardTagKey::Artist) if meta.artist.is_empty() => {
+                meta.artist = tag.value.to_string();
+            }
+            Some(StandardTagKey::AlbumArtist) if meta.artist.is_empty() => {
+                meta.artist = tag.value.to_string();
+            }
+            Some(StandardTagKey::Album) if meta.album.is_empty() => {
+                meta.album = tag.value.to_string();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
+    let file = std::fs::File::open(path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let mut probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let mut meta = LocalMeta::default();
+
+    if let Some(track) = probed
+        .format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.sample_rate.is_some())
+        && let (Some(n), Some(tb)) =
+            (track.codec_params.n_frames, track.codec_params.time_base)
+    {
+        let t = tb.calc_time(n);
+        meta.duration_ms = ((t.seconds as f64 + t.frac) * 1000.0) as u32;
+    }
+
+    // Tags the probe collected up front (ID3v2 on MP3 usually lands here)...
+    if let Some(rev) = probed.metadata.get().as_ref().and_then(|m| m.current()) {
+        apply_tags(rev, &mut meta);
+    }
+    // ...and tags the format reader exposes (Vorbis comments, etc.).
+    if let Some(rev) = probed.format.metadata().current() {
+        apply_tags(rev, &mut meta);
+    }
+    Some(meta)
+}

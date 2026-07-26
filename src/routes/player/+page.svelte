@@ -349,6 +349,27 @@
     playerState = "playing";
     await invoke("local_load", { path }).catch(() => {});
     startLocalPoll();
+    // Fill in real names from the file's tags (title/artist/duration), so the
+    // display isn't just the filename. Fire-and-forget; guard against the user
+    // having switched tracks by the time it resolves.
+    invoke("local_metadata", { path })
+      .then((m) => {
+        const t = /** @type {any} */ (m);
+        if (!t || loadedTrack?.path !== path) return;
+        const name = t.title || loadedTrack.name;
+        const artist = t.artist || loadedTrack.artist || "";
+        const durationInMs = t.duration_ms || loadedTrack.durationInMs || 0;
+        loadedTrack = /** @type {any} */ ({
+          ...loadedTrack,
+          name,
+          artist,
+          album: t.album || loadedTrack.album,
+          durationInMs,
+          displayName: artist ? `${artist} - ${name}` : name,
+          displayDuration: durationToString(durationInMs),
+        });
+      })
+      .catch(() => {});
   }
 
   function startLocalPoll() {
