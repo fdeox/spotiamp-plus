@@ -155,6 +155,21 @@
     }
   }
 
+  // Save the current curve to a .EQF file — the other half of Load .EQF, so a
+  // tweaked EQ can be kept and reloaded (or used in real Winamp).
+  async function saveEqf() {
+    menuOpen = false;
+    try {
+      await invoke("export_eqf", {
+        name: "Spotiamp+ preset",
+        bands: [...bands],
+        preamp,
+      });
+    } catch {
+      /* dialog cancelled or write failed — nothing to change */
+    }
+  }
+
   // ask the player to untoggle (it owns the EQ button's lit state and will
   // hide us through set_eq_window_visible)
   const close = () => emitWindowEvent("eqWindow", { CloseRequested: null });
@@ -215,6 +230,15 @@
         onkeydown={(e) => e.key === "Enter" && loadEqf()}
       >
         Load .EQF…
+      </div>
+      <div
+        class="eq-menu-item"
+        role="button"
+        tabindex="0"
+        onclick={saveEqf}
+        onkeydown={(e) => e.key === "Enter" && saveEqf()}
+      >
+        Save .EQF…
       </div>
     </div>
   {/if}

@@ -76,6 +76,57 @@ pub async fn import_eqf(app_handle: AppHandle) -> Result<Option<EqfPreset>, Stri
         .ok_or_else(|| "Not a valid Winamp .EQF preset file".to_string())
 }
 
+/// Byte Winamp stores for a dB gain — the inverse of `byte_to_db`: 0 = +20 dB,
+/// 63 = -20 dB. Our sliders only reach ±12 dB, well inside the range.
+fn db_to_byte(db: f32) -> u8 {
+    ((20.0 - db) * (63.0 / 40.0)).round().clamp(0.0, 63.0) as u8
+}
+
+/// Serialise one preset into `.EQF` bytes — the exact layout `parse_first_preset`
+/// reads back, so save/load round-trips.
+fn build_eqf(name: &str, bands: &[f32], preamp: f32) -> Result<Vec<u8>, String> {
+    if bands.len() != 10 {
+        return Err(format!("expected 10 bands, got {}", bands.len()));
+    }
+    let mut v = Vec::with_capacity(HEADER_LEN + ENTRY_LEN);
+    v.extend_from_slice(MAGIC);
+    v.extend_from_slice(&[0x1A, b'!', b'-', b'-']); // -> 31-byte header
+    let mut name_field = [0u8; NAME_LEN];
+    let name_bytes = name.as_bytes();
+    let n = name_bytes.len().min(NAME_LEN - 1); // keep a trailing null
+    name_field[..n].copy_from_slice(&name_bytes[..n]);
+    v.extend_from_slice(&name_field);
+    for &db in bands {
+        v.push(db_to_byte(db));
+    }
+    v.push(db_to_byte(preamp));
+    Ok(v)
+}
+
+/// Save the current EQ curve to a `.EQF` file the user picks (the missing other
+/// half of `import_eqf`). Returns false when the save dialog is cancelled.
+#[tauri::command]
+pub async fn export_eqf(
+    app_handle: AppHandle,
+    name: String,
+    bands: Vec<f32>,
+    preamp: f32,
+) -> Result<bool, String> {
+    let bytes = build_eqf(&name, &bands, preamp)?;
+    let Some(path) = app_handle
+        .dialog()
+        .file()
+        .add_filter("Winamp EQ preset", &["eqf"])
+        .set_file_name("preset.eqf")
+        .blocking_save_file()
+        .and_then(|file_path| file_path.into_path().ok())
+    else {
+        return Ok(false); // cancelled
+    };
+    std::fs::write(&path, bytes).map_err(|e| format!("Could not write file ({e})"))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +159,24 @@ mod tests {
     #[test]
     fn rejects_non_eqf() {
         assert!(parse_first_preset(b"not an eqf file at all").is_none());
+    }
+
+    #[test]
+    fn build_then_parse_roundtrips() {
+        let bands = vec![12.0, -12.0, 0.0, 6.0, -6.0, 3.0, -3.0, 9.0, -9.0, 1.0];
+        let bytes = build_eqf("My Preset", &bands, 0.0).expect("10 bands");
+        let preset = parse_first_preset(&bytes).expect("valid preset");
+        assert_eq!(preset.name, "My Preset");
+        assert_eq!(preset.bands.len(), 10);
+        // Winamp quantises to ~0.63 dB steps, so allow one step of drift.
+        for (got, want) in preset.bands.iter().zip(bands.iter()) {
+            assert!((got - want).abs() < 0.7, "{got} vs {want}");
+        }
+        assert!(preset.preamp.abs() < 0.7);
+    }
+
+    #[test]
+    fn build_rejects_wrong_band_count() {
+        assert!(build_eqf("x", &[0.0; 9], 0.0).is_err());
     }
 }

@@ -460,6 +460,7 @@ pub fn run() {
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,
             eqf::import_eqf,
+            eqf::export_eqf,
             lyrics_window::set_lyrics_window_visible,
             discord::set_discord_activity,
             discord::clear_discord_activity,
