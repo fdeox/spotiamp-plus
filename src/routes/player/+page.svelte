@@ -631,6 +631,8 @@
           stop();
         } else if (event.EndReached !== undefined) {
           stop();
+        } else if (event.LocalFilesPicked) {
+          loadLocalFiles(event.LocalFilesPicked);
         }
       },
     );

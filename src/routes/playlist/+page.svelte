@@ -173,6 +173,24 @@
     closeMenu();
   }
   const closeMenu = () => (menu.show = false);
+
+  // Local files: pick from disk here, hand the paths to the player (it owns the
+  // local queue). A discoverable entry alongside the player's O / Shift+O.
+  async function addLocalFiles() {
+    closeMenu();
+    const paths = /** @type {string[]} */ (
+      await invoke("local_pick_files").catch(() => [])
+    );
+    if (paths?.length) emitWindowEvent("playlistWindow", { LocalFilesPicked: paths });
+  }
+  async function addLocalFolder() {
+    closeMenu();
+    const paths = /** @type {string[]} */ (
+      await invoke("local_pick_folder").catch(() => [])
+    );
+    if (paths?.length) emitWindowEvent("playlistWindow", { LocalFilesPicked: paths });
+  }
+
   let menuTab = $state("skins");
   async function openDiscord() {
     closeMenu();
@@ -903,6 +921,13 @@
           <button class="ctx-listbtn" onclick={saveCurrentAsList}>Save</button>
         </div>
         <div class="ctx-hint">browse lists in Library ▸ Spotiamp+</div>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" onclick={addLocalFiles}>
+          ♪ Add local file(s)…
+        </button>
+        <button class="ctx-item" onclick={addLocalFolder}>
+          ♪ Add local folder…
+        </button>
       {/if}
 
       <div class="ctx-sep"></div>
