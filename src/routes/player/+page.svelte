@@ -163,6 +163,9 @@
   });
 
   function emitPreviousPressed() {
+    // A local queue walks itself; only fall through to the Spotify playlist
+    // when it runs off the front.
+    if (loadedTrack?.isLocal && localQueue.length > 0 && localAdvance(-1)) return;
     if (controllerMode) {
       invoke("smtc_previous").catch(() => {});
       return;
@@ -171,6 +174,7 @@
   }
 
   function emitNextPressed() {
+    if (loadedTrack?.isLocal && localQueue.length > 0 && localAdvance(1)) return;
     if (controllerMode) {
       invoke("smtc_next").catch(() => {});
       return;
@@ -310,6 +314,14 @@
   // plain loadedTrack object plus a poll for position and end-of-track, since a
   // local file has no librespot event channel.
   let localPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+  // A queue of local file paths (from a multi-file drop or the file/folder
+  // picker) so a whole folder plays through, kept here in the player instead of
+  // in the Spotify playlist model — local files never touch that, so nothing on
+  // the Spotify side can break. next/previous walk this; end-of-track advances
+  // it, then falls back to the Spotify playlist / radio when it runs out.
+  /** @type {string[]} */
+  let localQueue = [];
+  let localQueueIndex = 0;
   /**
    * @param {string} path
    * @param {any} [meta]
@@ -366,6 +378,45 @@
       clearInterval(localPollTimer);
       localPollTimer = null;
     }
+  }
+
+  /**
+   * Play a set of local files: the first starts now, the rest queue up.
+   * @param {string[]} paths
+   */
+  async function loadLocalFiles(paths) {
+    const files = (paths ?? []).filter((p) => typeof p === "string" && p);
+    if (files.length === 0) return;
+    localQueue = files;
+    localQueueIndex = 0;
+    await loadLocalFile(files[0]);
+  }
+
+  /**
+   * Step through the local queue. Returns false at either end so the caller can
+   * fall back to the Spotify playlist / radio.
+   * @param {number} offset
+   */
+  function localAdvance(offset) {
+    const next = localQueueIndex + offset;
+    if (next < 0 || next >= localQueue.length) return false;
+    localQueueIndex = next;
+    loadLocalFile(localQueue[next]);
+    return true;
+  }
+
+  // Entry points besides drag-drop: a native file / folder picker (Rust side).
+  async function openLocalFiles() {
+    const paths = /** @type {string[]} */ (
+      await invoke("local_pick_files").catch(() => [])
+    );
+    if (paths?.length) loadLocalFiles(paths);
+  }
+  async function openLocalFolder() {
+    const paths = /** @type {string[]} */ (
+      await invoke("local_pick_folder").catch(() => [])
+    );
+    if (paths?.length) loadLocalFiles(paths);
   }
 
   // In controller mode the spectrum comes from the system-audio loopback
@@ -628,8 +679,8 @@
     getCurrentWebview()
       .onDragDropEvent((event) => {
         if (event.payload.type !== "drop") return;
-        const audio = event.payload.paths.find((p) => LOCAL_AUDIO_RE.test(p));
-        if (audio) loadLocalFile(audio);
+        const audio = event.payload.paths.filter((p) => LOCAL_AUDIO_RE.test(p));
+        if (audio.length) loadLocalFiles(audio);
       })
       .then((un) => {
         fileDropUnlisten = un;
@@ -690,6 +741,12 @@
           if (!controllerMode) {
             invoke("set_library_window_visible", { visible: true });
           }
+          break;
+        // Open local files off disk: O for a file picker, Shift+O for a whole
+        // folder. A non-drag entry point for playing your own MP3s/FLACs.
+        case "o":
+          acted();
+          e.shiftKey ? openLocalFolder() : openLocalFiles();
           break;
       }
     };

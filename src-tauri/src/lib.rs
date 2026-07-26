@@ -453,6 +453,8 @@ pub fn run() {
             local_player::local_duration,
             local_player::local_is_playing,
             local_player::local_take_events,
+            local_player::local_pick_files,
+            local_player::local_pick_folder,
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,

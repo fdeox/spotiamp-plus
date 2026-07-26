@@ -492,3 +492,70 @@ pub fn local_is_playing(player: State) -> bool {
 pub fn local_take_events(player: State) -> Vec<LocalEvent> {
     player.lock().map(|p| p.take_events()).unwrap_or_default()
 }
+
+/// Audio extensions Spotiamp+ can decode via symphonia. Kept in sync with the
+/// player window's drag-drop filter.
+const AUDIO_EXTS: [&str; 9] = [
+    "mp3", "flac", "m4a", "aac", "wav", "ogg", "oga", "opus", "wma",
+];
+
+/// Show a picker for one or more audio files and return their absolute paths
+/// (empty when cancelled). A discoverable entry point alongside drag-drop; the
+/// frontend plays the first and queues the rest.
+#[tauri::command]
+pub async fn local_pick_files(app_handle: tauri::AppHandle) -> Vec<String> {
+    use tauri_plugin_dialog::DialogExt;
+    app_handle
+        .dialog()
+        .file()
+        .add_filter("Audio", &AUDIO_EXTS)
+        .blocking_pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Pick a folder and return every audio file inside it (walks subfolders, since
+/// real music libraries are nested), sorted for a stable play order.
+#[tauri::command]
+pub async fn local_pick_folder(app_handle: tauri::AppHandle) -> Vec<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(dir) = app_handle
+        .dialog()
+        .file()
+        .blocking_pick_folder()
+        .and_then(|f| f.into_path().ok())
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    collect_audio_files(&dir, &mut out, 0);
+    out.sort();
+    out
+}
+
+/// Recursively gather audio files under `dir`. Depth-bounded so an accidental
+/// pick of a drive root can't walk the whole disk forever.
+fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>, depth: u32) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_audio_files(&path, out, depth + 1);
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| AUDIO_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+            .unwrap_or(false)
+        {
+            out.push(path.to_string_lossy().into_owned());
+        }
+    }
+}
