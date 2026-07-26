@@ -18,6 +18,9 @@ pub struct TrackMetadata {
     name: String,
     duration: u32,
     unavailable: bool,
+    /// Album release year for the library's Date column/sort. 0 when the
+    /// catalogue has no plausible date (some albums come back as the epoch).
+    year: i32,
 }
 impl From<&Track> for TrackMetadata {
     fn from(track: &Track) -> Self {
@@ -41,6 +44,13 @@ impl From<&Track> for TrackMetadata {
             album_art,
             name: track.name.clone(),
             duration: track.duration as u32,
+            year: {
+                // Date derefs to time::OffsetDateTime; albums without a real
+                // date decode as the epoch, so treat anything implausible as
+                // unknown (0) rather than showing "1970".
+                let y = track.album.date.year();
+                if (1900..=2100).contains(&y) { y } else { 0 }
+            },
         }
     }
 }

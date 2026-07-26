@@ -21,10 +21,10 @@
   let loadToken = 0;
 
   // Column sorting (click a header). null = the natural list order.
-  /** @type {"artist" | "album" | "title" | "time" | null} */
+  /** @type {"artist" | "album" | "title" | "time" | "date" | null} */
   let sortCol = $state(null);
   let sortDir = $state(1); // 1 asc, -1 desc
-  /** @param {"artist" | "album" | "title" | "time"} col */
+  /** @param {"artist" | "album" | "title" | "time" | "date"} col */
   function sortBy(col) {
     if (sortCol === col) {
       sortDir = -sortDir;
@@ -41,7 +41,12 @@
     if (!col) return tracks;
     const field = col === "title" ? "name" : col;
     /** @param {any} t */
-    const key = (t) => (col === "time" ? (t.duration ?? 0) : (t[field] ?? ""));
+    const key = (t) =>
+      col === "time"
+        ? (t.duration ?? 0)
+        : col === "date"
+          ? (t.year ?? 0)
+          : (t[field] ?? "");
     return [...tracks].sort((a, b) => {
       const ka = key(a);
       const kb = key(b);
@@ -536,6 +541,9 @@
         <button class="ml-col ml-c-title ml-colbtn" onclick={() => sortBy("title")}>
           Title{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
+        <button class="ml-col ml-c-date ml-colbtn" onclick={() => sortBy("date")}>
+          Date{sortCol === "date" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        </button>
         <button class="ml-col ml-c-time ml-colbtn" onclick={() => sortBy("time")}>
           Time{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
@@ -562,6 +570,7 @@
               <div class="ml-col ml-c-artist">{t.artist}</div>
               <div class="ml-col ml-c-album">{t.album}</div>
               <div class="ml-col ml-c-title">{t.name}</div>
+              <div class="ml-col ml-c-date">{t.year ? t.year : ""}</div>
               <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
             </div>
           {/each}
@@ -950,7 +959,8 @@
   .ml-colbtn:hover {
     color: var(--skin-genexitemfg, #7dffa0);
   }
-  .ml-c-time.ml-colbtn {
+  .ml-c-time.ml-colbtn,
+  .ml-c-date.ml-colbtn {
     text-align: right;
   }
   .ml-c-artist {
@@ -962,6 +972,10 @@
   .ml-c-title {
     flex: 1;
     min-width: 0;
+  }
+  .ml-c-date {
+    flex: 0 0 34px;
+    text-align: right;
   }
   .ml-c-time {
     flex: 0 0 44px;
