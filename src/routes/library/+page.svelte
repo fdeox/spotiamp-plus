@@ -1081,14 +1081,27 @@
     align-items: center;
     gap: 4px;
     padding: 0 5px;
-    border-top: 1px solid var(--skin-genexdivider, #0a1a0a);
-    background: var(--skin-genexwndbg, #050a05);
+    /* Fall back to the window colour, not a fixed near-black, so the footer
+       matches skins that ship no GENEX.BMP instead of a dark bar clashing
+       under a gold/grey window. */
+    border-top: 1px solid
+      var(--skin-genexdivider, color-mix(in srgb, var(--frame) 45%, #000));
+    background: var(--skin-genexwndbg, var(--frame));
   }
   .ml-btn {
-    background: none;
-    border: 4px solid transparent;
+    /* When the skin has a GENEX button face the border-image (with fill) wins
+       and covers this; when it doesn't, this frame-derived bevel is what shows,
+       so the buttons are visible and skin-matched instead of an invisible
+       transparent border on near-black. */
+    background: color-mix(in srgb, var(--frame) 82%, #fff);
+    border: 4px solid;
+    border-color:
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 72%, #fff);
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
-    color: var(--skin-genexbtntext, #393942);
+    color: var(--skin-genexbtntext, var(--skin-genexwndtext, var(--skin-titletext, #dcdce6)));
     font-family: "px sans nouveaux", sans-serif;
     font-size: 7px;
     -webkit-font-smoothing: none;
@@ -1099,10 +1112,17 @@
   }
   .ml-btn:active {
     border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
+    /* pressed fallback (no sprite): invert the bevel and sink the face */
+    border-color:
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 40%, #000);
+    background: color-mix(in srgb, var(--frame) 72%, #000);
   }
   .ml-count {
     margin-left: auto;
-    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 170, 0)));
+    color: var(--skin-genexwndtext, var(--skin-titletext, var(--skin-plnormal, rgb(0, 170, 0))));
     padding-right: 8px;
   }
 
