@@ -151,6 +151,12 @@ export class Playlist {
 
     /** Play in random order (toggled from the player's shuffle button). */
     shuffle = false;
+    /** Rows already played this shuffle cycle. Without it a shuffled queue
+     *  picks randomly forever and never signals "end reached", so autoplay
+     *  radio (and plain stop) never fire. We play every row once, then the
+     *  cycle ends — repeat restarts it, otherwise the queue is genuinely done.
+     *  @type {Set<TrackRow>} */
+    shuffleBag = new Set();
     /** 0 = off, 1 = repeat all (wrap at ends), 2 = repeat one (loop track). */
     repeat = 0;
     /** When the queue runs out (repeat off), keep playing Spotify radio seeded
@@ -262,6 +268,8 @@ export class Playlist {
                     this.previous(true);
                 } else if (event.ShuffleChanged !== undefined) {
                     this.shuffle = event.ShuffleChanged;
+                    // Fresh cycle each time shuffle is toggled.
+                    this.shuffleBag.clear();
                 } else if (event.RepeatChanged !== undefined) {
                     this.repeat = event.RepeatChanged;
                 } else if (event.UrlsDropped) {
@@ -327,6 +335,7 @@ export class Playlist {
         this.focusedRow = undefined;
         this.selectionAnchor = undefined;
         this.loadedRow = undefined;
+        this.shuffleBag.clear(); // drop refs to the now-gone rows
     }
 
     /**
@@ -538,8 +547,29 @@ export class Playlist {
 
         let nextIndex;
         if (this.shuffle && offset > 0) {
-            // shuffle only drives forward playback; previous stays sequential
-            nextIndex = this.pickRandomIndex(currRowIndex);
+            // Shuffle only drives forward playback; previous stays sequential.
+            // Remember the row we're leaving, then pick from the ones not yet
+            // played this cycle so every track plays once before the queue is
+            // "done". When the bag is full the cycle has ended: repeat restarts
+            // it, otherwise we return end-reached so radio autoplay / stop can
+            // kick in (the bug: this branch used to pick randomly forever).
+            if (this.loadedRow) this.shuffleBag.add(this.loadedRow);
+            const remaining = this.rows.filter((r) => !this.shuffleBag.has(r));
+            if (remaining.length === 0) {
+                if (this.repeat) {
+                    this.shuffleBag.clear();
+                    nextIndex = this.pickRandomIndex(currRowIndex);
+                } else {
+                    return true; // whole queue played once → end reached
+                }
+            } else {
+                const pick =
+                    remaining[Math.floor(Math.random() * remaining.length)];
+                // Mark it played now (not just via loadedRow next time) so a
+                // skipped-unavailable retry can't re-pick it and spin forever.
+                this.shuffleBag.add(pick);
+                nextIndex = this.rows.indexOf(pick);
+            }
         } else {
             nextIndex = currRowIndex + offset;
             if (nextIndex < 0 || nextIndex >= this.rows.length) {
