@@ -317,6 +317,16 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     let player = Arc::new(tokio::sync::Mutex::new(SpotifyPlayer::new(session)));
     app_handle.manage(player.clone());
 
+    // Local-file player (0.7.0), sharing the Spotify path's EQ + visualizer so a
+    // local track gets the same DSP and spectrum. Managed as a Mutex because its
+    // command sender isn't Sync. Additive — it plays only when the UI tells it
+    // to, so the librespot path is untouched.
+    {
+        let guard = player.lock().await;
+        let local = local_player::LocalPlayer::new(guard.eq_shared(), guard.visualizer_shared());
+        app_handle.manage(std::sync::Mutex::new(local));
+    }
+
     // Forward playback events from the current player to the UI.
     let channel = player.lock().await.get_player_event_channel();
     spawn_event_forwarder(player_window.clone(), channel);
@@ -434,6 +444,15 @@ pub fn run() {
             playlist_window::set_playlist_inner_size,
             app_window::set_window_inner_size,
             app_window::get_window_inner_size,
+            local_player::local_load,
+            local_player::local_play,
+            local_player::local_pause,
+            local_player::local_stop,
+            local_player::local_seek,
+            local_player::local_position,
+            local_player::local_duration,
+            local_player::local_is_playing,
+            local_player::local_take_events,
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,

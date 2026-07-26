@@ -458,6 +458,16 @@ impl SpotifyPlayer {
     pub fn get_player_event_channel(&self) -> PlayerEventChannel {
         self.player.get_player_event_channel()
     }
+
+    /// Share the live EQ state and the visualizer so the local-file player runs
+    /// through the exact same DSP and spectrum — a local track then gets the EQ
+    /// and the visualizer just like a Spotify one.
+    pub fn eq_shared(&self) -> Arc<Mutex<EqState>> {
+        self.eq.clone()
+    }
+    pub fn visualizer_shared(&self) -> Arc<Mutex<Visualizer>> {
+        self.visualizer.clone()
+    }
 }
 
 /// Names of the available audio output devices, for the device picker. Uses the

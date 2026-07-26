@@ -13,7 +13,7 @@
 //! step. Additive: nothing here touches the librespot path, so it cannot break
 //! existing playback until it's deliberately hooked up.
 
-#![allow(dead_code)] // wired into commands/playlist in a later step
+#![allow(dead_code)] // UI wiring (drag-drop / picker) lands in a later step
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -34,7 +34,7 @@ use crate::visualizer::Visualizer;
 
 /// What the worker reports back, matching the shape of the librespot player's
 /// events so the frontend can treat local and Spotify tracks alike.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum LocalEvent {
     Playing { position_ms: u32 },
     Paused { position_ms: u32 },
@@ -437,4 +437,58 @@ impl Worker {
         a.frames_played.store(frames, Ordering::Relaxed);
         self.position_ms.store(ms as u64, Ordering::Relaxed);
     }
+}
+
+// --- tauri commands --------------------------------------------------------
+// The player is managed as `Mutex<LocalPlayer>` (its command Sender isn't Sync).
+// Each call just queues a message to the worker, so the lock is held briefly.
+
+type State<'a> = tauri::State<'a, Mutex<LocalPlayer>>;
+
+#[tauri::command]
+pub fn local_load(path: String, player: State) {
+    if let Ok(p) = player.lock() {
+        p.load(PathBuf::from(path));
+    }
+}
+#[tauri::command]
+pub fn local_play(player: State) {
+    if let Ok(p) = player.lock() {
+        p.play();
+    }
+}
+#[tauri::command]
+pub fn local_pause(player: State) {
+    if let Ok(p) = player.lock() {
+        p.pause();
+    }
+}
+#[tauri::command]
+pub fn local_stop(player: State) {
+    if let Ok(p) = player.lock() {
+        p.stop();
+    }
+}
+#[tauri::command]
+pub fn local_seek(position_ms: u32, player: State) {
+    if let Ok(p) = player.lock() {
+        p.seek(position_ms);
+    }
+}
+#[tauri::command]
+pub fn local_position(player: State) -> u32 {
+    player.lock().map(|p| p.position_ms()).unwrap_or(0)
+}
+#[tauri::command]
+pub fn local_duration(player: State) -> u32 {
+    player.lock().map(|p| p.duration_ms()).unwrap_or(0)
+}
+#[tauri::command]
+pub fn local_is_playing(player: State) -> bool {
+    player.lock().map(|p| p.is_playing()).unwrap_or(false)
+}
+/// Drain queued events so the frontend can react (position, EndOfTrack, …).
+#[tauri::command]
+pub fn local_take_events(player: State) -> Vec<LocalEvent> {
+    player.lock().map(|p| p.take_events()).unwrap_or_default()
 }
