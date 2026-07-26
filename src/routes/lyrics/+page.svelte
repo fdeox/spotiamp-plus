@@ -187,10 +187,17 @@
        longer clash with the titlebar. */
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
     background: var(--frame);
-    border: 1px solid color-mix(in srgb, var(--frame) 45%, #000);
+    box-sizing: border-box;
+    /* Weighted Winamp frame (0.7.0): a 2px inner bevel strip in the titlebar's
+       own colour runs unbroken from the titlebar down both sides and across the
+       bottom, so the frame reads as one piece with the sprite titlebar instead
+       of the old thin separate line the user found disconnected. */
+    padding: 0 2px 2px;
+    border: 1px solid color-mix(in srgb, var(--frame) 38%, #000);
     box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 65%, #fff),
-      inset -1px -1px 0 color-mix(in srgb, var(--frame) 55%, #000);
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 68%, #fff),
+      inset 2px 0 0 color-mix(in srgb, var(--frame) 68%, #fff),
+      inset -2px -2px 0 color-mix(in srgb, var(--frame) 52%, #000);
     user-select: none;
   }
 
