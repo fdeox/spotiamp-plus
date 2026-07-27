@@ -45,7 +45,7 @@
       col === "time"
         ? (t.duration ?? 0)
         : col === "date"
-          ? (t.year ?? 0)
+          ? (t.addedMs ?? 0)
           : (t[field] ?? "");
     return [...tracks].sort((a, b) => {
       const ka = key(a);
@@ -124,14 +124,16 @@
   const trackUrl = (uri) =>
     `https://open.spotify.com/track/${uri.split(":").pop()}`;
 
-  // Resolve names for a list of track uris, filling the right pane top-down.
-  async function loadTrackMetas(ids, token) {
-    for (const uri of ids) {
+  // Resolve names for a list of {uri, added_ms} refs, filling the right pane
+  // top-down. `added_ms` is the playlist "date added" (null for liked/search).
+  /** @param {{uri: string, added_ms: number|null}[]} refs @param {number} token */
+  async function loadTrackMetas(refs, token) {
+    for (const ref of refs) {
       if (token !== loadToken) return; // switched away, abandon
       try {
-        const meta = await invoke("get_track_metadata", { uri });
+        const meta = await invoke("get_track_metadata", { uri: ref.uri });
         if (token !== loadToken) return;
-        tracks = [...tracks, meta];
+        tracks = [...tracks, { ...meta, addedMs: ref.added_ms ?? null }];
       } catch (e) {
         /* skip a track we can't read */
       }
@@ -149,10 +151,10 @@
     tracksLoading = true;
     const token = ++loadToken;
     try {
-      const ids = await invoke("get_track_ids", { uri: pl.uri });
+      const refs = await invoke("get_track_ids", { uri: pl.uri });
       if (token !== loadToken) return;
-      trackUris = ids;
-      await loadTrackMetas(ids, token);
+      trackUris = refs.map((r) => r.uri);
+      await loadTrackMetas(refs, token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -175,7 +177,10 @@
       const ids = await invoke("get_liked_songs");
       if (token !== loadToken) return;
       trackUris = ids;
-      await loadTrackMetas(ids, token);
+      await loadTrackMetas(
+        ids.map((uri) => ({ uri, added_ms: null })),
+        token,
+      );
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -215,7 +220,10 @@
       const ids = await invoke("search", { query: q });
       if (token !== loadToken) return;
       trackUris = ids;
-      await loadTrackMetas(ids, token);
+      await loadTrackMetas(
+        ids.map((uri) => ({ uri, added_ms: null })),
+        token,
+      );
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -357,6 +365,14 @@
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  // "date added" (epoch ms) → compact YYYY-MM-DD for the Date column.
+  /** @param {number} ms */
+  function fmtDate(ms) {
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return "";
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 
   const headTitle = $derived(
@@ -570,7 +586,7 @@
               <div class="ml-col ml-c-artist">{t.artist}</div>
               <div class="ml-col ml-c-album">{t.album}</div>
               <div class="ml-col ml-c-title">{t.name}</div>
-              <div class="ml-col ml-c-date">{t.year ? t.year : ""}</div>
+              <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
               <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
             </div>
           {/each}
@@ -666,16 +682,15 @@
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
     background: var(--frame);
     box-sizing: border-box;
-    /* Weighted Winamp frame (0.7.0): a 2px inner bevel strip in the titlebar's
-       own colour runs unbroken from the titlebar down both sides and across the
-       bottom, so the frame reads as one piece with the sprite titlebar instead
-       of the old thin separate line the user found disconnected. */
+    /* A 2px inner frame in the titlebar's own colour, bevelled with the skin's
+       own divider tone (not raw black/white) so the edges harmonise with the
+       window instead of standing out. */
     padding: 0 2px 2px;
-    border: 1px solid color-mix(in srgb, var(--frame) 38%, #000);
+    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 68%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 68%, #fff),
-      inset -2px -2px 0 color-mix(in srgb, var(--frame) 52%, #000);
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
+      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
+      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     font-family: "px sans nouveaux", sans-serif;
     font-size: 7px;
     -webkit-font-smoothing: none;
@@ -981,7 +996,7 @@
     min-width: 0;
   }
   .ml-c-date {
-    flex: 0 0 34px;
+    flex: 0 0 58px;
     text-align: right;
   }
   .ml-c-time {

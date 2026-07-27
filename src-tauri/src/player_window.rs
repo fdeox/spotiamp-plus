@@ -18,9 +18,6 @@ pub struct TrackMetadata {
     name: String,
     duration: u32,
     unavailable: bool,
-    /// Album release year for the library's Date column/sort. 0 when the
-    /// catalogue has no plausible date (some albums come back as the epoch).
-    year: i32,
 }
 impl From<&Track> for TrackMetadata {
     fn from(track: &Track) -> Self {
@@ -44,13 +41,6 @@ impl From<&Track> for TrackMetadata {
             album_art,
             name: track.name.clone(),
             duration: track.duration as u32,
-            year: {
-                // Date derefs to time::OffsetDateTime; albums without a real
-                // date decode as the epoch, so treat anything implausible as
-                // unknown (0) rather than showing "1970".
-                let y = track.album.date.year();
-                if (1900..=2100).contains(&y) { y } else { 0 }
-            },
         }
     }
 }
@@ -212,18 +202,15 @@ pub async fn get_track_metadata(
 pub async fn get_track_ids(
     uri: &str,
     player: State<'_, SharedPlayer>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<crate::spotify::TrackRef>, String> {
     let session = player.lock().await.session_handle();
-    Ok(crate::spotify::fetch_track_ids(
+    crate::spotify::fetch_track_refs(
         &session,
         SpotifyUri::from_uri(uri)
             .map_err(|e| format!("Failed to get playlist by uri '{uri}' ({e:?})"))?,
     )
     .await
-    .map_err(|e| format!("Could not load playlist tracks ({e:?})"))?
-    .iter()
-    .map(|track_uri| track_uri.to_uri().expect("a valid uri"))
-    .collect())
+    .map_err(|e| format!("Could not load playlist tracks ({e:?})"))
 }
 
 #[tauri::command]

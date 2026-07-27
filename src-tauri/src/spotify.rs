@@ -597,6 +597,52 @@ pub async fn fetch_track_ids(
     }
 }
 
+/// A track from a playlist/album together with when it was added to the list
+/// (the playlist item's timestamp, ms since epoch). Albums and other contexts
+/// have no per-track added date, so it's optional.
+#[derive(serde::Serialize)]
+pub struct TrackRef {
+    pub uri: String,
+    pub added_ms: Option<i64>,
+}
+
+/// Like `fetch_track_ids` but also carries each playlist item's "date added"
+/// (`PlaylistItem.attributes.timestamp`). Used by the library's Date column.
+pub async fn fetch_track_refs(
+    session: &Session,
+    playlist_uri: SpotifyUri,
+) -> Result<Vec<TrackRef>, PlayError> {
+    // Spotify predates ~2008; anything at/near the epoch is a missing date.
+    const MIN_VALID_MS: i64 = 946_684_800_000; // 2000-01-01
+    match playlist_uri {
+        SpotifyUri::Playlist { .. } => Ok(Playlist::get(session, &playlist_uri)
+            .await
+            .map_err(|e| PlayError::MetadataError { e })?
+            .contents
+            .items
+            .iter()
+            .filter(|item| matches!(&item.id, SpotifyUri::Track { .. }))
+            .map(|item| {
+                let ms = item.attributes.timestamp.as_timestamp_ms();
+                TrackRef {
+                    uri: item.id.to_uri().expect("a valid uri"),
+                    added_ms: (ms >= MIN_VALID_MS).then_some(ms),
+                }
+            })
+            .collect()),
+        SpotifyUri::Album { .. } => Ok(Album::get(session, &playlist_uri)
+            .await
+            .map_err(|e| PlayError::MetadataError { e })?
+            .tracks()
+            .map(|uri| TrackRef {
+                uri: uri.to_uri().expect("a valid uri"),
+                added_ms: None,
+            })
+            .collect()),
+        _ => Ok(vec![]),
+    }
+}
+
 /// Fetch the current user's playlists via librespot's internal rootlist
 /// (uses the same session auth that plays music — no Web API scope needed,
 /// which the keymaster refuses to grant). We pull the raw rootlist, scan it

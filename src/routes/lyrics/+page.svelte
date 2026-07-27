@@ -188,16 +188,15 @@
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
     background: var(--frame);
     box-sizing: border-box;
-    /* Weighted Winamp frame (0.7.0): a 2px inner bevel strip in the titlebar's
-       own colour runs unbroken from the titlebar down both sides and across the
-       bottom, so the frame reads as one piece with the sprite titlebar instead
-       of the old thin separate line the user found disconnected. */
+    /* A 2px inner frame in the titlebar's own colour, bevelled with the skin's
+       own divider tone (not raw black/white) so the edges harmonise with the
+       window instead of standing out. */
     padding: 0 2px 2px;
-    border: 1px solid color-mix(in srgb, var(--frame) 38%, #000);
+    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 68%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 68%, #fff),
-      inset -2px -2px 0 color-mix(in srgb, var(--frame) 52%, #000);
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
+      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
+      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     user-select: none;
   }
 
