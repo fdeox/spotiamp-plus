@@ -57,5 +57,7 @@ pub async fn set_library_window_visible(visible: bool, app_handle: AppHandle) ->
         library_window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&library_window, visible);
+    // Remember it's open so the next launch reopens it.
+    crate::settings::Settings::current_mut().set_window_visible("library", visible);
     Ok(())
 }

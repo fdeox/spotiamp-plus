@@ -53,5 +53,7 @@ pub async fn set_lyrics_window_visible(visible: bool, app_handle: AppHandle) -> 
         window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&window, visible);
+    // Remember it's open so the next launch reopens it.
+    crate::settings::Settings::current_mut().set_window_visible("lyrics", visible);
     Ok(())
 }

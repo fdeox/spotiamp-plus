@@ -600,6 +600,28 @@
   });
 
   onMount(() => {
+    // Reopen the aux windows (library / visualizer / lyrics) that were open at
+    // last exit. Done here — after the player webview is up — through the same
+    // show commands the buttons use, so it never touches the fragile init-time
+    // window creation. The short delay lets the player settle first (its launch
+    // safeguard repositions it at ~700ms if it came up off-screen) before the
+    // aux windows anchor to it; each restores its own saved geometry anyway.
+    const reopenCmd = /** @type {Record<string, string>} */ ({
+      library: "set_library_window_visible",
+      visualizer: "set_visualizer_window_visible",
+      lyrics: "set_lyrics_window_visible",
+    });
+    const reopenTimer = setTimeout(() => {
+      invoke("windows_to_reopen")
+        .then((labels) => {
+          for (const label of /** @type {string[]} */ (labels) ?? []) {
+            const cmd = reopenCmd[label];
+            if (cmd) invoke(cmd, { visible: true }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }, 900);
+
     // Tick seek position and blink number display
     const tickerInterval = setInterval(() => {
       if (playerState == "paused") {
@@ -780,6 +802,7 @@
     );
 
     return () => {
+      clearTimeout(reopenTimer);
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
       playerEventsSubscription.then((unlisten) => unlisten());

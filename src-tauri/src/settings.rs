@@ -90,6 +90,10 @@ impl Default for InnerWindowSize {
 pub struct WindowState {
     pub outer_position: Option<OuterWindowPosition>,
     pub inner_size: Option<InnerWindowSize>,
+    /// Whether this on-demand window was open when last used, so it can be
+    /// reopened on the next launch. `serde(default)` keeps older files loading.
+    #[serde(default)]
+    pub visible: bool,
 }
 
 impl WindowState {
@@ -213,6 +217,18 @@ impl Settings {
     }
     pub fn set_window_inner_size(&mut self, label: &str, size: InnerWindowSize) {
         self.window_mut(label).inner_size = Some(size);
+    }
+    /// Remember whether an on-demand window is open, so launch can reopen it.
+    pub fn set_window_visible(&mut self, label: &str, visible: bool) {
+        self.window_mut(label).visible = visible;
+    }
+    /// Labels of the on-demand windows that were open when last used.
+    pub fn open_windows(&self) -> Vec<String> {
+        self.windows
+            .iter()
+            .filter(|(_, w)| w.visible)
+            .map(|(label, _)| label.clone())
+            .collect()
     }
     fn _current() -> &'static RwLock<Settings> {
         static MEM: OnceLock<RwLock<Settings>> = OnceLock::new();

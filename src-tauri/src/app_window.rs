@@ -81,6 +81,15 @@ pub fn get_window_inner_size(label: String) -> Option<crate::settings::InnerWind
     crate::settings::Settings::current().window_inner_size(&label)
 }
 
+/// Labels of the on-demand windows (library / visualizer / lyrics) that were
+/// open when the app was last used. The player reads this once it's up and
+/// reopens each via the normal show command — post-launch, so it never touches
+/// the fragile init-time window creation.
+#[tauri::command]
+pub fn windows_to_reopen() -> Vec<String> {
+    crate::settings::Settings::current().open_windows()
+}
+
 pub fn remember_position(
     window: &WebviewWindow,
     scale_factor_context: &'static str,

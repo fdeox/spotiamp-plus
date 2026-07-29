@@ -444,6 +444,7 @@ pub fn run() {
             playlist_window::set_playlist_inner_size,
             app_window::set_window_inner_size,
             app_window::get_window_inner_size,
+            app_window::windows_to_reopen,
             local_player::local_load,
             local_player::local_play,
             local_player::local_pause,

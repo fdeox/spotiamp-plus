@@ -58,5 +58,7 @@ pub async fn set_visualizer_window_visible(
         window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&window, visible);
+    // Remember it's open so the next launch reopens it.
+    crate::settings::Settings::current_mut().set_window_visible("visualizer", visible);
     Ok(())
 }
