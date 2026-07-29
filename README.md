@@ -20,6 +20,11 @@ skins, a WebGL visualizer, and much more.
 ![Spotiamp+](docs/screenshots/classic.jpg)
 
 ---
+>## Project Status
+
+>Spotiamp+ is actively maintained, but development is currently moving at a slower and more gradual pace due to limited development time.
+>Bug fixes, stability improvements, security updates, and important compatibility fixes will continue. New features will primarily be considered based on community requests, usefulness, and available time.
+>Feature suggestions can be submitted through the Spotiamp+ Discord community.
 
 ## Features
 
