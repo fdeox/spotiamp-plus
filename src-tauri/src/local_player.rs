@@ -307,7 +307,22 @@ impl Worker {
         frames_played: &Arc<AtomicU64>,
     ) -> Result<cpal::Stream, String> {
         let host = cpal::default_host();
-        let device = host.default_output_device().ok_or("no output device")?;
+        // Play through the same output device the user picked for Spotify (saved
+        // in settings), NOT the raw system default — which on this user's setup
+        // is a virtual/monitor device, so local files went there silently while
+        // Spotify (on the chosen device) played fine. Fall back to the default
+        // if nothing is saved or the saved device is gone.
+        let device = crate::settings::Settings::current()
+            .player
+            .audio_device
+            .clone()
+            .and_then(|name| {
+                host.output_devices().ok().and_then(|mut devs| {
+                    devs.find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                })
+            })
+            .or_else(|| host.default_output_device())
+            .ok_or("no output device")?;
         let config = cpal::StreamConfig {
             channels: channels as u16,
             sample_rate: cpal::SampleRate(sample_rate),
