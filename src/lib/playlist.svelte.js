@@ -1,13 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { enterExitViewportObserver, REACTIVE_WINDOW_SIZE } from "./common.svelte";
 import { emitWindowEvent, subscribeToWindowEvent } from "./events.svelte";
-import { SpotifyTrack, SpotifyUri } from "./spotify.svelte";
+import { SpotifyTrack, SpotifyUri, durationToString } from "./spotify.svelte";
+
+/**
+ * A playlist row: either a Spotify track or a local file. Both extend
+ * PlaylistRow and expose displayName / displayDuration / play() / isLoaded etc.
+ * @typedef {TrackRow | LocalRow} Row
+ */
 
 class PlaylistRow {
     /**
      * @type {HTMLElement | undefined}
      */
     element = $state();
+    /** Local files (LocalRow) set this true; Spotify tracks leave it false. */
+    isLocal = false;
 
     /**
      * @param {SpotifyUri} uri
@@ -121,31 +129,92 @@ export class TrackRow extends PlaylistRow {
     }
 }
 
+/**
+ * A local file (off disk) living in the playlist alongside Spotify rows, so
+ * added files actually show up in the list instead of playing invisibly. It
+ * carries its own name/duration (from the file's tags) and, when played, tells
+ * the player to run it through the local engine rather than librespot.
+ */
+export class LocalRow extends PlaylistRow {
+    displayName = $state("")
+    displayDuration = $state("")
+    unavailable = false
+    isLocal = true
+
+    /**
+     * @param {string} path
+     * @param {Playlist} playlist
+     * @param {{name?: string, artist?: string, durationMs?: number}} [meta]
+     */
+    constructor(path, playlist, meta) {
+        // PlaylistRow expects a Spotify uri; a local file has none, so pass a
+        // minimal stub. The only readers of `row.uri` (persist / save-as-list)
+        // filter local rows out, so the stub is never actually resolved.
+        super(/** @type {any} */ ({ asString: `local:${path}`, id: path }), playlist);
+        this.path = path;
+        const base = path.split(/[\\/]/).pop() ?? path;
+        const name = meta?.name || base;
+        this.displayName = meta?.artist ? `${meta.artist} - ${name}` : name;
+        this.durationMs = meta?.durationMs ?? 0;
+        this.displayDuration = this.durationMs ? durationToString(this.durationMs) : "";
+    }
+
+    async loadTrack() {
+        this.playlist.loadedRow = this;
+        await emitWindowEvent("playlistWindow", {
+            LocalTrackLoaded: {
+                path: this.path,
+                name: this.displayName,
+                durationMs: this.durationMs,
+            },
+        });
+        const rows = this.playlist.rows;
+        await emitWindowEvent("trackPosition", {
+            index: rows.indexOf(this) + 1,
+            length: rows.length,
+        });
+        return true;
+    }
+
+    async play() {
+        // The local engine auto-plays on load, so loadTrack is enough.
+        await this.loadTrack();
+    }
+
+    isLoaded() {
+        return this === this.playlist.loadedRow;
+    }
+
+    isSelected() {
+        return this.playlist.selectedRows.includes(this);
+    }
+}
+
 export class Playlist {
     width = $derived(Math.ceil(REACTIVE_WINDOW_SIZE.width / 25));
     height = $derived(Math.ceil(REACTIVE_WINDOW_SIZE.height / 29));
 
     /**
-     * @type {TrackRow | undefined}
+     * @type {Row | undefined}
      */
     loadedRow = $state();
     /**
-     * @type {TrackRow[]}
+     * @type {Row[]}
      */
     rows = $state([]);
     /**
-     * @type {TrackRow[]}
+     * @type {Row[]}
      */
     selectedRows = $state([]);
     /**
      * The currently "active" row (keyboard focus). Used as the target for
      * scroll-into-view and as the row that gets played on Enter.
-     * @type {TrackRow | undefined}
+     * @type {Row | undefined}
      */
     focusedRow = $state();
     /**
      * Fixed reference point for range (shift) selection.
-     * @type {TrackRow | undefined}
+     * @type {Row | undefined}
      */
     selectionAnchor = $state();
 
@@ -155,7 +224,7 @@ export class Playlist {
      *  picks randomly forever and never signals "end reached", so autoplay
      *  radio (and plain stop) never fire. We play every row once, then the
      *  cycle ends — repeat restarts it, otherwise the queue is genuinely done.
-     *  @type {Set<TrackRow>} */
+     *  @type {Set<Row>} */
     shuffleBag = new Set();
     /** 0 = off, 1 = repeat all (wrap at ends), 2 = repeat one (loop track). */
     repeat = 0;
@@ -170,7 +239,11 @@ export class Playlist {
     /** Total time of all loaded tracks in ms (for the bottom-bar readout). */
     totalDurationMs = $derived(
         this.rows.reduce(
-            (sum, r) => sum + (r.track ? r.track.durationInMs : 0),
+            (sum, r) =>
+                sum +
+                (r instanceof LocalRow
+                    ? (r.durationMs ?? 0)
+                    : (r.track?.durationInMs ?? 0)),
             0,
         ),
     );
@@ -280,6 +353,9 @@ export class Playlist {
                 } else if (event.UrlsAppended) {
                     // append without clearing (e.g. adding one search result)
                     this.addUrls(event.UrlsAppended);
+                } else if (event.AddLocalFiles) {
+                    // local files picked from the player's O / Shift+O
+                    this.addLocalFiles(event.AddLocalFiles);
                 }
             },
         );
@@ -343,7 +419,11 @@ export class Playlist {
      */
     persist() {
         if (!this.persistEnabled) return;
-        invoke("set_uris", { uris: this.rows.map((r) => r.uri.asString) });
+        // Local rows have no Spotify uri and can't be reloaded that way, so only
+        // the Spotify rows are persisted (local files are re-added per session).
+        invoke("set_uris", {
+            uris: this.rows.filter((r) => !r.isLocal).map((r) => r.uri.asString),
+        });
     }
 
     /**
@@ -366,16 +446,18 @@ export class Playlist {
      */
     async addUri(uri) {
         if (uri.type == "playlist" || uri.type == "album") {
-            /** @type {string[]} */
-            let trackUris;
+            // get_track_ids returns {uri, added_ms} refs (for the library's Date
+            // column); here we only need the uris.
+            /** @type {{uri: string, added_ms: number|null}[]} */
+            let trackRefs;
             try {
-                trackUris = await invoke("get_track_ids", { uri: uri.asString });
+                trackRefs = await invoke("get_track_ids", { uri: uri.asString });
             } catch (e) {
                 console.warn(`Could not expand ${uri.asString}`, e);
                 return;
             }
-            for (const trackUri of trackUris) {
-                await this.addTrackRow(SpotifyUri.fromString(trackUri));
+            for (const ref of trackRefs) {
+                await this.addTrackRow(SpotifyUri.fromString(ref.uri));
             }
         } else {
             await this.addTrackRow(uri);
@@ -393,9 +475,38 @@ export class Playlist {
     }
 
     /**
+     * Add local files (off disk) as rows and start playing the first one. Each
+     * row pulls its name/duration from the file's tags. Called from the playlist
+     * menu directly and from the player's O / Shift+O via an AddLocalFiles event.
+     * @param {string[]} paths
+     */
+    async addLocalFiles(paths) {
+        /** @type {LocalRow | undefined} */
+        let first;
+        for (const path of paths) {
+            if (typeof path !== "string" || !path) continue;
+            let meta;
+            try {
+                const m = await invoke("local_metadata", { path });
+                meta = {
+                    name: m?.title || undefined,
+                    artist: m?.artist || undefined,
+                    durationMs: m?.duration_ms || 0,
+                };
+            } catch {
+                meta = undefined;
+            }
+            const row = new LocalRow(path, this, meta);
+            this.rows.push(row);
+            first ??= row;
+        }
+        if (first) await first.play();
+    }
+
+    /**
      * Update the selection for a row, mimicking native multi-select behaviour.
      *
-     * @param {TrackRow} row
+     * @param {Row} row
      * @param {{ ctrl?: boolean, shift?: boolean }} [modifiers]
      */
     select(row, { ctrl = false, shift = false } = {}) {
@@ -482,8 +593,8 @@ export class Playlist {
      * are snapshots captured when the drag started, so only the insertion
      * point changes as the pointer moves.
      *
-     * @param {TrackRow[]} block the rows being dragged
-     * @param {TrackRow[]} remaining the non-dragged rows, in order
+     * @param {Row[]} block the rows being dragged
+     * @param {Row[]} remaining the non-dragged rows, in order
      * @param {number} insertAt insertion index within `remaining`
      */
     placeSelection(block, remaining, insertAt) {
@@ -593,6 +704,8 @@ export class Playlist {
             if (track && skipUnavailable && track.unavailable) {
                 return await this.move(offset, skipUnavailable);
             }
+        } else if (row instanceof LocalRow) {
+            await row.loadTrack(); // plays through the local engine
         }
 
         return false;

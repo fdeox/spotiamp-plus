@@ -167,28 +167,31 @@
   async function saveCurrentAsList() {
     const name = newListName.trim();
     if (!name) return;
-    const uris = playlist.rows.map((r) => r.uri.asString);
+    // Saved lists are Spotify uris; skip local rows (they have no real uri).
+    const uris = playlist.rows
+      .filter((r) => !r.isLocal)
+      .map((r) => r.uri.asString);
     await invoke("save_list", { name, uris }).catch(() => {});
     newListName = "";
     closeMenu();
   }
   const closeMenu = () => (menu.show = false);
 
-  // Local files: pick from disk here, hand the paths to the player (it owns the
-  // local queue). A discoverable entry alongside the player's O / Shift+O.
+  // Local files: pick from disk and add them straight into the playlist as
+  // LocalRows (the first starts playing). Same as the player's O / Shift+O.
   async function addLocalFiles() {
     closeMenu();
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_files").catch(() => [])
     );
-    if (paths?.length) emitWindowEvent("playlistWindow", { LocalFilesPicked: paths });
+    if (paths?.length) playlist.addLocalFiles(paths);
   }
   async function addLocalFolder() {
     closeMenu();
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_folder").catch(() => [])
     );
-    if (paths?.length) emitWindowEvent("playlistWindow", { LocalFilesPicked: paths });
+    if (paths?.length) playlist.addLocalFiles(paths);
   }
 
   let menuTab = $state("skins");
@@ -456,7 +459,8 @@
   const EDGE_SCROLL_INTERVAL_MS = 80;
 
   /**
-   * @typedef {import('$lib/playlist.svelte').TrackRow} Row
+   * A playlist row: a Spotify track or a local file.
+   * @typedef {import('$lib/playlist.svelte').TrackRow | import('$lib/playlist.svelte').LocalRow} Row
    */
 
   /**

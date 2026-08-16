@@ -1,6 +1,5 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
 
   import {
     handleError,
@@ -163,18 +162,15 @@
   });
 
   function emitPreviousPressed() {
-    // A local queue walks itself; only fall through to the Spotify playlist
-    // when it runs off the front.
-    if (loadedTrack?.isLocal && localQueue.length > 0 && localAdvance(-1)) return;
     if (controllerMode) {
       invoke("smtc_previous").catch(() => {});
       return;
     }
+    // Walks the playlist (Spotify + local rows alike).
     emitWindowEvent("playerWindow", { PreviousPressed: null });
   }
 
   function emitNextPressed() {
-    if (loadedTrack?.isLocal && localQueue.length > 0 && localAdvance(1)) return;
     if (controllerMode) {
       invoke("smtc_next").catch(() => {});
       return;
@@ -199,6 +195,12 @@
    * @param {SpotifyTrack} track
    */
   async function loadTrack(track) {
+    // Switching to a Spotify track: stop any local file first so they don't
+    // play over each other.
+    if (loadedTrack?.isLocal) {
+      stopLocalPoll();
+      await invoke("local_stop").catch(() => {});
+    }
     loadedTrack = track;
     if (playerState != "stopped") {
       playerState = "stopped";
@@ -314,14 +316,10 @@
   // plain loadedTrack object plus a poll for position and end-of-track, since a
   // local file has no librespot event channel.
   let localPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
-  // A queue of local file paths (from a multi-file drop or the file/folder
-  // picker) so a whole folder plays through, kept here in the player instead of
-  // in the Spotify playlist model — local files never touch that, so nothing on
-  // the Spotify side can break. next/previous walk this; end-of-track advances
-  // it, then falls back to the Spotify playlist / radio when it runs out.
-  /** @type {string[]} */
-  let localQueue = [];
-  let localQueueIndex = 0;
+  // Local files live in the playlist as LocalRows (playlist.svelte.js); playing
+  // one sends a LocalTrackLoaded event here and we run it through the local
+  // engine. The playlist is the queue — next/previous and end-of-track walk it
+  // exactly like Spotify rows, so there's nothing to track here.
   /**
    * @param {string} path
    * @param {any} [meta]
@@ -401,43 +399,20 @@
     }
   }
 
-  /**
-   * Play a set of local files: the first starts now, the rest queue up.
-   * @param {string[]} paths
-   */
-  async function loadLocalFiles(paths) {
-    const files = (paths ?? []).filter((p) => typeof p === "string" && p);
-    if (files.length === 0) return;
-    localQueue = files;
-    localQueueIndex = 0;
-    await loadLocalFile(files[0]);
-  }
-
-  /**
-   * Step through the local queue. Returns false at either end so the caller can
-   * fall back to the Spotify playlist / radio.
-   * @param {number} offset
-   */
-  function localAdvance(offset) {
-    const next = localQueueIndex + offset;
-    if (next < 0 || next >= localQueue.length) return false;
-    localQueueIndex = next;
-    loadLocalFile(localQueue[next]);
-    return true;
-  }
-
-  // Entry points besides drag-drop: a native file / folder picker (Rust side).
+  // File / folder pickers (O / Shift+O). The paths go to the playlist window,
+  // which adds them as rows and starts the first — same path as the playlist's
+  // own "Add local file(s)" menu, so local files always land in the list.
   async function openLocalFiles() {
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_files").catch(() => [])
     );
-    if (paths?.length) loadLocalFiles(paths);
+    if (paths?.length) emitWindowEvent("playerWindow", { AddLocalFiles: paths });
   }
   async function openLocalFolder() {
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_folder").catch(() => [])
     );
-    if (paths?.length) loadLocalFiles(paths);
+    if (paths?.length) emitWindowEvent("playerWindow", { AddLocalFiles: paths });
   }
 
   // In controller mode the spectrum comes from the system-audio loopback
@@ -653,8 +628,14 @@
           stop();
         } else if (event.EndReached !== undefined) {
           stop();
-        } else if (event.LocalFilesPicked) {
-          loadLocalFiles(event.LocalFilesPicked);
+        } else if (event.LocalTrackLoaded) {
+          // A local row in the playlist was played — run it locally.
+          const l = event.LocalTrackLoaded;
+          loadLocalFile(l.path, {
+            name: l.name,
+            displayName: l.name,
+            durationInMs: l.durationMs,
+          });
         }
       },
     );
@@ -713,24 +694,11 @@
     const cleanupDropHandler = handleDrop((urls) => {
       emitWindowEvent("playerWindow", { UrlsDropped: urls });
     });
-
-    // Native OS file drop (dragging an .mp3/.flac off Explorer onto the player).
-    // This is a different channel from handleDrop above: that one catches
-    // browser text/uri-list drops (Spotify links), while a real file dragged
-    // from the desktop arrives through Tauri's webview drag-drop event with an
-    // absolute path. Winamp's most natural gesture — drop a track, it plays.
-    const LOCAL_AUDIO_RE = /\.(mp3|flac|m4a|aac|wav|ogg|oga|opus)$/i;
-    let fileDropUnlisten = /** @type {null | (() => void)} */ (null);
-    getCurrentWebview()
-      .onDragDropEvent((event) => {
-        if (event.payload.type !== "drop") return;
-        const audio = event.payload.paths.filter((p) => LOCAL_AUDIO_RE.test(p));
-        if (audio.length) loadLocalFiles(audio);
-      })
-      .then((un) => {
-        fileDropUnlisten = un;
-      })
-      .catch(() => {});
+    // (No native file-drop handler: the windows are built with
+    // `disable_drag_drop_handler` so the browser drop event above can catch
+    // Spotify link drops, which means Tauri's file-drop event never fires.
+    // Local files come in through the picker instead — O / Shift+O and the
+    // playlist's "Add local file(s)" menu.)
 
     // The dedicated media keys and headset buttons, forwarded from Rust because
     // they arrive even when the app has no focus. They reuse the same actions as
@@ -811,7 +779,6 @@
       trackPositionSubscription.then((unlisten) => unlisten());
       mediaKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
-      if (fileDropUnlisten) fileDropUnlisten();
       stopLocalPoll();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };
