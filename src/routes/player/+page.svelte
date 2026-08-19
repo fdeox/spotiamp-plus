@@ -222,6 +222,11 @@
       await invoke("smtc_play").catch(() => {});
       return;
     }
+    // Reaching the Spotify path with a non-local track: make sure no local file
+    // is still playing underneath (e.g. the user started a Spotify song without
+    // stopping the local one). local_stop is a no-op when nothing's loaded.
+    stopLocalPoll();
+    await invoke("local_stop").catch(() => {});
     if (playerState == "paused") {
       await invoke("play").catch(handleError);
     } else if (loadedTrack) {
@@ -280,7 +285,9 @@
   // the player on a fresh sink. Reload the current track on the new device at the
   // same spot so the switch is heard without the user pressing play again.
   async function reapplyAfterDeviceChange() {
-    if (!loadedTrack || loadedTrack.unavailable) return;
+    // Local files have no Spotify uri to reload (and would crash on
+    // `uri.asString`); they pick the device up on the next file instead.
+    if (!loadedTrack || loadedTrack.unavailable || loadedTrack.isLocal) return;
     const wasPlaying = playerState === "playing";
     const position = Math.round(seekPosition);
     await invoke("load_track", { uri: loadedTrack.uri.asString }).catch(() => {});
