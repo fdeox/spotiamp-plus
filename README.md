@@ -6,7 +6,8 @@
 
 A Winamp-style desktop player for **Spotify** — the classic skinned windows, real
 skins, a Milkdrop-style visualizer, and full keyboard control, playing your
-Spotify Premium account natively (no browser).
+Spotify Premium account natively (no browser) — and **your own local files**
+right in the same playlist.
 
 Spotiamp+ is a fork of [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spotiamp)
 (MIT), extended with a playlist/library browser, catalogue search, docking,
@@ -30,6 +31,11 @@ skins, a WebGL visualizer, and much more.
 
 - 🎵 **Native Spotify playback** — Premium account via librespot (Ogg 320 kbps),
   seek, volume, gapless.
+- 💿 **Local file playback** — play your own MP3, FLAC, M4A/AAC, WAV, OGG or Opus
+  files right alongside Spotify. Add files or a whole folder from the playlist
+  menu (or press **O** / **Shift+O**); they land in the playlist as normal rows,
+  mixed with Spotify tracks, with next/previous walking the lot. Name, artist and
+  length come from the file's own tags, and the EQ and visualizer work on them too.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
   a two-pane Library (playlists + tracks), load or queue anything.
 - 🔎 **Spotify catalogue search** — search the whole catalogue right in the
@@ -40,7 +46,8 @@ skins, a WebGL visualizer, and much more.
   to the main window and move together, just like classic Winamp.
 - 🎚️ **10-band Equalizer** — a pixel-perfect Winamp EQ window with a **real DSP**
   behind it (biquad peaking filters on the decoded audio), preamp, presets and
-  the animated response curve. Plus a **balance** slider next to the volume.
+  the animated response curve. **Load and save `.EQF` presets** (yours, or real
+  Winamp ones). Plus a **balance** slider next to the volume.
 - 🎨 **Skins** — right-click the playlist to switch skins live: **Classic**,
   **Cherry**, **Amber**, **Emerald**, plus **six bundled classic Winamp skins**
   right in the menu — the *Classified* series by
@@ -64,8 +71,10 @@ skins, a WebGL visualizer, and much more.
   playback stops.
 - 🪟 **Windowshade mode** — roll any window up to a slim title strip, classic
   Winamp style.
-- ↕️ **Sortable library** — click a column header (Artist / Album / Title / Time)
-  to sort your tracks.
+- ↕️ **Sortable library** — click a column header (Artist / Album / Title / Date
+  added / Time) to sort your tracks.
+- 🪟 **Remembers your layout** — the library, visualizer and lyrics windows
+  reopen where and how you left them on the next launch.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
@@ -116,7 +125,7 @@ no need to revisit this page. Windows 10/11 (x64) only for now.
 | `Z` `X` `C` `V` `B` | prev / play / pause / stop / next | `Space` | play–pause |
 | `↑` `↓` | volume | `←` `→` | seek ∓5s |
 | `S` | shuffle | `R` | repeat |
-| `L` | open Library | | |
+| `L` | open Library | `O` / `Shift+O` | add local file(s) / folder |
 
 **Playlist window**
 
