@@ -77,18 +77,35 @@
   // The manifest and the downloaded package are both signature-checked against
   // the public key baked into tauri.conf.json, so a tampered update is refused.
   let updateBusy = $state(false);
+  // Set to the new version string once a silent launch check finds an update, so
+  // a small "update available" pill can surface it (most users never open the
+  // menu to check manually). Null while up to date / unknown.
+  let updateAvailable = $state(/** @type {string | null} */ (null));
+
+  // Quietly ask the updater on launch — no dialog, just light up the pill.
+  async function checkForUpdatesSilently() {
+    try {
+      const update = await check();
+      if (update) updateAvailable = update.version;
+    } catch {
+      /* offline or check failed — stay quiet, the menu still works */
+    }
+  }
+
   async function checkForUpdates() {
     if (updateBusy) return;
     updateBusy = true;
     try {
       const update = await check();
       if (!update) {
+        updateAvailable = null;
         await message("You're running the latest version.", {
           title: "Spotiamp+",
           kind: "info",
         });
         return;
       }
+      updateAvailable = update.version;
       const wanted = await ask(
         `Spotiamp+ ${update.version} is available (you have ${update.currentVersion}).\n\nDownload and install it now?`,
         { title: "Update available", kind: "info" },
@@ -309,6 +326,9 @@
     });
 
     emitWindowEvent("playlistWindow", { Ready: null });
+
+    // Quietly check for a new version on launch so the pill can flag it.
+    checkForUpdatesSilently();
 
     // Cleanups
     return () => {
@@ -652,6 +672,15 @@
 >
   <!-- our "my playlists" browser (opens a list of the user's Spotify playlists) -->
   <button class="my-playlists-btn" onclick={openLibraryWindow}>♪ library</button>
+  {#if updateAvailable}
+    <button
+      class="update-pill"
+      onclick={checkForUpdates}
+      title="Spotiamp+ {updateAvailable} is available — click to update"
+    >
+      ⬆ v{updateAvailable}
+    </button>
+  {/if}
   {#if showLibrary}
     <div class="library-overlay">
       <div class="library-head">
@@ -1405,6 +1434,39 @@
   }
   .my-playlists-btn:active {
     box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.15);
+  }
+  /* "update available" pill — only rendered when a launch check found a newer
+     version. Sits next to the library button, softly pulsing so it's noticed
+     without nagging; clicking it runs the normal download/install flow. */
+  .update-pill {
+    position: absolute;
+    top: calc(21px * var(--zoom));
+    left: calc(74px * var(--zoom));
+    z-index: 41;
+    padding: 0 6px;
+    font-family: monospace;
+    font-size: 9px;
+    line-height: 12px;
+    color: #ffe08a;
+    background: linear-gradient(#5a4a1a, #2e2510);
+    border: 1px solid #000;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    animation: updatePulse 2.4s ease-in-out infinite;
+  }
+  .update-pill:hover {
+    color: #fff6d8;
+  }
+  @keyframes updatePulse {
+    0%,
+    100% {
+      box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    50% {
+      box-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.18),
+        0 0 6px -1px rgba(255, 216, 120, 0.75);
+    }
   }
   .library-overlay {
     position: absolute;
