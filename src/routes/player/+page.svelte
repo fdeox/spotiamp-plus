@@ -52,8 +52,13 @@
     return playerSettings.show_playlist;
   }
 
-  function initialDoubleSizeActive() {
-    return playerSettings.double_size_active;
+  // Player scale (1 / 1.5 / 2 / 3). Prefer the saved percentage; fall back to
+  // the old double-size flag so existing setups keep their size.
+  function initialPlayerZoom() {
+    const pct =
+      playerSettings.player_zoom_pct ??
+      (playerSettings.double_size_active ? 200 : 100);
+    return pct / 100;
   }
 
   function initialWindowshadeActive() {
@@ -105,7 +110,9 @@
   let currentTrackUri = $state(null);
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
-  let doubleSizeActive = $state(initialDoubleSizeActive());
+  let playerZoom = $state(initialPlayerZoom());
+  // "Double size" is just the 2x step; the button/Ctrl+D toggle 1x <-> 2x.
+  const doubleSizeActive = $derived(playerZoom === 2);
   let shadeActive = $state(initialWindowshadeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
@@ -490,10 +497,12 @@
   });
 
   $effect(() => {
-    invoke("set_double_size", { active: doubleSizeActive });
-    REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
-    // Let the playlist's Windows menu reflect the current state (its checkbox).
-    emitWindowEvent("playerWindow", { DoubleSizeChanged: doubleSizeActive });
+    invoke("set_player_zoom", { pct: Math.round(playerZoom * 100) });
+    // Keep the legacy double-size flag in sync for anything still reading it.
+    invoke("set_double_size", { active: playerZoom === 2 });
+    REACTIVE_WINDOW_SIZE.setZoom(playerZoom);
+    // Let the playlist's Windows menu reflect the current size.
+    emitWindowEvent("playerWindow", { ZoomChanged: playerZoom });
   });
 
   // Windowshade: the player collapses to the classic 275x14 title bar. The
@@ -671,7 +680,9 @@
             durationInMs: l.durationMs,
           });
         } else if (event.ToggleDoubleSize !== undefined) {
-          doubleSizeActive = !doubleSizeActive;
+          playerZoom = playerZoom === 2 ? 1 : 2;
+        } else if (event.SetZoom !== undefined) {
+          playerZoom = event.SetZoom;
         }
       },
     );
@@ -763,7 +774,7 @@
       // Ctrl+D toggles double size (classic Winamp), before the modifier guard.
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        doubleSizeActive = !doubleSizeActive;
+        playerZoom = playerZoom === 2 ? 1 : 2;
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1021,7 +1032,7 @@
   <div class="sprite side-buttons"></div>
   <button
     class="sprite double-size-btn"
-    onclick={() => (doubleSizeActive = !doubleSizeActive)}
+    onclick={() => (playerZoom = playerZoom === 2 ? 1 : 2)}
     class:active={doubleSizeActive}
     aria-label="Toggle double size"
   ></button>

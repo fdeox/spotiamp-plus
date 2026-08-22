@@ -122,6 +122,11 @@ pub fn set_double_size(active: bool) {
 }
 
 #[tauri::command]
+pub fn set_player_zoom(pct: u16) {
+    Settings::current_mut().player.player_zoom_pct = Some(pct);
+}
+
+#[tauri::command]
 pub fn set_windowshade(active: bool) {
     Settings::current_mut().player.windowshade_active = active;
 }
