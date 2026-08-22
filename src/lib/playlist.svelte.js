@@ -392,7 +392,12 @@ export class Playlist {
 
         (async () => {
             for (const uri of uris) {
-                await this.addUri(SpotifyUri.fromString(uri));
+                if (uri.startsWith("local:")) {
+                    // A local file saved from a previous session.
+                    await this.addLocalRow(uri.slice("local:".length));
+                } else {
+                    await this.addUri(SpotifyUri.fromString(uri));
+                }
             }
             // Persist after the initial load so any legacy playlist/album URIs
             // get normalised to the individual track URIs they expand into.
@@ -419,10 +424,11 @@ export class Playlist {
      */
     persist() {
         if (!this.persistEnabled) return;
-        // Local rows have no Spotify uri and can't be reloaded that way, so only
-        // the Spotify rows are persisted (local files are re-added per session).
+        // Spotify rows persist as their uri; local rows as their "local:<path>"
+        // stub — so the whole queue, in order, comes back after a restart. The
+        // launch reload turns each back into the right kind of row.
         invoke("set_uris", {
-            uris: this.rows.filter((r) => !r.isLocal).map((r) => r.uri.asString),
+            uris: this.rows.map((r) => r.uri.asString),
         });
     }
 
@@ -485,22 +491,35 @@ export class Playlist {
         let first;
         for (const path of paths) {
             if (typeof path !== "string" || !path) continue;
-            let meta;
-            try {
-                const m = await invoke("local_metadata", { path });
-                meta = {
-                    name: m?.title || undefined,
-                    artist: m?.artist || undefined,
-                    durationMs: m?.duration_ms || 0,
-                };
-            } catch {
-                meta = undefined;
-            }
-            const row = new LocalRow(path, this, meta);
-            this.rows.push(row);
+            const row = await this.addLocalRow(path);
             first ??= row;
         }
-        if (first) await first.play();
+        if (first) {
+            await first.play();
+            this.persist();
+        }
+    }
+
+    /**
+     * Append one local file as a row (reading its tags), without playing it.
+     * Used both by addLocalFiles and by the launch reload.
+     * @param {string} path
+     */
+    async addLocalRow(path) {
+        let meta;
+        try {
+            const m = await invoke("local_metadata", { path });
+            meta = {
+                name: m?.title || undefined,
+                artist: m?.artist || undefined,
+                durationMs: m?.duration_ms || 0,
+            };
+        } catch {
+            meta = undefined;
+        }
+        const row = new LocalRow(path, this, meta);
+        this.rows.push(row);
+        return row;
     }
 
     /**
