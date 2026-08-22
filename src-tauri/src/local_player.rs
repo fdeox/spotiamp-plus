@@ -128,12 +128,83 @@ impl LocalPlayer {
     }
 }
 
+/// The output device to play through: the one the user picked for Spotify
+/// (saved in settings), else the system default. Keeping local files on the
+/// chosen device matters when the system default is a virtual/monitor output.
+fn select_output_device() -> Option<cpal::Device> {
+    let host = cpal::default_host();
+    crate::settings::Settings::current()
+        .player
+        .audio_device
+        .clone()
+        .and_then(|name| {
+            host.output_devices().ok().and_then(|mut devs| {
+                devs.find(|d| d.name().map(|n| n == name).unwrap_or(false))
+            })
+        })
+        .or_else(|| host.default_output_device())
+}
+
+/// Streaming linear resampler + channel remap, from the file's rate/channels to
+/// the output device's. It exists because a file whose sample rate the device
+/// can't play natively used to fail to open the stream at all (silent stop);
+/// now it's converted to a rate the device does support. Linear is modest
+/// quality but reliable and dependency-free, and it only kicks in on a mismatch.
+struct Resampler {
+    /// Input frames advanced per output frame (in_rate / out_rate).
+    step: f64,
+    in_ch: usize,
+    out_ch: usize,
+    /// Interleaved input frames not yet fully consumed.
+    buf: VecDeque<f32>,
+    /// Fractional read position within `buf`, in frames.
+    pos: f64,
+}
+
+impl Resampler {
+    fn new(in_rate: u32, out_rate: u32, in_ch: usize, out_ch: usize) -> Self {
+        Self {
+            step: in_rate as f64 / out_rate.max(1) as f64,
+            in_ch: in_ch.max(1),
+            out_ch: out_ch.max(1),
+            buf: VecDeque::new(),
+            pos: 0.0,
+        }
+    }
+
+    /// Feed interleaved input frames (`in_ch` each) and append interleaved output
+    /// frames (`out_ch` each) to `out`.
+    fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
+        self.buf.extend(input.iter().copied());
+        let frames = self.buf.len() / self.in_ch;
+        // Need frame i+1 to interpolate toward, so stop one short of the end.
+        while (self.pos as usize) + 1 < frames {
+            let i = self.pos as usize;
+            let frac = (self.pos - i as f64) as f32;
+            for c in 0..self.out_ch {
+                let sc = c.min(self.in_ch - 1); // map/duplicate channels
+                let a = self.buf[i * self.in_ch + sc];
+                let b = self.buf[(i + 1) * self.in_ch + sc];
+                out.push(a + (b - a) * frac);
+            }
+            self.pos += self.step;
+        }
+        // Drop the input frames we've moved past, keep the fractional remainder.
+        let consumed = self.pos as usize;
+        if consumed > 0 {
+            self.buf.drain(0..consumed * self.in_ch);
+            self.pos -= consumed as f64;
+        }
+    }
+}
+
 /// A file opened and ready to decode, plus the cpal stream playing it.
 struct Active {
     /// Format reader + decoder, kept together so we can seek and pull packets.
     format: Box<dyn symphonia::core::formats::FormatReader>,
     decoder: Box<dyn symphonia::core::codecs::Decoder>,
     track_id: u32,
+    /// Output stream rate/channels (what the ring holds and the callback plays).
     sample_rate: u32,
     channels: usize,
     ring: Arc<Mutex<VecDeque<f32>>>,
@@ -142,6 +213,10 @@ struct Active {
     _stream: cpal::Stream,
     ended_sent: bool,
     sample_buf: Option<SampleBuffer<f32>>,
+    /// Set when the file's rate/channels differ from the output device's.
+    resampler: Option<Resampler>,
+    /// Scratch for resampled output, reused across packets.
+    resample_out: Vec<f32>,
 }
 
 struct Worker {
@@ -278,54 +353,56 @@ impl Worker {
         let frames_played = Arc::new(AtomicU64::new(0));
         let finished_ring = Arc::new(AtomicBool::new(false));
 
-        let stream = self.build_stream(sample_rate, channels, &ring, &frames_played)?;
+        // Pick the output device (the one chosen for Spotify, else the system
+        // default) and use its OWN default config. Forcing the file's exact rate
+        // on a device that can't do it is what made some files fail to open (a
+        // silent stop with no log). Anything that doesn't match is resampled.
+        let device = select_output_device().ok_or("no output device")?;
+        let out_cfg = device
+            .default_output_config()
+            .map_err(|e| format!("no output config: {e}"))?;
+        let out_rate = out_cfg.sample_rate().0;
+        let out_channels = (out_cfg.channels() as usize).max(1);
+        let resampler = if out_rate != sample_rate || out_channels != channels {
+            Some(Resampler::new(sample_rate, out_rate, channels, out_channels))
+        } else {
+            None
+        };
+
+        let stream = self.build_stream(&device, out_rate, out_channels, &ring, &frames_played)?;
 
         Ok(Active {
             format,
             decoder,
             track_id,
-            sample_rate,
-            channels,
+            sample_rate: out_rate,
+            channels: out_channels,
             ring,
             frames_played,
             finished_ring,
             _stream: stream,
             ended_sent: false,
             sample_buf: None,
+            resampler,
+            resample_out: Vec::new(),
         })
     }
 
-    /// cpal output stream at the file's native rate. The callback pulls decoded
-    /// samples, runs the EQ in place (reusing `EqProcessor`, live settings), and
-    /// pushes the result to the visualizer — the same order the Spotify sink
-    /// uses, so both paths sound and look identical.
+    /// cpal output stream at the device's own supported rate/channels. The
+    /// callback pulls decoded (and, when rates differ, resampled) samples, runs
+    /// the EQ in place (reusing `EqProcessor`, live settings), and pushes the
+    /// result to the visualizer — the same order the Spotify sink uses.
     fn build_stream(
         &self,
-        sample_rate: u32,
-        channels: usize,
+        device: &cpal::Device,
+        out_rate: u32,
+        out_channels: usize,
         ring: &Arc<Mutex<VecDeque<f32>>>,
         frames_played: &Arc<AtomicU64>,
     ) -> Result<cpal::Stream, String> {
-        let host = cpal::default_host();
-        // Play through the same output device the user picked for Spotify (saved
-        // in settings), NOT the raw system default — which on this user's setup
-        // is a virtual/monitor device, so local files went there silently while
-        // Spotify (on the chosen device) played fine. Fall back to the default
-        // if nothing is saved or the saved device is gone.
-        let device = crate::settings::Settings::current()
-            .player
-            .audio_device
-            .clone()
-            .and_then(|name| {
-                host.output_devices().ok().and_then(|mut devs| {
-                    devs.find(|d| d.name().map(|n| n == name).unwrap_or(false))
-                })
-            })
-            .or_else(|| host.default_output_device())
-            .ok_or("no output device")?;
         let config = cpal::StreamConfig {
-            channels: channels as u16,
-            sample_rate: cpal::SampleRate(sample_rate),
+            channels: out_channels as u16,
+            sample_rate: cpal::SampleRate(out_rate),
             buffer_size: cpal::BufferSize::Default,
         };
 
@@ -337,7 +414,7 @@ impl Worker {
 
         let mut eq_proc = EqProcessor::new();
         let mut scratch: Vec<f64> = Vec::new();
-        let ch = channels;
+        let ch = out_channels;
 
         let stream = device
             .build_output_stream(
@@ -414,7 +491,13 @@ impl Worker {
                                 .sample_buf
                                 .get_or_insert_with(|| SampleBuffer::new(decoded.capacity() as u64, spec));
                             buf.copy_interleaved_ref(decoded);
-                            a.ring.lock().unwrap().extend(buf.samples().iter().copied());
+                            if let Some(rs) = a.resampler.as_mut() {
+                                a.resample_out.clear();
+                                rs.process(buf.samples(), &mut a.resample_out);
+                                a.ring.lock().unwrap().extend(a.resample_out.iter().copied());
+                            } else {
+                                a.ring.lock().unwrap().extend(buf.samples().iter().copied());
+                            }
                         }
                         Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
                         Err(_) => {
@@ -446,6 +529,10 @@ impl Worker {
         );
         a.decoder.reset();
         a.ring.lock().unwrap().clear();
+        if let Some(rs) = a.resampler.as_mut() {
+            rs.buf.clear();
+            rs.pos = 0.0;
+        }
         a.finished_ring.store(false, Ordering::Relaxed);
         a.ended_sent = false;
         let frames = (ms as u64) * a.sample_rate as u64 / 1000;

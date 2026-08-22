@@ -395,8 +395,18 @@
         sliderSeekPosition = pos;
       }
       const events = await invoke("local_take_events").catch(() => []);
-      // Unit enum variants serialise as their name string ("EndOfTrack").
-      if (events.includes("EndOfTrack")) emitNextPressed();
+      // Unit enum variants serialise as their name string ("EndOfTrack");
+      // struct variants as an object ({ Failed: { path, reason } }).
+      for (const ev of events) {
+        if (ev === "EndOfTrack") {
+          emitNextPressed();
+        } else if (ev && ev.Failed) {
+          // A file that couldn't be opened/decoded used to stop silently with
+          // no clue why. Stop cleanly and record the reason.
+          playerState = "stopped";
+          console.warn("Local playback failed:", ev.Failed?.reason, ev.Failed?.path);
+        }
+      }
     }, 250);
   }
   function stopLocalPoll() {
