@@ -477,6 +477,8 @@
   $effect(() => {
     invoke("set_double_size", { active: doubleSizeActive });
     REACTIVE_WINDOW_SIZE.setZoom(doubleSizeActive ? 2 : 1);
+    // Let the playlist's Windows menu reflect the current state (its checkbox).
+    emitWindowEvent("playerWindow", { DoubleSizeChanged: doubleSizeActive });
   });
 
   // Windowshade: the player collapses to the classic 275x14 title bar. The
@@ -653,6 +655,8 @@
             displayName: l.name,
             durationInMs: l.durationMs,
           });
+        } else if (event.ToggleDoubleSize !== undefined) {
+          doubleSizeActive = !doubleSizeActive;
         }
       },
     );
@@ -741,6 +745,12 @@
           t.isContentEditable)
       )
         return;
+      // Ctrl+D toggles double size (classic Winamp), before the modifier guard.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        doubleSizeActive = !doubleSizeActive;
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const acted = () => e.preventDefault();

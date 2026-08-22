@@ -6,7 +6,7 @@
     handleError,
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
-  import { emitWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { emit } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { Playlist } from "$lib/playlist.svelte";
@@ -194,6 +194,14 @@
   }
   const closeMenu = () => (menu.show = false);
 
+  // Double Size (2x) toggle — the state lives in the player; we mirror it here
+  // so the Windows menu can show a checkbox, and toggle it via an event.
+  let doubleSizeOn = $state(false);
+  function toggleDoubleSize() {
+    closeMenu();
+    emitWindowEvent("playlistWindow", { ToggleDoubleSize: null });
+  }
+
   // Local files: pick from disk and add them straight into the playlist as
   // LocalRows (the first starts playing). Same as the player's O / Shift+O.
   async function addLocalFiles() {
@@ -330,9 +338,21 @@
     // Quietly check for a new version on launch so the pill can flag it.
     checkForUpdatesSilently();
 
+    // Mirror the player's double-size state for the Windows menu checkbox
+    // (initial value from settings, then kept in sync as it changes).
+    invoke("get_player_settings")
+      .then((s) => {
+        if (s) doubleSizeOn = Boolean(s.double_size_active);
+      })
+      .catch(() => {});
+    const doubleSizeSub = subscribeToWindowEvent("playerWindow", (event) => {
+      if (event.DoubleSizeChanged !== undefined) doubleSizeOn = event.DoubleSizeChanged;
+    });
+
     // Cleanups
     return () => {
       cleanupDropHandler();
+      doubleSizeSub.then((unsub) => unsub());
       playlist.dispose();
     };
   });
@@ -933,6 +953,9 @@
         >
         <button class="ctx-item" onclick={toggleAlwaysOnTop}>
           <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
+        </button>
+        <button class="ctx-item" onclick={toggleDoubleSize} title="Ctrl+D">
+          <span class="ctx-dot">{doubleSizeOn ? "●" : ""}</span>Double size (2×)
         </button>
       {:else if menuTab === "audio"}
         <button class="ctx-item" onclick={() => pickAudioDevice(null)}>

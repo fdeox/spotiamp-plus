@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  */
 
 /**
- * @typedef { {playlistWindow: {event: {Ready: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, EndReached: null, DragStarted: null, DragEnded: null, LocalFilesPicked: string[], LocalTrackLoaded: {path: string, name: string, durationMs: number}}}, playerWindow: {event: {CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, DragStarted: null, DragEnded: null, AddLocalFiles: string[] }}, player: { event: { 'Paused': { uri: string, position_ms: number}, 'Playing': { uri: string, position_ms: number}, 'Stopped': {uri: string}, 'EndOfTrack': {uri: string}, 'PositionCorrection': { uri: string, position_ms: number}, 'PositionChanged': { uri: string, position_ms: number}, 'Seeked': { uri: string, position_ms: number}} }} } WindowEventTypes
+ * @typedef { {playlistWindow: {event: {Ready: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, EndReached: null, DragStarted: null, DragEnded: null, LocalFilesPicked: string[], LocalTrackLoaded: {path: string, name: string, durationMs: number}, ToggleDoubleSize: null}}, playerWindow: {event: {CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, DragStarted: null, DragEnded: null, AddLocalFiles: string[], DoubleSizeChanged: boolean }}, player: { event: { 'Paused': { uri: string, position_ms: number}, 'Playing': { uri: string, position_ms: number}, 'Stopped': {uri: string}, 'EndOfTrack': {uri: string}, 'PositionCorrection': { uri: string, position_ms: number}, 'PositionChanged': { uri: string, position_ms: number}, 'Seeked': { uri: string, position_ms: number}} }} } WindowEventTypes
  */
 
 /**
