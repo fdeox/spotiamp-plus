@@ -15,7 +15,7 @@
     <div
       class="sprite digit-sprite"
       style:--x={index}
-      style:--digit={char.charCodeAt(0) - 48}
+      style:--digit={char === "-" ? 10 : char.charCodeAt(0) - 48}
     ></div>
   {/each}
 </div>

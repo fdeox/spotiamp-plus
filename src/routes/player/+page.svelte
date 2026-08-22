@@ -120,7 +120,22 @@
   let playerState = $state("stopped");
   let numberDisplayHidden = $state(true);
 
-  const currentTime = $derived(durationToMMSS(seekPosition));
+  // Click the time to switch elapsed <-> remaining (classic Winamp). Remaining
+  // shows a leading minus, which only fits the 2-digit field for single-digit
+  // minutes, so longer remainders just drop the minus.
+  let showRemaining = $state(false);
+  const currentTime = $derived.by(() => {
+    const dur = loadedTrack?.durationInMs ?? 0;
+    if (showRemaining && dur > 0) {
+      const { m, s } = durationToMMSS(Math.max(0, dur - seekPosition));
+      return {
+        m: m < 10 ? `-${m}` : m.toString().padStart(2, "0"),
+        s: s.toString().padStart(2, "0"),
+      };
+    }
+    const { m, s } = durationToMMSS(seekPosition);
+    return { m: m.toString().padStart(2, "0"), s: s.toString().padStart(2, "0") };
+  });
 
   // Windowshade seek bar: the thumb travels the track's 17px minus its own 3px.
   const shadeProgress = $derived(
@@ -1019,17 +1034,16 @@
     y={27}
   />
   <div class:hidden={timeDisplayHidden}>
-    <NumberDisplay
-      number={currentTime.m.toString().padStart(2, "0")}
-      x={48}
-      y={26}
-    />
-    <NumberDisplay
-      number={currentTime.s.toString().padStart(2, "0")}
-      x={78}
-      y={26}
-    />
+    <NumberDisplay number={currentTime.m} x={48} y={26} />
+    <NumberDisplay number={currentTime.s} x={78} y={26} />
   </div>
+  <!-- click the time to toggle elapsed / remaining (classic Winamp) -->
+  <button
+    class="time-toggle"
+    onclick={() => (showRemaining = !showRemaining)}
+    aria-label="Toggle elapsed or remaining time"
+    title="Elapsed / remaining"
+  ></button>
   {#each visualizer.bars as bar}
     <div
       class="visualizer-bar"
@@ -1312,6 +1326,19 @@
     background-position: -304px 0px;
   }
 
+  /* transparent hit-area over the time readout to toggle elapsed/remaining */
+  button.time-toggle {
+    position: absolute;
+    left: calc(39px * var(--zoom));
+    top: calc(25px * var(--zoom));
+    width: calc(63px * var(--zoom));
+    height: calc(15px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 3;
+  }
   button.double-size-btn {
     --sprite-url: var(--skin-titlebar);
     --sprite-x: 10px;
