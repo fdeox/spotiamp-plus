@@ -140,6 +140,10 @@ pub struct PlayerSettings {
     /// this struct derives `Hash` for change-detection).
     #[serde(default)]
     pub player_zoom_pct: Option<u16>,
+    /// Whether the EQ window was open, so it reopens on launch (and the docked
+    /// playlist keeps its position). `serde(default)` keeps old files loading.
+    #[serde(default)]
+    pub show_eq: bool,
 }
 
 impl Default for PlayerSettings {
@@ -153,6 +157,7 @@ impl Default for PlayerSettings {
             windowshade_active: false,
             always_on_top: false,
             player_zoom_pct: None,
+            show_eq: false,
         }
     }
 }

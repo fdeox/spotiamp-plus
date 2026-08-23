@@ -51,6 +51,9 @@ pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Resu
         window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&window, visible);
+    // Remember it's open so the next launch reopens it (and the docked playlist,
+    // which sits below the EQ, comes back at the right place).
+    crate::settings::Settings::current_mut().player.show_eq = visible;
 
     // All follow-up geometry runs on the main thread: window getters/setters
     // called off the main thread block until the main thread services them and
