@@ -19,7 +19,13 @@ class ReactiveWindowSize {
      */
     setZoom(zoom) {
         this.zoom = zoom;
-        document.querySelector("body")?.style.setProperty("--zoom", `${zoom}`);
+        const body = document.querySelector("body");
+        // Render the content at its natural 1x (crisp), and scale the window
+        // root up with CSS `zoom` (--app-zoom). CSS zoom re-rasterises, so
+        // `image-rendering: pixelated` keeps the pixel-art sharp — unlike
+        // `transform: scale`, which the compositor smooths (blurry at 2x/3x).
+        body?.style.setProperty("--zoom", "1");
+        body?.style.setProperty("--app-zoom", `${zoom}`);
     }
 }
 export const REACTIVE_WINDOW_SIZE = new ReactiveWindowSize();

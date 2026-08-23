@@ -133,12 +133,21 @@ body {
     background-color: black;
 }
 
+/* Player scaling (double size / high-res player size). CSS `zoom` re-rasterises
+   at the enlarged scale, so with image-rendering: pixelated the pixel-art skin
+   stays crisp — unlike `transform: scale`, which the compositor smooths into a
+   blur. The window is already sized to width*zoom, so the natural-size content
+   fits and fills it. `--app-zoom` is 1 (no-op) on windows that don't scale. */
+body {
+    zoom: var(--app-zoom, 1);
+}
+
 .sprite {
     background: var(--sprite-url);
     position: absolute;
     display: inline-block;
-    transform-origin: top left;
-    transform: scale(var(--zoom));
+    /* No transform: scale here — the whole window scales via `body { zoom }`
+       (crisp). Sprites render at their natural size. --zoom stays 1. */
     left: calc(var(--sprite-x) * var(--zoom));
     top: calc(var(--sprite-y) * var(--zoom));
 }

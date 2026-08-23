@@ -52,6 +52,10 @@
     return playerSettings.show_playlist;
   }
 
+  function initialShowEq() {
+    return playerSettings.show_eq ?? false;
+  }
+
   // Player scale (1 / 1.5 / 2 / 3). Prefer the saved percentage; fall back to
   // the old double-size flag so existing setups keep their size.
   function initialPlayerZoom() {
@@ -93,7 +97,7 @@
     positionAnchorAt = performance.now();
   }
   let showPlaylist = $state(initialShowPlaylist());
-  let showEq = $state(false);
+  let showEq = $state(initialShowEq());
   // 🦙 hidden about screen (click the titlebar logo)
   let showLlama = $state(false);
   let appVersion = $state("");
