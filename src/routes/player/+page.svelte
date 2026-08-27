@@ -56,13 +56,11 @@
     return playerSettings.show_eq ?? false;
   }
 
-  // Player scale (1 / 1.5 / 2 / 3). Prefer the saved percentage; fall back to
-  // the old double-size flag so existing setups keep their size.
+  // Player scale (1 / 1.5 / 2 / 3). Pinned to 1x for 0.7.1: the zoom feature is
+  // pulled (per-window scaling broke docking) and will return, done right, in a
+  // later version. The plumbing below stays so it's a small step to re-enable.
   function initialPlayerZoom() {
-    const pct =
-      playerSettings.player_zoom_pct ??
-      (playerSettings.double_size_active ? 200 : 100);
-    return pct / 100;
+    return 1;
   }
 
   function initialWindowshadeActive() {
@@ -114,9 +112,9 @@
   let currentTrackUri = $state(null);
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
+  // Pinned to 1x for 0.7.1 (zoom pulled — see initialPlayerZoom). The state and
+  // its effect below stay so re-enabling the feature is a small step.
   let playerZoom = $state(initialPlayerZoom());
-  // "Double size" is just the 2x step; the button/Ctrl+D toggle 1x <-> 2x.
-  const doubleSizeActive = $derived(playerZoom === 2);
   let shadeActive = $state(initialWindowshadeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
@@ -500,13 +498,11 @@
     }).catch(handleError);
   });
 
+  // Feed the current scale into the layout. Pinned to 1x for 0.7.1 (zoom
+  // pulled), so this just sets --zoom=1 for the sprite math; kept as an effect
+  // so re-enabling the feature reactively rescales again.
   $effect(() => {
-    invoke("set_player_zoom", { pct: Math.round(playerZoom * 100) });
-    // Keep the legacy double-size flag in sync for anything still reading it.
-    invoke("set_double_size", { active: playerZoom === 2 });
     REACTIVE_WINDOW_SIZE.setZoom(playerZoom);
-    // Let the playlist's Windows menu reflect the current size.
-    emitWindowEvent("playerWindow", { ZoomChanged: playerZoom });
   });
 
   // Windowshade: the player collapses to the classic 275x14 title bar. The
@@ -683,10 +679,6 @@
             displayName: l.name,
             durationInMs: l.durationMs,
           });
-        } else if (event.ToggleDoubleSize !== undefined) {
-          playerZoom = playerZoom === 2 ? 1 : 2;
-        } else if (event.SetZoom !== undefined) {
-          playerZoom = event.SetZoom;
         }
       },
     );
@@ -775,12 +767,6 @@
           t.isContentEditable)
       )
         return;
-      // Ctrl+D toggles double size (classic Winamp), before the modifier guard.
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        playerZoom = playerZoom === 2 ? 1 : 2;
-        return;
-      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const acted = () => e.preventDefault();
@@ -1034,12 +1020,6 @@
   ></button>
 
   <div class="sprite side-buttons"></div>
-  <button
-    class="sprite double-size-btn"
-    onclick={() => (playerZoom = playerZoom === 2 ? 1 : 2)}
-    class:active={doubleSizeActive}
-    aria-label="Toggle double size"
-  ></button>
 
   <TextTicker
     unavailable={playerState == "unavailable"}

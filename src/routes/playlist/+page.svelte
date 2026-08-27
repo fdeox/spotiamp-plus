@@ -6,7 +6,7 @@
     handleError,
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
-  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent } from "$lib/events.svelte.js";
   import { emit } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { Playlist } from "$lib/playlist.svelte";
@@ -194,16 +194,6 @@
   }
   const closeMenu = () => (menu.show = false);
 
-  // Player size (1 / 1.5 / 2 / 3) — the state lives in the player; we mirror it
-  // here for the Windows menu, and set it via an event.
-  const ZOOM_STEPS = [1, 1.5, 2, 3];
-  let playerZoom = $state(1);
-  /** @param {number} z */
-  function setPlayerZoom(z) {
-    closeMenu();
-    emitWindowEvent("playlistWindow", { SetZoom: z });
-  }
-
   // Local files: pick from disk and add them straight into the playlist as
   // LocalRows (the first starts playing). Same as the player's O / Shift+O.
   async function addLocalFiles() {
@@ -340,23 +330,9 @@
     // Quietly check for a new version on launch so the pill can flag it.
     checkForUpdatesSilently();
 
-    // Mirror the player's size for the Windows menu (initial value from
-    // settings, then kept in sync as it changes).
-    invoke("get_player_settings")
-      .then((s) => {
-        if (!s) return;
-        const pct = s.player_zoom_pct ?? (s.double_size_active ? 200 : 100);
-        playerZoom = pct / 100;
-      })
-      .catch(() => {});
-    const zoomSub = subscribeToWindowEvent("playerWindow", (event) => {
-      if (event.ZoomChanged !== undefined) playerZoom = event.ZoomChanged;
-    });
-
     // Cleanups
     return () => {
       cleanupDropHandler();
-      zoomSub.then((unsub) => unsub());
       playlist.dispose();
     };
   });
@@ -958,14 +934,6 @@
         <button class="ctx-item" onclick={toggleAlwaysOnTop}>
           <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
         </button>
-        <div class="ctx-hint">Player size (Ctrl+D toggles 2×)</div>
-        {#each ZOOM_STEPS as z}
-          <button class="ctx-item" onclick={() => setPlayerZoom(z)}>
-            <span class="ctx-dot">{playerZoom === z ? "●" : ""}</span>{z}× {z === 2
-              ? "(double)"
-              : ""}
-          </button>
-        {/each}
       {:else if menuTab === "audio"}
         <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
           <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
