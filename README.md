@@ -9,9 +9,8 @@ skins, a Milkdrop-style visualizer, and full keyboard control, playing your
 Spotify Premium account natively (no browser) — and **your own local files**
 right in the same playlist.
 
-Spotiamp+ is a fork of [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spotiamp)
-(MIT), extended with a playlist/library browser, catalogue search, docking,
-skins, a WebGL visualizer, and much more.
+On top of that it adds a playlist and library browser, full catalogue search, and
+docking windows that snap together like classic Winamp.
 
 > **Premium** streams directly (playback via
 > [librespot](https://github.com/librespot-org/librespot)); **Free** accounts get
@@ -165,9 +164,8 @@ npm run tauri build    # produce a release installer (src-tauri/target/release/b
 
 ## Credits
 
-Built on [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spotiamp) (MIT) —
-the original Tauri + librespot Winamp-style player. Spotiamp+ adds the browser,
-search, library, docking, skins, visualizer and the rest.
+Built on [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spotiamp) (MIT), the
+original Tauri + librespot Winamp-style player.
 
 Winamp is a trademark of its respective owners; this is an independent
 fan project and is not affiliated with or endorsed by Winamp or Spotify.
