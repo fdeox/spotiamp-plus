@@ -78,19 +78,23 @@ skins, a WebGL visualizer, and much more.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
-- 🔄 **Built-in updater** — *Check for updates* in the right-click menu downloads
-  and installs new versions (signed).
+- 🔄 **Built-in updater** — Spotiamp+ flags a new version on launch, and *Check
+  for updates* in the right-click menu downloads and installs it (signed).
 - ⌨️ **Keyboard shortcuts** — classic Winamp keys (see below).
 
 ## Screenshots
 
 | Classic | Cherry | Amber | Emerald |
 | :-----: | :----: | :---: | :-----: |
-| ![](docs/screenshots/classic.jpg) | ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
+| ![](docs/screenshots/classic2.jpg) | ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
 
 | Media Library | Visualizer |
 | :-----------: | :--------: |
 | ![](docs/screenshots/library.jpg) | ![](docs/screenshots/visualizer.jpg) |
+
+| Equalizer | Lyrics |
+| :-------: | :----: |
+| ![](docs/screenshots/eq.jpg) | ![](docs/screenshots/lyrics.jpg) |
 
 ### Load any classic Winamp skin
 
