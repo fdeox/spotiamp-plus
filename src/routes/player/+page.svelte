@@ -426,9 +426,12 @@
           emitNextPressed();
         } else if (ev && ev.Failed) {
           // A file that couldn't be opened/decoded used to stop silently with
-          // no clue why. Stop cleanly and record the reason.
+          // no clue why. Stop cleanly, log it, and tell the user the reason so a
+          // failure is diagnosable instead of looking like nothing happened.
           playerState = "stopped";
-          console.warn("Local playback failed:", ev.Failed?.reason, ev.Failed?.path);
+          const reason = ev.Failed?.reason ?? "unknown error";
+          console.warn("Local playback failed:", reason, ev.Failed?.path);
+          handleError(`This file couldn't be played.\n\n${reason}`);
         }
       }
     }, 250);

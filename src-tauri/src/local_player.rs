@@ -257,6 +257,7 @@ impl Worker {
                         self.emit(LocalEvent::Playing { position_ms: 0 });
                     }
                     Err(reason) => {
+                        log::warn!("local open failed for '{}': {}", path.display(), reason);
                         active = None;
                         self.playing.store(false, Ordering::Relaxed);
                         self.emit(LocalEvent::Failed { path, reason });
@@ -368,6 +369,20 @@ impl Worker {
         } else {
             None
         };
+
+        // Log the format decision so a "plays nothing" report is diagnosable
+        // from spotiamp.log (device chosen, file vs output rate/channels).
+        log::info!(
+            "local open: '{}' {} Hz {} ch -> device '{}' {} Hz {} ch ({} fmt){}",
+            path.display(),
+            sample_rate,
+            channels,
+            device.name().unwrap_or_else(|_| "?".into()),
+            out_rate,
+            out_channels,
+            out_cfg.sample_format(),
+            if resampler.is_some() { ", resampling" } else { "" },
+        );
 
         let stream = self.build_stream(&device, out_rate, out_channels, &ring, &frames_played)?;
 
