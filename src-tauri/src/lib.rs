@@ -15,6 +15,7 @@ mod eq;
 mod eq_window;
 mod eqf;
 mod library_window;
+mod art_window;
 mod lists;
 mod local_player;
 mod loopback;
@@ -464,6 +465,7 @@ pub fn run() {
             eqf::import_eqf,
             eqf::export_eqf,
             lyrics_window::set_lyrics_window_visible,
+            art_window::set_art_window_visible,
             discord::set_discord_activity,
             discord::clear_discord_activity,
         ])

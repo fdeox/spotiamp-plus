@@ -631,6 +631,7 @@
       library: "set_library_window_visible",
       visualizer: "set_visualizer_window_visible",
       lyrics: "set_lyrics_window_visible",
+      art: "set_art_window_visible",
     });
     const reopenTimer = setTimeout(() => {
       invoke("windows_to_reopen")
@@ -656,6 +657,12 @@
       emitWindowEvent("lyrics", {
         uri: currentTrackUri,
         positionMs: Math.round(seekPosition),
+        playing: playerState == "playing",
+      });
+      // and the album-art window the current track; it fetches the cover on a
+      // change and just shows it (position doesn't matter for a still image).
+      emitWindowEvent("art", {
+        uri: currentTrackUri,
         playing: playerState == "playing",
       });
     }, 1000);

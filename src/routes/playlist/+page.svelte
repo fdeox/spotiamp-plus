@@ -923,6 +923,13 @@
               invoke("set_lyrics_window_visible", { visible: true });
             }}>Lyrics…</button
           >
+          <button
+            class="ctx-item"
+            onclick={() => {
+              closeMenu();
+              invoke("set_art_window_visible", { visible: true });
+            }}>Album art…</button
+          >
         {/if}
         <button
           class="ctx-item"
