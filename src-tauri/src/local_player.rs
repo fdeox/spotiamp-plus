@@ -612,8 +612,11 @@ pub fn local_take_events(player: State) -> Vec<LocalEvent> {
 
 /// Audio extensions Spotiamp+ can decode via symphonia. Kept in sync with the
 /// player window's drag-drop filter.
-const AUDIO_EXTS: [&str; 9] = [
-    "mp3", "flac", "m4a", "aac", "wav", "ogg", "oga", "opus", "wma",
+const AUDIO_EXTS: [&str; 7] = [
+    // Only formats symphonia is actually built to decode (see Cargo.toml
+    // features). Opus and WMA were offered before but have no decoder, so a
+    // pick just failed; don't advertise what we can't play.
+    "mp3", "flac", "m4a", "aac", "wav", "ogg", "oga",
 ];
 
 /// Show a picker for one or more audio files and return their absolute paths
