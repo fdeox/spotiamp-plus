@@ -119,6 +119,44 @@
     }
   });
 
+  // Type-to-find: typing letters/digits jumps to the first track whose title
+  // (then artist) starts with what you've typed; the buffer clears after a short
+  // pause. Classic Winamp / file-explorer behaviour, handy in long lists.
+  let findBuffer = "";
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let findTimer;
+  /** @param {KeyboardEvent} e */
+  function typeToFind(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const el = /** @type {HTMLElement} */ (e.target);
+    if (
+      el &&
+      (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)
+    )
+      return;
+    if (!/^[a-z0-9 ]$/i.test(e.key)) return; // printable find chars only
+    if (e.key === " " && !findBuffer) return; // no leading space
+    const rows = displayTracks;
+    if (!rows.length) return;
+    e.preventDefault();
+    findBuffer += e.key.toLowerCase();
+    clearTimeout(findTimer);
+    findTimer = setTimeout(() => (findBuffer = ""), 900);
+    const q = findBuffer;
+    let idx = rows.findIndex((r) => (r.name || "").toLowerCase().startsWith(q));
+    if (idx < 0)
+      idx = rows.findIndex((r) => (r.artist || "").toLowerCase().startsWith(q));
+    if (idx < 0) idx = rows.findIndex((r) => (r.name || "").toLowerCase().includes(q));
+    if (idx >= 0) {
+      selectedTrack = idx;
+      rowsEl?.querySelectorAll(".ml-row")[idx]?.scrollIntoView({ block: "nearest" });
+    }
+  }
+  onMount(() => {
+    window.addEventListener("keydown", typeToFind);
+    return () => window.removeEventListener("keydown", typeToFind);
+  });
+
   const playlistUrl = (uri) =>
     `https://open.spotify.com/playlist/${uri.split(":").pop()}`;
   const trackUrl = (uri) =>
