@@ -436,6 +436,7 @@ pub fn run() {
             lists::add_to_list,
             player_window::set_double_size,
             player_window::set_player_zoom,
+            player_window::set_resume_point,
             player_window::set_windowshade,
             player_window::set_always_on_top,
             player_window::take_latest_spectrum,

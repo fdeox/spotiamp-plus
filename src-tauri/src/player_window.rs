@@ -126,6 +126,16 @@ pub fn set_player_zoom(pct: u16) {
     Settings::current_mut().player.player_zoom_pct = Some(pct);
 }
 
+/// Remember where playback is, so the next launch can cue it (resume).
+#[tauri::command]
+pub fn set_resume_point(uri: String, index: u32, position_ms: u32) {
+    Settings::current_mut().player.resume = Some(crate::settings::ResumePoint {
+        uri,
+        index,
+        position_ms,
+    });
+}
+
 #[tauri::command]
 pub fn set_windowshade(active: bool) {
     Settings::current_mut().player.windowshade_active = active;

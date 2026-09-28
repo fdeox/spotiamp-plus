@@ -112,6 +112,13 @@
   let currentTrackUri = $state(null);
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
+  // Resume last session: the track + spot saved at the last exit. The playlist
+  // cues that track at launch (see Playlist.maybeCueResume); its first play
+  // continues from here.
+  /** @type {string | null} */
+  let resumeUri = playerSettings.resume?.uri ?? null;
+  const resumeMs = playerSettings.resume?.position_ms ?? 0;
+  let resumeTick = 0;
   // Pinned to 1x for 0.7.1 (zoom pulled — see initialPlayerZoom). The state and
   // its effect below stay so re-enabling the feature is a small step.
   let playerZoom = $state(initialPlayerZoom());
@@ -254,8 +261,13 @@
     if (playerState == "paused") {
       await invoke("play").catch(handleError);
     } else if (loadedTrack) {
-      setPosition(0);
-      sliderSeekPosition = 0;
+      // Resume last session: the first play of the track cued at launch
+      // continues from the saved spot (same load + seek as a device switch).
+      const startMs =
+        resumeUri && loadedTrack.uri?.asString === resumeUri ? resumeMs : 0;
+      resumeUri = null;
+      setPosition(startMs);
+      sliderSeekPosition = startMs;
       playerState = loadedTrack.unavailable ? "unavailable" : "playing";
 
       if (playerState == "unavailable") {
@@ -264,8 +276,25 @@
         await invoke("load_track", { uri: loadedTrack?.uri.asString }).catch(
           handleError,
         );
+        if (startMs > 0) {
+          await invoke("seek", { positionMs: startMs }).catch(() => {});
+        }
       }
     }
+  }
+
+  // Resume last session: remember the Spotify track and spot (every 10 s of
+  // playback, and on pause / stop) so the next launch can cue it.
+  /** @param {number} [ms] */
+  function saveResumePoint(ms = seekPosition) {
+    if (controllerMode || !loadedTrack || loadedTrack.isLocal || loadedTrack.unavailable) return;
+    const uri = loadedTrack.uri?.asString;
+    if (!uri) return;
+    invoke("set_resume_point", {
+      uri,
+      index: playlistPos.index || 0,
+      positionMs: Math.max(0, Math.round(ms || 0)),
+    }).catch(() => {});
   }
 
   async function pause() {
@@ -281,6 +310,7 @@
     }
     if (playerState == "playing") {
       playerState = "paused"; // To make the UI a bit snappier
+      saveResumePoint();
       await invoke("pause").catch(handleError);
     }
   }
@@ -299,6 +329,7 @@
       await invoke("smtc_pause").catch(() => {});
       return;
     }
+    saveResumePoint(0); // stopped: next launch cues this track from the start
     setPosition(0);
     sliderSeekPosition = 0;
     playerState = "stopped"; // To make the UI a bit snappier
@@ -669,6 +700,7 @@
         uri: nowUri,
         playing: playerState == "playing",
       });
+      if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
     }, 1000);
 
     const playlistWindowEventSubscription = subscribeToWindowEvent(
@@ -693,8 +725,18 @@
             displayName: l.name,
             durationInMs: l.durationMs,
           });
+        } else if (event.Ready !== undefined) {
+          // the playlist came up after us: repeat the resume handshake
+          emitWindowEvent("playerWindow", { PlayerReady: null });
         }
       },
+    );
+    // Resume handshake with the playlist (Playlist.maybeCueResume): announce we
+    // are listening once this subscription is live, so the cued track isn't
+    // sent before we can receive it. The Ready branch above covers the other
+    // start order.
+    playlistWindowEventSubscription.then(() =>
+      emitWindowEvent("playerWindow", { PlayerReady: null }),
     );
 
     const eqWindowEventSubscription = subscribeToWindowEvent(

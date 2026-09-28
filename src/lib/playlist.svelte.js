@@ -239,6 +239,12 @@ export class Playlist {
     queue = $state([]);
     /** J: the jump-to-file box over the playlist is open. */
     jumpOpen = $state(false);
+    /** Resume last session, a one-shot per launch: it waits for both the saved
+     *  rows to be back and the player window to be listening (they start in
+     *  parallel, so either can come first). */
+    resumeDone = false;
+    rowsRestored = false;
+    playerReady = false;
 
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
@@ -373,6 +379,9 @@ export class Playlist {
                 } else if (event.JumpRequested !== undefined) {
                     // J pressed in the main window, like Winamp
                     this.openJump();
+                } else if (event.PlayerReady !== undefined) {
+                    this.playerReady = true;
+                    this.maybeCueResume();
                 }
             },
         );
@@ -419,6 +428,8 @@ export class Playlist {
             // Persist after the initial load so any legacy playlist/album URIs
             // get normalised to the individual track URIs they expand into.
             this.persist();
+            this.rowsRestored = true;
+            this.maybeCueResume();
         })();
 
         this.dispose = () => {
@@ -707,6 +718,35 @@ export class Playlist {
      */
     queuePosition(row) {
         return this.queue.indexOf(row) + 1;
+    }
+
+    /**
+     * Resume last session: once the saved rows are back and the player is
+     * listening, select the track that was playing at the last exit and hand
+     * it to the player without playing it; the player's first play then picks
+     * up from the saved position. Runs once per launch, and not at all if
+     * something is already loaded. Only Spotify tracks are saved (a local row
+     * would start playing just by being loaded).
+     */
+    async maybeCueResume() {
+        if (this.resumeDone || !this.rowsRestored || !this.playerReady) return;
+        this.resumeDone = true;
+        /** @type {{uri?: string, index?: number} | undefined} */
+        let point;
+        try {
+            point = /** @type {any} */ (await invoke("get_player_settings"))?.resume;
+        } catch {
+            return;
+        }
+        if (!point?.uri || this.loadedRow) return;
+        const byIndex = this.rows[(point.index ?? 0) - 1];
+        const row =
+            byIndex?.uri?.asString === point.uri
+                ? byIndex
+                : this.rows.find((r) => r.uri?.asString === point.uri);
+        if (!(row instanceof TrackRow)) return;
+        this.select(row);
+        await row.loadTrack();
     }
 
     /** J: open the jump-to-file box (the page renders it). */

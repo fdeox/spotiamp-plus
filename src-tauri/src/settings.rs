@@ -144,6 +144,18 @@ pub struct PlayerSettings {
     /// playlist keeps its position). `serde(default)` keeps old files loading.
     #[serde(default)]
     pub show_eq: bool,
+    /// Where playback was at the last exit, so the next launch can cue it.
+    #[serde(default)]
+    pub resume: Option<ResumePoint>,
+}
+
+/// A Spotify track and position to pick up from on the next launch.
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+pub struct ResumePoint {
+    pub uri: String,
+    /// 1-based playlist row, to find the right one when a track is listed twice.
+    pub index: u32,
+    pub position_ms: u32,
 }
 
 impl Default for PlayerSettings {
@@ -158,6 +170,7 @@ impl Default for PlayerSettings {
             always_on_top: false,
             player_zoom_pct: None,
             show_eq: false,
+            resume: None,
         }
     }
 }
