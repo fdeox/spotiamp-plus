@@ -121,10 +121,21 @@
 
   // Type-to-find: typing letters/digits jumps to the first track whose title
   // (then artist) starts with what you've typed; the buffer clears after a short
-  // pause. Classic Winamp / file-explorer behaviour, handy in long lists.
-  let findBuffer = "";
+  // pause. Classic Winamp / file-explorer behaviour, handy in long lists. What's
+  // been typed shows in the header while it's live, so the jump is visible.
+  let findText = $state("");
+  let findMiss = $state(false);
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let findTimer;
+  // Case- and accent-insensitive, so "s" finds "Şebnem" and "beyonce" finds
+  // "Beyoncé". Dotless ı folds to i for the same reason.
+  /** @param {string} s */
+  const fold = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/ı/g, "i");
   /** @param {KeyboardEvent} e */
   function typeToFind(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -134,19 +145,24 @@
       (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)
     )
       return;
-    if (!/^[a-z0-9 ]$/i.test(e.key)) return; // printable find chars only
-    if (e.key === " " && !findBuffer) return; // no leading space
+    // One letter or digit in any script (Turkish ş/ğ/ı/ö/ü/ç included), plus
+    // spaces inside a query.
+    if (!/^[\p{L}\p{N} ]$/u.test(e.key)) return;
+    if (e.key === " " && !findText) return; // no leading space
     const rows = displayTracks;
     if (!rows.length) return;
     e.preventDefault();
-    findBuffer += e.key.toLowerCase();
+    findText += e.key;
     clearTimeout(findTimer);
-    findTimer = setTimeout(() => (findBuffer = ""), 900);
-    const q = findBuffer;
-    let idx = rows.findIndex((r) => (r.name || "").toLowerCase().startsWith(q));
-    if (idx < 0)
-      idx = rows.findIndex((r) => (r.artist || "").toLowerCase().startsWith(q));
-    if (idx < 0) idx = rows.findIndex((r) => (r.name || "").toLowerCase().includes(q));
+    findTimer = setTimeout(() => {
+      findText = "";
+      findMiss = false;
+    }, 1200);
+    const q = fold(findText);
+    let idx = rows.findIndex((r) => fold(r.name).startsWith(q));
+    if (idx < 0) idx = rows.findIndex((r) => fold(r.artist).startsWith(q));
+    if (idx < 0) idx = rows.findIndex((r) => fold(r.name).includes(q));
+    findMiss = idx < 0;
     if (idx >= 0) {
       selectedTrack = idx;
       rowsEl?.querySelectorAll(".ml-row")[idx]?.scrollIntoView({ block: "nearest" });
@@ -583,7 +599,12 @@
         <button class="ml-clear" onclick={clearSearch}>Clear</button>
       </div>
 
-      <div class="ml-view-head">{headTitle}</div>
+      <div class="ml-view-head">
+        {headTitle}
+        {#if findText}
+          <span class="ml-find" class:miss={findMiss}>find: {findText}</span>
+        {/if}
+      </div>
 
       <div class="ml-cols">
         <button class="ml-col ml-c-artist ml-colbtn" onclick={() => sortBy("artist")}>
@@ -976,6 +997,15 @@
     color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 200, 0)));
     padding: 2px 3px;
     border-bottom: 1px solid var(--skin-genexdivider, #0a0f0a);
+  }
+  /* live type-to-find query, right-aligned in the header; dims on no match */
+  .ml-find {
+    float: right;
+    text-transform: none;
+    color: var(--skin-genexhdrtext, var(--skin-plcurrent, #fff));
+  }
+  .ml-find.miss {
+    opacity: 0.45;
   }
 
   .ml-cols,
