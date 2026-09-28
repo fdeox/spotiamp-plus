@@ -62,7 +62,6 @@
 
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(275, 232);
-    REACTIVE_WINDOW_SIZE.setZoom(1);
     // Reopen at the size it was last left (falls back to the default above).
     invoke("get_window_inner_size", { label: "lyrics" })
       .then((s) => {

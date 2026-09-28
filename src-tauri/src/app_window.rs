@@ -4,9 +4,21 @@ use std::{
 };
 
 use serde::Deserialize;
-use tauri::{AppHandle, Listener, LogicalPosition, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{
+    AppHandle, Emitter, Listener, LogicalPosition, Manager, PhysicalPosition, WebviewWindow,
+};
 
 use crate::settings::InnerWindowSize;
+
+/// The UI scale every window renders at (1.0 = classic size), from settings.
+pub fn ui_scale() -> f64 {
+    let pct = crate::settings::Settings::current()
+        .player
+        .ui_scale_pct
+        .unwrap_or(100)
+        .clamp(100, 300);
+    pct as f64 / 100.0
+}
 
 pub fn build_frameless_window(
     app: &AppHandle,
@@ -15,9 +27,17 @@ pub fn build_frameless_window(
     route: &str,
     inner_size: InnerWindowSize,
 ) -> Result<WebviewWindow, tauri::Error> {
+    // Sizes are stored at 1x; every window opens at the UI scale straight away,
+    // and the page learns the same number before its first paint, so nothing
+    // flashes at 1x first (the whole page is CSS-zoomed, see global.css).
+    let scale = ui_scale();
     tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App(route.into()))
         .title(title)
-        .inner_size(inner_size.width as f64, inner_size.height as f64)
+        .inner_size(
+            inner_size.width as f64 * scale,
+            inner_size.height as f64 * scale,
+        )
+        .initialization_script(format!("window.__SPOTIAMP_UI_SCALE__ = {scale};"))
         .decorations(false)
         .shadow(false)
         .closable(false)
@@ -542,5 +562,76 @@ pub fn set_dock_visible(window: &WebviewWindow, visible: bool) {
         }
         #[cfg(target_os = "windows")]
         update_owners(&mut dock);
+    });
+}
+
+/// The UI scale changed by `ratio` (new / old). Every window resizes itself
+/// from its top-left corner, so to keep the player's docked stack lined up each
+/// attached window's top-left is moved proportionally around the player's (its
+/// size scales by the same ratio). The remembered offsets of hidden docked
+/// windows scale too. Windows not attached to the player stay where they are and
+/// just grow in place. MUST run on the main thread.
+fn rescale_docked_group(ratio: f64) {
+    let scale = |d: i32| (d as f64 * ratio).round() as i32;
+    let moves: Vec<(WebviewWindow, PhysicalPosition<i32>)> = {
+        let mut dock = dock().lock().expect("docking state lock");
+        refresh_all_rects(&mut dock);
+        let Some(player) = dock.rects.get(MASTER).copied() else {
+            return;
+        };
+        for offset in dock.hidden_offset.values_mut() {
+            *offset = (scale(offset.0), scale(offset.1));
+        }
+        connected_group(&dock, MASTER)
+            .iter()
+            .filter(|label| label.as_str() != MASTER)
+            .filter_map(|label| {
+                let rect = dock.rects.get(label)?;
+                let window = dock.windows.get(label)?.clone();
+                let position = PhysicalPosition::new(
+                    player.x + scale(rect.x - player.x),
+                    player.y + scale(rect.y - player.y),
+                );
+                Some((window, position))
+            })
+            .collect()
+    };
+    for (window, position) in moves {
+        let _ = window.set_position(position);
+    }
+}
+
+/// Current UI scale, for a page that reloaded after the scale changed (its
+/// startup script still carries the value from when the window was created).
+#[tauri::command]
+pub fn get_ui_scale() -> f64 {
+    ui_scale()
+}
+
+/// Scale every window: 100 = classic size, 150, 200 (Winamp's double size), 300.
+/// Saves it, keeps the docked stack together, then tells every page to re-zoom
+/// (each resizes its own window to match).
+#[tauri::command]
+pub fn set_ui_scale(pct: u16, app_handle: AppHandle) {
+    let old = ui_scale();
+    crate::settings::Settings::current_mut().player.ui_scale_pct = Some(pct.clamp(100, 300));
+    let new = ui_scale();
+    if (new - old).abs() < 1e-6 {
+        return;
+    }
+    let app = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        rescale_docked_group(new / old);
+        let _ = app.emit("uiScale", serde_json::json!({ "scale": new }));
+    });
+    // The pages resize themselves asynchronously; once they've settled, re-derive
+    // the docked group and native ownership from where everything ended up.
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        let _ = app.run_on_main_thread(|| {
+            let mut dock = dock().lock().expect("docking state lock");
+            on_drag_ended(&mut dock);
+        });
     });
 }

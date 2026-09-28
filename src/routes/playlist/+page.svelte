@@ -250,11 +250,22 @@
     loadAlwaysOnTop();
     const mw = 200,
       mh = 220;
+    // The page is CSS-zoomed by the UI scale while the pointer and viewport are
+    // not, so bring them into the page's own units first.
+    const z = REACTIVE_WINDOW_SIZE.zoom || 1;
     menu = {
       show: true,
-      x: Math.min(e.clientX, Math.max(2, window.innerWidth - mw)),
-      y: Math.min(e.clientY, Math.max(2, window.innerHeight - mh)),
+      x: Math.min(e.clientX / z, Math.max(2, window.innerWidth / z - mw)),
+      y: Math.min(e.clientY / z, Math.max(2, window.innerHeight / z - mh)),
     };
+  }
+
+  // UI scale for every window (Windows tab); Ctrl+D in the main window toggles
+  // 1x / 2x. The menu closes first, it's laid out at the old scale.
+  /** @param {number} s */
+  function setUiScale(s) {
+    closeMenu();
+    invoke("set_ui_scale", { pct: Math.round(s * 100) }).catch(() => {});
   }
 
   // --- audio output device picker ---
@@ -620,7 +631,11 @@
   }
 
   function scrollRowHeight() {
-    return PLAYLIST_ROW_HEIGHT * REACTIVE_WINDOW_SIZE.zoom;
+    // The UI scale is a CSS zoom on the whole page, while the rows keep their
+    // natural 14.5px (--zoom is 1) and scrollTop is measured in the page's own
+    // unzoomed CSS pixels, so a row is 14.5 at every scale. (Not offsetHeight:
+    // it rounds the fractional height and would drift over long lists.)
+    return PLAYLIST_ROW_HEIGHT;
   }
 
   function syncScrollThumb() {
@@ -1212,6 +1227,12 @@
         <button class="ctx-item" onclick={toggleAlwaysOnTop}>
           <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
         </button>
+        <div class="ctx-hint">Scale, every window (Ctrl+D = 2×)</div>
+        {#each [1, 1.5, 2, 3] as s}
+          <button class="ctx-item" onclick={() => setUiScale(s)}>
+            <span class="ctx-dot">{REACTIVE_WINDOW_SIZE.zoom === s ? "●" : ""}</span>{s}×
+          </button>
+        {/each}
       {:else if menuTab === "audio"}
         <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
           <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default

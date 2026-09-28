@@ -752,7 +752,6 @@
 
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(320, 240);
-    REACTIVE_WINDOW_SIZE.setZoom(1);
     // Reopen at the size it was last left (falls back to the default above).
     invoke("get_window_inner_size", { label: "visualizer" })
       .then((s) => {
@@ -894,7 +893,13 @@
     }, 33);
 
     function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // The page is CSS-zoomed by the UI scale: render at that resolution too so
+      // the visualizer stays sharp instead of being upscaled (same as before at
+      // 1x; capped so a big window at 3x doesn't cost too much GPU).
+      const dpr = Math.min(
+        Math.min(window.devicePixelRatio || 1, 2) * (REACTIVE_WINDOW_SIZE.zoom || 1),
+        4,
+      );
       const w = Math.floor(canvas.clientWidth * dpr);
       const h = Math.floor(canvas.clientHeight * dpr);
       if (canvas.width !== w || canvas.height !== h) {

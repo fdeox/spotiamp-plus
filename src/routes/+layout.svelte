@@ -9,6 +9,13 @@
    * @type {{children: import("svelte").Snippet}}
    */
   let { children } = $props();
+  // UI scale: every window renders at the same scale (CSS zoom on <body>, set
+  // here before first paint from the value the window was created with) and
+  // follows live changes from the Scale menu / Ctrl+D. The login page (Spotify's
+  // own OAuth) isn't ours to scale.
+  if (getCurrentWindow().label !== "login") {
+    REACTIVE_WINDOW_SIZE.setZoom(REACTIVE_WINDOW_SIZE.zoom);
+  }
   // The on-demand resizable windows whose size we remember across restarts
   // (player has its own field; playlist has set_playlist_inner_size; eq is
   // fixed-size).
@@ -109,11 +116,26 @@
     subscribeToWindowEvent("skinChanged", (e) => applySkin(e.skin)).then(
       (u) => (unsub = u),
     );
+    // Live UI-scale changes; the size effect above then resizes this window.
+    let unsubScale;
+    subscribeToWindowEvent("uiScale", (e) => REACTIVE_WINDOW_SIZE.setZoom(e.scale)).then(
+      (u) => (unsubScale = u),
+    );
+    // A page that reloaded after the scale changed still has the old number
+    // from its startup script; catch up with the real one.
+    invoke("get_ui_scale")
+      .then((s) => {
+        if (typeof s === "number" && s !== REACTIVE_WINDOW_SIZE.zoom) {
+          REACTIVE_WINDOW_SIZE.setZoom(s);
+        }
+      })
+      .catch(() => {});
     return () => {
       document.removeEventListener("contextmenu", suppressContextMenu);
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
       unsub?.();
+      unsubScale?.();
     };
   });
 </script>

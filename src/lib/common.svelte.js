@@ -1,9 +1,16 @@
 import { message } from "@tauri-apps/plugin-dialog";
 
+/** The UI scale this window was created at (set by the Rust side before the
+ *  page's first paint, see app_window::build_frameless_window); 1 if absent. */
+function initialUiScale() {
+    const s = Number(/** @type {any} */ (globalThis).__SPOTIAMP_UI_SCALE__);
+    return s >= 1 && s <= 3 ? s : 1;
+}
+
 class ReactiveWindowSize {
     width = $state(275.0);
     height = $state(116.0);
-    zoom = $state(1.0);
+    zoom = $state(initialUiScale());
 
     /**
      * @param {number} width

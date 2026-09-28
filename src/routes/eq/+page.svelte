@@ -176,7 +176,6 @@
 
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(275, 116);
-    REACTIVE_WINDOW_SIZE.setZoom(1);
   });
 
   function makeEqDraggable(element) {
@@ -184,7 +183,9 @@
   }
 </script>
 
-<div class="eq" style="--zoom: {REACTIVE_WINDOW_SIZE.zoom}">
+<!-- --zoom stays the body's 1: the UI scale is a CSS zoom on the whole page,
+     and scaling the sprites here too would double it. -->
+<div class="eq">
   <!-- full-window skin background -->
   <div class="eq-bg"></div>
 

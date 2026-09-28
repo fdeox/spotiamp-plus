@@ -147,6 +147,11 @@ pub struct PlayerSettings {
     /// Where playback was at the last exit, so the next launch can cue it.
     #[serde(default)]
     pub resume: Option<ResumePoint>,
+    /// Scale for every window as a percentage (100, 150, 200, 300), None = 100.
+    /// A new field on purpose: `player_zoom_pct` may still hold a value from
+    /// the pulled 0.7.1 player-only zoom, which shouldn't suddenly apply.
+    #[serde(default)]
+    pub ui_scale_pct: Option<u16>,
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -171,6 +176,7 @@ impl Default for PlayerSettings {
             player_zoom_pct: None,
             show_eq: false,
             resume: None,
+            ui_scale_pct: None,
         }
     }
 }

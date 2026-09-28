@@ -276,10 +276,13 @@ export class Playlist {
 
             const selectedRowElement = focusedRow.element;
             const rect = selectedRowElement.getBoundingClientRect();
+            // The rect is in on-screen (UI-scaled) pixels, the limits in the
+            // page's own units.
+            const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
 
-            if (rect.top < 20) {
+            if (rect.top / zoom < 20) {
                 selectedRowElement.scrollIntoView(true);
-            } else if (rect.bottom > this.height * 29 - 38) {
+            } else if (rect.bottom / zoom > this.height * 29 - 38) {
                 selectedRowElement.scrollIntoView(false);
             }
         })

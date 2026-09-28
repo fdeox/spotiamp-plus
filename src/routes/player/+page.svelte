@@ -56,13 +56,6 @@
     return playerSettings.show_eq ?? false;
   }
 
-  // Player scale (1 / 1.5 / 2 / 3). Pinned to 1x for 0.7.1: the zoom feature is
-  // pulled (per-window scaling broke docking) and will return, done right, in a
-  // later version. The plumbing below stays so it's a small step to re-enable.
-  function initialPlayerZoom() {
-    return 1;
-  }
-
   function initialWindowshadeActive() {
     return playerSettings.windowshade_active ?? false;
   }
@@ -119,9 +112,6 @@
   let resumeUri = playerSettings.resume?.uri ?? null;
   const resumeMs = playerSettings.resume?.position_ms ?? 0;
   let resumeTick = 0;
-  // Pinned to 1x for 0.7.1 (zoom pulled — see initialPlayerZoom). The state and
-  // its effect below stay so re-enabling the feature is a small step.
-  let playerZoom = $state(initialPlayerZoom());
   let shadeActive = $state(initialWindowshadeActive());
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
@@ -532,13 +522,6 @@
     }).catch(handleError);
   });
 
-  // Feed the current scale into the layout. Pinned to 1x for 0.7.1 (zoom
-  // pulled), so this just sets --zoom=1 for the sprite math; kept as an effect
-  // so re-enabling the feature reactively rescales again.
-  $effect(() => {
-    REACTIVE_WINDOW_SIZE.setZoom(playerZoom);
-  });
-
   // Windowshade: the player collapses to the classic 275x14 title bar. The
   // layout's size effect picks the new height up and resizes the OS window.
   $effect(() => {
@@ -823,6 +806,15 @@
           t.isContentEditable)
       )
         return;
+      // Ctrl+D: Winamp's double size, here the UI scale for every window:
+      // back to 1x from any larger scale, otherwise 2x.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        invoke("set_ui_scale", { pct: REACTIVE_WINDOW_SIZE.zoom > 1 ? 100 : 200 }).catch(
+          () => {},
+        );
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const acted = () => e.preventDefault();
