@@ -35,6 +35,83 @@ pub fn build_frameless_window(
         // matching the user's always-on-top choice.
         .always_on_top(crate::settings::Settings::current().player.always_on_top)
         .build()
+        .inspect(|window| {
+            #[cfg(target_os = "windows")]
+            watch_for_renderer_crash(window);
+        })
+}
+
+/// The big "!" error page: when a window's WebView2 renderer process dies (seen
+/// after a long idle / a sleep-resume) WebView2 swaps the page for its own error
+/// screen and leaves it there until the app restarts. Catch that, log why (kind,
+/// reason, exit code — tells a crash from an out-of-memory kill), and reload the
+/// page so the window heals itself. Playback lives in Rust and isn't touched.
+#[cfg(target_os = "windows")]
+fn watch_for_renderer_crash(window: &WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2ProcessFailedEventArgs2, COREWEBVIEW2_PROCESS_FAILED_KIND,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE,
+        COREWEBVIEW2_PROCESS_FAILED_REASON,
+    };
+    use webview2_com::ProcessFailedEventHandler;
+    use windows::core::Interface;
+
+    let label = window.label().to_string();
+    let result = window.with_webview(move |webview| unsafe {
+        let Ok(core) = webview.controller().CoreWebView2() else {
+            return;
+        };
+        // A page that dies again straight after a reload would otherwise spin in
+        // a reload loop; past the first retry in 10 s, leave it and just log.
+        let mut last_reload: Option<std::time::Instant> = None;
+        let handler = ProcessFailedEventHandler::create(Box::new(move |sender, args| {
+            let Some(args) = args else {
+                return Ok(());
+            };
+            let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+            let _ = args.ProcessFailedKind(&mut kind);
+            let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
+            let mut exit_code = 0i32;
+            if let Ok(args2) = args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+                let _ = args2.Reason(&mut reason);
+                let _ = args2.ExitCode(&mut exit_code);
+            }
+            // Only the page's own renderer is ours to restart; the GPU and other
+            // helper processes are brought back by WebView2 itself.
+            let ours = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+                || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE;
+            let too_soon = last_reload
+                .is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(10));
+            let reload = ours && !too_soon;
+            log::error!(
+                "[{label}] webview process failed: kind {} reason {} exit code {exit_code}{}",
+                kind.0,
+                reason.0,
+                if reload {
+                    ", reloading"
+                } else if ours {
+                    ", failed again right after a reload, leaving it"
+                } else {
+                    ""
+                },
+            );
+            if reload {
+                last_reload = Some(std::time::Instant::now());
+                if let Some(core) = sender {
+                    let _ = core.Reload();
+                }
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        if let Err(e) = core.add_ProcessFailed(&handler, &mut token) {
+            log::warn!("could not watch the webview for crashes: {e}");
+        }
+    });
+    if let Err(e) = result {
+        log::warn!("could not reach the webview to watch for crashes: {e}");
+    }
 }
 
 /// Toggle always-on-top across every open Spotiamp+ window, so a docked group

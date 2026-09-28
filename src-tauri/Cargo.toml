@@ -74,6 +74,9 @@ windows = { version = "0.61", features = [
     "Win32_System_WinRT",
     "Foundation",
 ] }
+# Same version wry/tauri already build, so the WebView2 types line up: used to
+# catch a crashed renderer and reload it (app_window::watch_for_renderer_crash).
+webview2-com = "0.38"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
