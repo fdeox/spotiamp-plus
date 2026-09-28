@@ -394,7 +394,12 @@
     const token = ++loadToken;
     try {
       trackUris = list.uris;
-      await loadTrackMetas(list.uris, token);
+      // loadTrackMetas takes {uri, added_ms} refs (like Liked Songs and search);
+      // passing the bare uri strings made every row fail and the list look empty.
+      await loadTrackMetas(
+        list.uris.map((uri) => ({ uri, added_ms: null })),
+        token,
+      );
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
