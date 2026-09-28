@@ -101,7 +101,7 @@
       <img
         class="art-img"
         src={artUrl}
-        alt={artist && title ? `${artist} — ${title}` : "Album cover"}
+        alt={artist && title ? `${artist} - ${title}` : "Album cover"}
         onerror={() => (status = "none")}
       />
     {/if}

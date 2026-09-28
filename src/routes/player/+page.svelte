@@ -652,17 +652,21 @@
         seekPosition =
           positionAnchorMs + (performance.now() - positionAnchorAt);
       }
+      // The Spotify uri to show lyrics/art for. A local file has none, and
+      // currentTrackUri still holds the last Spotify track then, so send null
+      // rather than let those windows show the previous song's words/cover.
+      const nowUri = loadedTrack?.isLocal ? null : currentTrackUri;
       // feed the lyrics window the current track + position each tick; it
       // interpolates locally between ticks for smooth line highlighting
       emitWindowEvent("lyrics", {
-        uri: currentTrackUri,
+        uri: nowUri,
         positionMs: Math.round(seekPosition),
         playing: playerState == "playing",
       });
       // and the album-art window the current track; it fetches the cover on a
       // change and just shows it (position doesn't matter for a still image).
       emitWindowEvent("art", {
-        uri: currentTrackUri,
+        uri: nowUri,
         playing: playerState == "playing",
       });
     }, 1000);

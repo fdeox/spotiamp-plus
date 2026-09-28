@@ -12,7 +12,7 @@
   // The on-demand resizable windows whose size we remember across restarts
   // (player has its own field; playlist has set_playlist_inner_size; eq is
   // fixed-size).
-  const REMEMBER_SIZE = ["library", "visualizer", "lyrics"];
+  const REMEMBER_SIZE = ["library", "visualizer", "lyrics", "art"];
   $effect(() => {
     const win = getCurrentWindow();
     // the login window is sized by Rust (600x800) and then redirects to

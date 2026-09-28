@@ -8,7 +8,8 @@
     "library",
     "visualizer",
     "eq",
-    "lyrics"
+    "lyrics",
+    "art"
   ],
   "permissions": [
     "core:default",
