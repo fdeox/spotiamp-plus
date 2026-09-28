@@ -8,7 +8,8 @@
   } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { emit } from "@tauri-apps/api/event";
-  import { onMount } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Playlist } from "$lib/playlist.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
@@ -40,6 +41,105 @@
 
   applyInitialWindowSize();
   const playlist = createInitialPlaylist();
+
+  // --- J: jump to file (Winamp) ---
+  // A search box over the track list: type to filter the whole playlist, move
+  // with the arrows, Enter plays, Esc closes. Opened by J here or in the main
+  // window.
+  let jumpQuery = $state("");
+  let jumpActive = $state(0);
+  /** @type {HTMLInputElement | undefined} */
+  let jumpInput = $state();
+  /** @type {HTMLElement | undefined} */
+  let jumpListEl = $state();
+  // Case- and accent-insensitive, like the library's type-to-find.
+  /** @param {string} s */
+  const fold = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/ı/g, "i");
+  // Names are re-filtered every time one loads in the background, so fold each
+  // distinct name once instead of on every pass over a long playlist.
+  /** @type {Map<string, string>} */
+  const foldCache = new Map();
+  /** @param {string} s */
+  const foldName = (s) => {
+    let f = foldCache.get(s);
+    if (f === undefined) {
+      f = fold(s);
+      foldCache.set(s, f);
+    }
+    return f;
+  };
+  const jumpMatches = $derived.by(() => {
+    if (!playlist.jumpOpen) return [];
+    const q = fold(jumpQuery.trim());
+    const rows = playlist.rows;
+    const out = [];
+    for (let i = 0; i < rows.length && out.length < 200; i++) {
+      if (!q || foldName(rows[i].displayName).includes(q)) out.push({ row: rows[i], n: i + 1 });
+    }
+    return out;
+  });
+  // Spotify rows fill their names in lazily; say so instead of "no match".
+  const jumpLoadingNames = $derived(
+    playlist.jumpOpen && playlist.rows.some((r) => !r.isLocal && !(/** @type {any} */ (r).track)),
+  );
+  $effect(() => {
+    if (!playlist.jumpOpen) return;
+    untrack(() => {
+      jumpQuery = "";
+      jumpActive = 0;
+      const win = getCurrentWindow();
+      // J from the main window while the playlist is hidden: nothing to show.
+      win
+        .isVisible()
+        .then((visible) => {
+          if (!visible) {
+            playlist.jumpOpen = false;
+            return;
+          }
+          win.setFocus().catch(() => {});
+          tick().then(() => jumpInput?.focus());
+        })
+        .catch(() => {});
+      playlist.loadAllNames();
+    });
+  });
+  // A new query starts from the top match.
+  $effect(() => {
+    jumpQuery;
+    jumpActive = 0;
+  });
+  function closeJump() {
+    playlist.jumpOpen = false;
+  }
+  /** @param {any} row */
+  function jumpPlay(row) {
+    closeJump();
+    playlist.select(row);
+    row.play();
+  }
+  /** @param {KeyboardEvent} e */
+  function onJumpKey(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeJump();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      jumpActive = Math.max(0, Math.min(jumpMatches.length - 1, jumpActive + step));
+      tick().then(() =>
+        jumpListEl?.querySelector(".jump-item.active")?.scrollIntoView({ block: "nearest" }),
+      );
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const hit = jumpMatches[jumpActive];
+      if (hit) jumpPlay(hit.row);
+    }
+  }
 
   // --- "my playlists" library browser (our addition) ---
   let showLibrary = $state(false);
@@ -750,6 +850,9 @@
           >
             <td class="playlist-track-main">
               <span class="playlist-track-number">{index + 1}.&nbsp;</span>
+              {#if playlist.queuePosition(row)}
+                <span class="playlist-track-queue">[{playlist.queuePosition(row)}]&nbsp;</span>
+              {/if}
               <span class="playlist-track-name">{row.displayName}</span>
             </td>
             <td class="playlist-track-duration">{row.displayDuration}</td>
@@ -764,6 +867,42 @@
       oninput={onManualScroll}
     />
   </div>
+
+  {#if playlist.jumpOpen}
+    <!-- J: jump to file -->
+    <div class="jump-backdrop" role="presentation" onmousedown={closeJump}></div>
+    <div class="jump-box" role="dialog" aria-label="Jump to file">
+      <input
+        class="jump-input"
+        bind:this={jumpInput}
+        bind:value={jumpQuery}
+        onkeydown={onJumpKey}
+        placeholder="jump to file…"
+        spellcheck="false"
+        aria-label="Jump to file"
+      />
+      <div class="jump-list" role="listbox" bind:this={jumpListEl}>
+        {#each jumpMatches as hit, i (hit.row)}
+          <div
+            class="jump-item"
+            class:active={i === jumpActive}
+            role="option"
+            aria-selected={i === jumpActive}
+            tabindex="-1"
+            onmousedown={(e) => {
+              // keep focus in the box so the arrows/Enter keep working
+              e.preventDefault();
+              jumpPlay(hit.row);
+            }}
+          >
+            {hit.n}. {hit.row.displayName}
+          </div>
+        {:else}
+          <div class="jump-empty">{jumpLoadingNames ? "loading names…" : "no match"}</div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <!-- Top corners -->
   <div class="sprite playlist-sprite playlist-tl-sprite"></div>
@@ -1120,6 +1259,78 @@
 
   .playlist-track-number {
     padding-left: calc(3px * var(--zoom));
+  }
+
+  /* Q: queue position, in the "current track" colour so it stands out */
+  .playlist-track-queue {
+    color: var(--skin-plcurrent, #fff);
+  }
+
+  /* ------ J: jump to file ------ */
+  /* Fixed over the track area, sized with the same maths as .tracks-container
+     (the custom properties inherit through the DOM even for fixed boxes). */
+  .jump-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+  }
+  .jump-box {
+    position: fixed;
+    z-index: 2001;
+    top: calc(34px * var(--zoom));
+    left: calc(10px * var(--zoom));
+    width: calc((var(--playlist-w) * 25px - 29px) * var(--zoom));
+    height: calc(
+      (var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom) -
+        14px * var(--zoom)
+    );
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    background: var(--skin-plbg, #000);
+    border: 1px solid var(--skin-plnormal, rgb(0, 255, 0));
+    color: var(--skin-plnormal, rgb(0, 255, 0));
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: calc(7px * var(--zoom));
+    -webkit-font-smoothing: none;
+    letter-spacing: calc(0.3px * var(--zoom));
+  }
+  .jump-input {
+    flex: 0 0 auto;
+    margin: 2px;
+    padding: 1px 3px;
+    background: #000;
+    color: var(--skin-plcurrent, #fff);
+    border: 1px solid var(--skin-plnormal, rgb(0, 255, 0));
+    font: inherit;
+    outline: none;
+  }
+  .jump-input::placeholder {
+    color: var(--skin-plnormal, rgb(0, 255, 0));
+    opacity: 0.5;
+  }
+  .jump-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .jump-list::-webkit-scrollbar {
+    display: none;
+  }
+  .jump-item {
+    padding: 0 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .jump-item.active {
+    background: var(--skin-plselbg, #0000c6);
+    color: var(--skin-plcurrent, #fff);
+  }
+  .jump-empty {
+    padding: 2px 3px;
+    opacity: 0.6;
   }
 
   .playlist-track-duration {

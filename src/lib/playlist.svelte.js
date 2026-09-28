@@ -233,6 +233,12 @@ export class Playlist {
     autoplay = $state(false);
     /** Guards against firing autoplay twice for one end-of-queue. */
     autoplayBusy = false;
+    /** Winamp's play queue (Q): rows that play next, in this order, before the
+     *  normal (or shuffled) order resumes. Shown as [n] on the row.
+     *  @type {Row[]} */
+    queue = $state([]);
+    /** J: the jump-to-file box over the playlist is open. */
+    jumpOpen = $state(false);
 
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
@@ -327,6 +333,14 @@ export class Playlist {
                 } else if (k == "v") {
                     e.preventDefault();
                     emitWindowEvent("playlistWindow", { StopRequested: null });
+                } else if (k == "q") {
+                    // Winamp's queue: play the selection next
+                    e.preventDefault();
+                    this.toggleQueue();
+                } else if (k == "j") {
+                    // Winamp's jump-to-file
+                    e.preventDefault();
+                    this.openJump();
                 }
             }
         }
@@ -356,6 +370,9 @@ export class Playlist {
                 } else if (event.AddLocalFiles) {
                     // local files picked from the player's O / Shift+O
                     this.addLocalFiles(event.AddLocalFiles);
+                } else if (event.JumpRequested !== undefined) {
+                    // J pressed in the main window, like Winamp
+                    this.openJump();
                 }
             },
         );
@@ -417,6 +434,8 @@ export class Playlist {
         this.selectionAnchor = undefined;
         this.loadedRow = undefined;
         this.shuffleBag.clear(); // drop refs to the now-gone rows
+        this.queue = [];
+        this.jumpOpen = false;
     }
 
     /**
@@ -641,6 +660,7 @@ export class Playlist {
         }
 
         this.rows = this.rows.filter((r) => !removed.has(r));
+        this.queue = this.queue.filter((r) => !removed.has(r));
 
         const next = this.rows[firstIndex] ?? this.rows[firstIndex - 1];
         if (next) {
@@ -663,6 +683,57 @@ export class Playlist {
     }
 
     /**
+     * Q: add the selected rows to the play-next queue, or take them back out if
+     * they're already queued (a multi-selection goes in playlist order).
+     */
+    toggleQueue() {
+        const picked = this.selectedRows.length
+            ? this.selectedRows
+            : this.focusedRow
+              ? [this.focusedRow]
+              : [];
+        let queue = [...this.queue];
+        for (const row of this.rows.filter((r) => picked.includes(r))) {
+            queue = queue.includes(row)
+                ? queue.filter((r) => r !== row)
+                : [...queue, row];
+        }
+        this.queue = queue;
+    }
+
+    /**
+     * 1-based position of `row` in the play queue, or 0 when it isn't queued.
+     * @param {Row} row
+     */
+    queuePosition(row) {
+        return this.queue.indexOf(row) + 1;
+    }
+
+    /** J: open the jump-to-file box (the page renders it). */
+    openJump() {
+        if (this.rows.length) this.jumpOpen = true;
+    }
+
+    /**
+     * Load the names of Spotify rows that haven't scrolled into view yet, so the
+     * jump box searches the whole playlist instead of only what's been seen.
+     * A few at a time; rows already loaded (or loading) are skipped.
+     */
+    async loadAllNames() {
+        const pending = this.rows.filter(
+            (r) => r instanceof TrackRow && !r.track && !r.trackPromise,
+        );
+        let next = 0;
+        const worker = async () => {
+            while (next < pending.length) {
+                const row = /** @type {TrackRow} */ (pending[next++]);
+                await row.populateTrack().catch(() => {});
+            }
+        };
+        await Promise.all(Array.from({ length: 6 }, worker));
+    }
+
+    /**
      * @param {number} offset
      * @param {boolean} skipUnavailable
      * @returns {Promise<boolean>} true if the end in that direction has been reached
@@ -674,6 +745,30 @@ export class Playlist {
         const currRowIndex = this.loadedRow
             ? this.rows.indexOf(this.loadedRow)
             : 0;
+
+        // Queued rows (Q) play next, in queue order, before the normal or
+        // shuffled order picks up again. A queued row removed from the playlist
+        // in the meantime is simply skipped.
+        if (offset > 0 && this.queue.length) {
+            const [row, ...rest] = this.queue;
+            this.queue = rest;
+            if (!this.rows.includes(row)) {
+                return await this.move(offset, skipUnavailable);
+            }
+            if (this.shuffle) {
+                if (this.loadedRow) this.shuffleBag.add(this.loadedRow);
+                this.shuffleBag.add(row);
+            }
+            if (row instanceof TrackRow) {
+                const track = await row.loadTrack();
+                if (track && skipUnavailable && track.unavailable) {
+                    return await this.move(offset, skipUnavailable);
+                }
+            } else if (row instanceof LocalRow) {
+                await row.loadTrack();
+            }
+            return false;
+        }
 
         let nextIndex;
         if (this.shuffle && offset > 0) {

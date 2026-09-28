@@ -793,6 +793,8 @@
         case " ": acted(); playerState === "playing" ? pause() : play(); break;
         case "s": acted(); shuffle = !shuffle; break;
         case "r": acted(); repeat = (repeat + 1) % 3; break;
+        // J: Winamp's jump to file, opened over the playlist
+        case "j": acted(); emitWindowEvent("playerWindow", { JumpRequested: null }); break;
         case "arrowup": acted(); volume = Math.min(100, volume + 5); break;
         case "arrowdown": acted(); volume = Math.max(0, volume - 5); break;
         case "arrowright":
