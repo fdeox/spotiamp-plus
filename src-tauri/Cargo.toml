@@ -73,6 +73,10 @@ windows = { version = "0.61", features = [
     "Media",
     "Win32_System_WinRT",
     "Foundation",
+    # Now Playing card: WebView2 CapturePreview writes a PNG into a COM stream.
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Memory",
 ] }
 # Same version wry/tauri already build, so the WebView2 types line up: used to
 # catch a crashed renderer and reload it (app_window::watch_for_renderer_crash).

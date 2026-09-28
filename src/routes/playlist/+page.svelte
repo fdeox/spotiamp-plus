@@ -294,6 +294,134 @@
   }
   const closeMenu = () => (menu.show = false);
 
+  // --- Now Playing card ---
+  // One click copies a shareable image: the real player exactly as it looks
+  // right now (captured from its webview), the cover, and the track.
+  let toast = $state("");
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let toastTimer;
+  /** @param {string} text */
+  function showToast(text) {
+    toast = text;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toast = ""), 2600);
+  }
+  /** @param {string} src @returns {Promise<HTMLImageElement>} */
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous"; // the cover CDN allows it; keeps the canvas exportable
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("image failed to load"));
+      img.src = src;
+    });
+  }
+  /**
+   * Shorten `text` with an ellipsis until it fits `max` px in the current font.
+   * @param {CanvasRenderingContext2D} ctx @param {string} text @param {number} max
+   */
+  function fitText(ctx, text, max) {
+    if (ctx.measureText(text).width <= max) return text;
+    let s = text;
+    while (s.length > 1 && ctx.measureText(s + "…").width > max) s = s.slice(0, -1);
+    return s + "…";
+  }
+  /** @returns {Promise<Blob>} */
+  async function buildNowPlayingCard() {
+    const png = /** @type {ArrayBuffer} */ (await invoke("capture_window_png", { label: "player" }));
+    const player = await createImageBitmap(new Blob([png], { type: "image/png" }));
+    const row = /** @type {any} */ (playlist.loadedRow);
+    const track = row && !row.isLocal ? row.track : null;
+    const title = track?.name ?? (row?.isLocal ? row.displayName : "");
+    const subtitle = [track?.artist, track?.album].filter(Boolean).join(" · ");
+    const cover = track?.albumArt ? await loadImage(track.albumArt).catch(() => null) : null;
+
+    // The capture is in physical pixels; draw the player at 2x its logical size
+    // so the pixel-art skin stays crisp on any display scaling.
+    const dpr = window.devicePixelRatio || 1;
+    const pw = Math.round((player.width / dpr) * 2);
+    const ph = Math.round((player.height / dpr) * 2);
+    const PAD = 24;
+    const GAP = 20;
+    const COVER = 232;
+    const top = Math.max(COVER, ph);
+    const W = PAD + COVER + GAP + pw + PAD;
+    const H = PAD + top + 18 + 64 + PAD;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+    ctx.fillStyle = "#0b0b10";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#2b2b38";
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+    // cover (or a quiet placeholder for local files / no art)
+    const coverY = PAD + (top - COVER) / 2;
+    if (cover) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(cover, PAD, coverY, COVER, COVER);
+    } else {
+      ctx.fillStyle = "#16161f";
+      ctx.fillRect(PAD, coverY, COVER, COVER);
+      ctx.fillStyle = "#00e05a";
+      ctx.font = "96px 'Segoe UI Symbol', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("♪", PAD + COVER / 2, coverY + COVER / 2);
+    }
+
+    // the player, pixel-exact
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(player, PAD + COVER + GAP, PAD + (top - ph) / 2, pw, ph);
+
+    // the track
+    const textX = PAD;
+    const textW = W - PAD * 2;
+    let y = PAD + top + 18;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#00e05a";
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.fillText("NOW PLAYING", textX, y);
+    y += 16;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 22px 'Segoe UI', sans-serif";
+    ctx.fillText(fitText(ctx, title || "Spotiamp+", textW), textX, y);
+    y += 28;
+    if (subtitle) {
+      ctx.fillStyle = "#9aa3b2";
+      ctx.font = "15px 'Segoe UI', sans-serif";
+      ctx.fillText(fitText(ctx, subtitle, textW - 220), textX, y);
+    }
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#5b6270";
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.fillText("Spotiamp+ · Winamp-style player for Spotify", W - PAD, y + 3);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("couldn't encode the card");
+    return /** @type {Blob} */ (blob);
+  }
+  async function copyNowPlayingCard() {
+    closeMenu();
+    try {
+      // Hand the clipboard a promise so the write starts inside the click while
+      // the card is still being put together.
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": buildNowPlayingCard() }),
+      ]);
+      showToast("Now Playing card copied, paste it anywhere");
+    } catch (e) {
+      showToast("Couldn't copy the card");
+      invoke("log_frontend_error", {
+        window: "playlist",
+        message: `now playing card: ${e}`,
+      }).catch(() => {});
+    }
+  }
+
   // Local files: pick from disk and add them straight into the playlist as
   // LocalRows (the first starts playing). Same as the player's O / Shift+O.
   async function addLocalFiles() {
@@ -904,6 +1032,10 @@
     </div>
   {/if}
 
+  {#if toast}
+    <div class="np-toast" role="status">{toast}</div>
+  {/if}
+
   <!-- Top corners -->
   <div class="sprite playlist-sprite playlist-tl-sprite"></div>
 
@@ -1128,6 +1260,9 @@
           <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
         </button>
       {/if}
+      <button class="ctx-item" onclick={copyNowPlayingCard}>
+        📸 Copy Now Playing card
+      </button>
       <button class="ctx-item" onclick={cycleSleep}>
         😴 Sleep timer: {sleepMinutes ? `${sleepMinutes} min` : "Off"}
       </button>
@@ -1331,6 +1466,27 @@
   .jump-empty {
     padding: 2px 3px;
     opacity: 0.6;
+  }
+
+  /* short confirmation for one-click actions (Now Playing card) */
+  .np-toast {
+    position: fixed;
+    z-index: 3000;
+    left: 50%;
+    bottom: calc(40px * var(--zoom));
+    transform: translateX(-50%);
+    max-width: 90%;
+    padding: 3px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid var(--skin-plnormal, rgb(0, 255, 0));
+    color: var(--skin-plcurrent, #fff);
+    font-family: "px sans nouveaux", sans-serif;
+    font-size: calc(7px * var(--zoom));
+    -webkit-font-smoothing: none;
+    pointer-events: none;
   }
 
   .playlist-track-duration {
