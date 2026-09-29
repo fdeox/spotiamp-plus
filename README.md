@@ -36,9 +36,9 @@ docking windows that snap together like classic Winamp.
   mixed with Spotify tracks, with next/previous walking the lot. Name, artist and
   length come from the file's own tags, and the EQ and visualizer work on them too.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
-  a two-pane Library (playlists + tracks), load or queue anything. In a long
-  list, **just start typing** a song or artist name and the selection jumps to it
-  (what you typed shows in the header).
+  a two-pane Library (playlists + tracks), load or queue anything. In the
+  **Library window**, just start typing a song or artist name and the selection
+  jumps to it (what you typed shows in the header).
 - 🔎 **Spotify catalogue search** — search the whole catalogue right in the
   Library. Double-clicking a search result **adds it to the end of the current
   playlist** (it doesn't replace what's playing), so you can build a playlist by
