@@ -26,22 +26,6 @@ docking windows that snap together like classic Winamp.
 >Bug fixes, stability improvements, security updates, and important compatibility fixes will continue. New features will primarily be considered based on community requests, usefulness, and available time.
 >Feature suggestions can be submitted through the Spotiamp+ Discord community.
 
-## 🆕 Coming in 0.7.3
-
-- **J** opens *Jump to track*: type part of a song or artist name, pick with the
-  arrows, **Enter** plays it. **Q** queues the selected track to play next
-  (the number in brackets is its place in the queue). Both work from the main
-  window and the playlist.
-- **Pick up where you left off**: reopen the app and your last track is cued at
-  the same spot, ready to press play.
-- **Scale every window** to 1x, 1.5x, 2x or 3x (right-click the playlist →
-  *Windows*, or **Ctrl+D** for 2x), docking kept intact.
-- **Fullscreen visualizer**: double-click it (or Alt+Enter), **Esc** to come
-  back. The song title fades in on each new track.
-- **Copy Now Playing card**: an image of the player, the cover and the track in
-  your skin's colours, ready to paste into Discord.
-- Fix: lists saved from the playlist no longer look empty in the Library.
-
 ## Features
 
 - 🎵 **Native Spotify playback** — Premium account via librespot (Ogg 320 kbps),
