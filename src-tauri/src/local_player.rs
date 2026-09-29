@@ -8,12 +8,9 @@
 //! the EQ and the visualizer.
 //!
 //! Shape mirrors `SpotifyPlayer` (`load`/`play`/`pause`/`stop`/`seek`, a
-//! position/state to poll, an event queue) so the rest of the app can drive a
-//! local track the same way — the wiring into the playlist/UI is the remaining
-//! step. Additive: nothing here touches the librespot path, so it cannot break
-//! existing playback until it's deliberately hooked up.
-
-#![allow(dead_code)] // UI wiring (drag-drop / picker) lands in a later step
+//! position/state to poll, an event queue) so the rest of the app drives a
+//! local track the same way. Separate from the librespot path: nothing here
+//! touches Spotify playback.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -204,9 +201,8 @@ struct Active {
     format: Box<dyn symphonia::core::formats::FormatReader>,
     decoder: Box<dyn symphonia::core::codecs::Decoder>,
     track_id: u32,
-    /// Output stream rate/channels (what the ring holds and the callback plays).
+    /// Output stream rate (what the ring holds and the callback plays).
     sample_rate: u32,
-    channels: usize,
     ring: Arc<Mutex<VecDeque<f32>>>,
     frames_played: Arc<AtomicU64>,
     finished_ring: Arc<AtomicBool>,
@@ -391,7 +387,6 @@ impl Worker {
             decoder,
             track_id,
             sample_rate: out_rate,
-            channels: out_channels,
             ring,
             frames_played,
             finished_ring,

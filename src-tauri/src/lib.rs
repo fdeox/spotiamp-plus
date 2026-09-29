@@ -173,6 +173,10 @@ fn open_in_browser(_url: &str) {}
 pub fn init_logging() {
     let mut builder = env_logger::Builder::new();
     builder.filter_level(log::LevelFilter::Info);
+    // symphonia warns for every damaged MP3 frame it skips ("invalid mpeg audio
+    // header"), dozens per file; the file still plays, and the flood buries
+    // real problems.
+    builder.filter_module("symphonia", log::LevelFilter::Error);
     builder.parse_default_env();
 
     if let Some(dir) = settings::get_config_dir() {

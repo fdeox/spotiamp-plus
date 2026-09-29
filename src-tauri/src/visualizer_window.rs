@@ -1,4 +1,4 @@
-use tauri::{AppHandle, LogicalPosition, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, LogicalPosition, Manager, WebviewWindow};
 
 use crate::{app_window, settings::InnerWindowSize};
 
@@ -63,6 +63,9 @@ pub async fn set_visualizer_window_visible(
         window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&window, visible);
+    // A hidden window keeps its page running; tell it, so it stops drawing
+    // and polling the spectrum until it's shown again.
+    let _ = app_handle.emit_to("visualizer", "vizVisible", visible);
     // Remember it's open so the next launch reopens it.
     crate::settings::Settings::current_mut().set_window_visible("visualizer", visible);
     Ok(())

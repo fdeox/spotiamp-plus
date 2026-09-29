@@ -918,8 +918,15 @@
       running = true;
     const start = performance.now();
 
+    // Closing the window only hides it, and a hidden page keeps running: while
+    // hidden, skip the spectrum reads (30 a second) and the drawing.
+    let shown = true;
     let pollTimer = setTimeout(function poll() {
       if (!running) return;
+      if (!shown) {
+        pollTimer = setTimeout(poll, 250);
+        return;
+      }
       invoke(spectrumCommand, {})
         .then((data) => {
           if (Array.isArray(data) && data.length) {
@@ -982,9 +989,13 @@
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
 
-    let raf;
+    let raf = 0;
     function frame() {
       if (!running) return;
+      if (!shown) {
+        raf = 0;
+        return;
+      }
       resize();
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, (performance.now() - start) / 1000);
@@ -1033,6 +1044,14 @@
       }
     }).then((u2) => (unsub = u2));
 
+    let unsubShown;
+    appWindow
+      .listen("vizVisible", (e) => {
+        shown = e.payload !== false;
+        if (shown && running && !raf) raf = requestAnimationFrame(frame);
+      })
+      .then((u) => (unsubShown = u));
+
     // The player sends the current track once a second on the art channel.
     let unsubArt;
     subscribeToWindowEvent("art", (e) => {
@@ -1070,6 +1089,7 @@
       if (unsub) unsub();
       unsubArt?.();
       unsubResized?.();
+      unsubShown?.();
     };
   });
 
