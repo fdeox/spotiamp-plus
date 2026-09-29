@@ -387,9 +387,9 @@ impl SpotifyPlayer {
         eq.balance = balance;
     }
 
-    pub async fn load_track(&self, uri: &str) -> Result<(), PlayError> {
+    pub async fn load_track(&self, uri: &str, position_ms: u32, play: bool) -> Result<(), PlayError> {
         let uri = SpotifyUri::from_uri(uri).map_err(|e| PlayError::MetadataError { e })?;
-        self.player.load(uri, true, 0);
+        self.player.load(uri, play, position_ms);
         Ok(())
     }
 

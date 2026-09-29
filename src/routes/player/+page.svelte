@@ -214,8 +214,11 @@
 
   /**
    * @param {SpotifyTrack} track
+   * @param {boolean} [playNow] start it even from stopped (a row was played:
+   *   double-click, Enter, J). One message instead of "loaded" + "play", which
+   *   made a playing player load the new track twice.
    */
-  async function loadTrack(track) {
+  async function loadTrack(track, playNow = false) {
     // Switching to a Spotify track: stop any local file first so they don't
     // play over each other.
     if (loadedTrack?.isLocal) {
@@ -223,7 +226,7 @@
       await invoke("local_stop").catch(() => {});
     }
     loadedTrack = track;
-    if (playerState != "stopped") {
+    if (playNow || playerState != "stopped") {
       playerState = "stopped";
       await play();
     }
@@ -263,12 +266,12 @@
       if (playerState == "unavailable") {
         await invoke("stop").catch(handleError);
       } else {
-        await invoke("load_track", { uri: loadedTrack?.uri.asString }).catch(
-          handleError,
-        );
-        if (startMs > 0) {
-          await invoke("seek", { positionMs: startMs }).catch(() => {});
-        }
+        // Start at the resume spot as part of the load: a seek sent while the
+        // track is still loading makes librespot load it all over again.
+        await invoke("load_track", {
+          uri: loadedTrack?.uri.asString,
+          positionMs: startMs,
+        }).catch(handleError);
       }
     }
   }
@@ -334,10 +337,15 @@
     // `uri.asString`); they pick the device up on the next file instead.
     if (!loadedTrack || loadedTrack.unavailable || loadedTrack.isLocal) return;
     const wasPlaying = playerState === "playing";
-    const position = Math.round(seekPosition);
-    await invoke("load_track", { uri: loadedTrack.uri.asString }).catch(() => {});
-    if (position > 0) await invoke("seek", { positionMs: position }).catch(() => {});
-    if (!wasPlaying) await invoke("pause").catch(() => {});
+    const position = Math.max(0, Math.round(seekPosition));
+    // One load, at the same spot, already paused if it was paused. (It used
+    // to be load + seek + pause: the seek made librespot load the track twice
+    // and the pause let a moment of sound through.)
+    await invoke("load_track", {
+      uri: loadedTrack.uri.asString,
+      positionMs: position,
+      play: wasPlaying,
+    }).catch(() => {});
   }
 
   /**
@@ -744,7 +752,7 @@
       (event) => {
         if (event.TrackLoaded) {
           let track = event.TrackLoaded;
-          loadTrack(track);
+          loadTrack(track, event.PlayNow === true);
         } else if (event.PlayRequested !== undefined) {
           play();
         } else if (event.PauseRequested !== undefined) {

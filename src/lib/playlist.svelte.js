@@ -96,12 +96,13 @@ export class TrackRow extends PlaylistRow {
         return eventCallback;
     }
 
-    async loadTrack() {
+    /** @param {boolean} [playNow] have the player start it (see play()) */
+    async loadTrack(playNow = false) {
         try {
             await this.populateTrack();
             if (this.track) {
                 this.playlist.loadedRow = this;
-                await emitWindowEvent("playlistWindow", { TrackLoaded: this.track });
+                await emitWindowEvent("playlistWindow", { TrackLoaded: this.track, PlayNow: playNow });
                 // broadcast the track's position for Discord's "(N of M)" party
                 const rows = this.playlist.rows;
                 await emitWindowEvent("trackPosition", {
@@ -116,8 +117,9 @@ export class TrackRow extends PlaylistRow {
     }
 
     async play() {
-        await this.loadTrack();
-        await emitWindowEvent("playlistWindow", { PlayRequested: null })
+        // One message: load it and play it. Sending "loaded" and then "play"
+        // made a player that was already playing load the new track twice.
+        await this.loadTrack(true);
     }
 
     isLoaded() {

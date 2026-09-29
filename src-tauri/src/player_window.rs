@@ -111,7 +111,11 @@ pub async fn set_audio_device(
     app_handle: AppHandle,
 ) -> Result<(), ()> {
     let player_window = app_handle.get_webview_window("player").ok_or(())?;
-    let channel = player.lock().await.set_audio_device(device);
+    let mut player = player.lock().await;
+    // The old player's parting "Stopped" would reach the window after the
+    // frontend has already reloaded the track on the new one.
+    crate::retire_event_forwarders();
+    let channel = player.set_audio_device(device);
     crate::spawn_event_forwarder(player_window, channel);
     Ok(())
 }
@@ -125,7 +129,9 @@ pub async fn set_normalization(
     app_handle: AppHandle,
 ) -> Result<(), ()> {
     let player_window = app_handle.get_webview_window("player").ok_or(())?;
-    let channel = player.lock().await.set_normalisation(enabled);
+    let mut player = player.lock().await;
+    crate::retire_event_forwarders();
+    let channel = player.set_normalisation(enabled);
     crate::spawn_event_forwarder(player_window, channel);
     Ok(())
 }
@@ -166,12 +172,20 @@ pub async fn take_latest_spectrum(player: State<'_, SharedPlayer>) -> Result<Vec
     Ok(player.lock().await.take_latest_spectrum())
 }
 
+/// Load a track, optionally at a position and paused. Starting at the right
+/// spot in the load itself matters: a seek sent while librespot is still
+/// loading makes it start the whole load over (the doubled "Loading" lines).
 #[tauri::command]
-pub async fn load_track(uri: &str, player: State<'_, SharedPlayer>) -> Result<(), String> {
+pub async fn load_track(
+    uri: &str,
+    position_ms: Option<u32>,
+    play: Option<bool>,
+    player: State<'_, SharedPlayer>,
+) -> Result<(), String> {
     player
         .lock()
         .await
-        .load_track(uri)
+        .load_track(uri, position_ms.unwrap_or(0), play.unwrap_or(true))
         .await
         .map_err(|e| format!("Failed to load track ({e:?})"))
 }

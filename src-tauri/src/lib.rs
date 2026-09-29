@@ -372,12 +372,30 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     Ok(())
 }
 
+/// Which event forwarder is the live one. A player being replaced (device
+/// switch, normalize, reconnect) still sends a last "Stopped" as it's torn
+/// down; that must not reach the window, or it marks the new player stopped
+/// (and a track playing through the switch came back paused).
+static FORWARDER_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Silence every forwarder running now. Call just before replacing the
+/// player; the new one's forwarder is spawned afterwards.
+pub(crate) fn retire_event_forwarders() {
+    FORWARDER_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Pump playback events from a player's channel out to the player window.
 /// Ends on its own when the channel closes (e.g. when a stale player is
-/// replaced during a reconnect).
+/// replaced during a reconnect), and goes quiet as soon as a newer forwarder
+/// takes over.
 pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: PlayerEventChannel) {
+    use std::sync::atomic::Ordering;
+    let generation = FORWARDER_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     tauri::async_runtime::spawn(async move {
         while let Some(player_event) = channel.recv().await {
+            if FORWARDER_GENERATION.load(Ordering::SeqCst) != generation {
+                break;
+            }
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
                 let _ = player_window.emit("player", player_event);
             }
