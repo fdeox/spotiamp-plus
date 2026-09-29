@@ -665,7 +665,13 @@ pub async fn fetch_user_playlists(session: &Session) -> Result<Vec<UserPlaylist>
         .spclient()
         .get_rootlist(0, Some(500))
         .await
-        .map_err(|e| format!("Failed to fetch rootlist: {e:?}"))?;
+        .map_err(|e| {
+            // Logged (the kind only: the full error can carry the request URL,
+            // which names the user) so diagnostic info shows why the Library
+            // was empty.
+            log::warn!("Failed to fetch rootlist ({:?})", e.kind);
+            format!("Failed to fetch rootlist: {e:?}")
+        })?;
 
     // rootlist is protobuf; the playlist URIs appear as literal strings.
     let text = String::from_utf8_lossy(bytes.as_ref());

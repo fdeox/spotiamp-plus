@@ -114,14 +114,28 @@
       })
       .catch(() => {});
     loadSavedListsLib();
-    try {
-      playlists = await invoke("get_user_playlists");
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
+    loadPlaylists();
   });
+
+  // The Library can reopen with the app before Spotify has finished
+  // connecting (a slow start takes a few seconds), and one failed fetch used
+  // to stay an error until the window was reopened. Try a few more times
+  // first; after that, the error line offers a retry.
+  async function loadPlaylists() {
+    loading = true;
+    error = "";
+    for (const wait of [0, 1500, 3000, 6000, 10000]) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      try {
+        playlists = await invoke("get_user_playlists");
+        error = "";
+        break;
+      } catch (e) {
+        error = String(e);
+      }
+    }
+    loading = false;
+  }
 
   // Type-to-find: typing letters/digits jumps to the first track whose title
   // (then artist) starts with what you've typed; the buffer clears after a short
@@ -558,7 +572,10 @@
         {#if loading}
           <div class="ml-node ml-child ml-dim">loading…</div>
         {:else if error}
-          <div class="ml-node ml-child ml-err">{error}</div>
+          <div class="ml-node ml-child ml-err" title={error}>
+            Couldn't load your playlists.
+            <button class="ml-retry" onclick={loadPlaylists}>Retry</button>
+          </div>
         {:else if playlists.length === 0}
           <div class="ml-node ml-child ml-dim">no playlists</div>
         {:else}
@@ -1119,6 +1136,15 @@
   }
   .ml-err {
     color: #ff6b6b;
+  }
+  .ml-retry {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   /* the real scrollbar is the PLEDIT-sprite slider next to the list */

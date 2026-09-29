@@ -505,12 +505,13 @@
     toastTimer = setTimeout(() => (toast = ""), 2600);
   }
   // Typed a letter that isn't a shortcut: people expect that to search, so
-  // say where searching is. At most every 20 s, it's a hint, not a nag.
+  // say where searching is. Again on the next such key once the last hint has
+  // faded (a 20 s wait read as "it stopped working").
   let lastTypedHintAt = 0;
   $effect(() => {
     if (!playlist.typedHint) return;
     const now = Date.now();
-    if (now - lastTypedHintAt < 20000) return;
+    if (now - lastTypedHintAt < 2800) return;
     lastTypedHintAt = now;
     untrack(() => showToast("Press J to jump to a track"));
   });
