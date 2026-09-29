@@ -231,11 +231,20 @@
   // --- always on top ---
   let alwaysOnTop = $state(false);
   let normalizeVolume = $state(false);
+  let taskbarExtras = $state(false);
+  // Song title on the taskbar button, progress across it, and prev/play/next
+  // under its thumbnail. Opt-in.
+  async function toggleTaskbarExtras() {
+    closeMenu();
+    taskbarExtras = !taskbarExtras;
+    await invoke("set_taskbar_extras", { enabled: taskbarExtras }).catch(() => {});
+  }
   async function loadAlwaysOnTop() {
     try {
       const settings = await invoke("get_player_settings");
       alwaysOnTop = Boolean(settings?.always_on_top);
       normalizeVolume = Boolean(settings?.normalize);
+      taskbarExtras = Boolean(settings?.taskbar_extras);
     } catch {
       alwaysOnTop = false;
     }
@@ -1253,6 +1262,13 @@
         >
         <button class="ctx-item" onclick={toggleAlwaysOnTop}>
           <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
+        </button>
+        <button
+          class="ctx-item"
+          title="Song title on the taskbar button and in Alt+Tab, the track's progress across the button, and previous / play / next under its thumbnail"
+          onclick={toggleTaskbarExtras}
+        >
+          <span class="ctx-dot">{taskbarExtras ? "●" : ""}</span>Taskbar: title, progress, buttons
         </button>
         <div class="ctx-hint">Scale, every window (Ctrl+D = 2×)</div>
         {#each [1, 1.5, 2, 3] as s}

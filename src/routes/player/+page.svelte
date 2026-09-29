@@ -703,16 +703,25 @@
       });
       // and the album-art window the current track; it fetches the cover on a
       // change and just shows it (position doesn't matter for a still image).
+      const nowTitle = loadedTrack
+        ? loadedTrack.artist
+          ? `${loadedTrack.artist} - ${loadedTrack.name}`
+          : loadedTrack.name
+        : "";
       emitWindowEvent("art", {
         uri: nowUri,
         playing: playerState == "playing",
         // for the fullscreen visualizer's song-title flash (local files too)
-        title: loadedTrack
-          ? loadedTrack.artist
-            ? `${loadedTrack.artist} - ${loadedTrack.name}`
-            : loadedTrack.name
-          : "",
+        title: nowTitle,
       });
+      // Taskbar extras (title, progress, thumbnail buttons); the Rust side
+      // ignores this unless they're switched on in the Windows menu.
+      invoke("taskbar_update", {
+        title: nowTitle,
+        state: playerState,
+        positionMs: Math.max(0, Math.round(seekPosition || 0)),
+        durationMs: loadedTrack?.durationInMs ?? 0,
+      }).catch(() => {});
       if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
     }, 1000);
 

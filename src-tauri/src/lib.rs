@@ -16,6 +16,7 @@ mod eq_window;
 mod eqf;
 mod library_window;
 mod art_window;
+mod taskbar;
 mod capture;
 mod lists;
 mod local_player;
@@ -425,6 +426,8 @@ pub fn run() {
             player_window::stop,
             player_window::get_player_settings,
             player_window::set_normalization,
+            taskbar::set_taskbar_extras,
+            taskbar::taskbar_update,
             player_window::get_skin,
             player_window::set_skin,
             wsz::pick_and_load_skin,
