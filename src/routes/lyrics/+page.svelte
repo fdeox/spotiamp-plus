@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
-  import { subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
 
   let lines = $state([]);
@@ -11,6 +11,7 @@
   // idle | loading | ok | none
   let status = $state("idle");
 
+  /** @type {string | null} */
   let curUri = null;
   let posMs = $state(0);
   let playing = false;
@@ -94,6 +95,18 @@
 
   const close = () => invoke("set_lyrics_window_visible", { visible: false });
 
+  // Click a line of synced lyrics to jump the song there. The position moves
+  // here straight away so the highlight follows without waiting for the
+  // player's next tick.
+  /** @param {number} timeMs */
+  function jumpTo(timeMs) {
+    if (!synced || !curUri) return;
+    emitWindowEvent("lyricsSeek", { uri: curUri, positionMs: timeMs });
+    anchorMs = timeMs;
+    anchorAt = performance.now();
+    posMs = timeMs;
+  }
+
   function makeLyricsDraggable(element) {
     makeDockedDraggable(element, "lyrics", "lyricsWindow");
   }
@@ -137,11 +150,15 @@
       <div class="lyr-msg">No lyrics for this track.</div>
     {:else}
       {#each lines as line, i}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
           class="lyr-line"
           class:active={i === activeIndex}
           class:past={synced && i < activeIndex}
+          class:seekable={synced}
           data-i={i}
+          title={synced ? "Click to jump here" : undefined}
+          onclick={() => jumpTo(line.time_ms)}
         >
           {line.text || "♪"}
         </div>
@@ -291,6 +308,12 @@
     );
     transition: color 0.2s;
     padding: 1px 0;
+  }
+  .lyr-line.seekable {
+    cursor: pointer;
+  }
+  .lyr-line.seekable:hover {
+    color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 80%, transparent);
   }
   .lyr-line.past {
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 30%, transparent);
