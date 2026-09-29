@@ -361,14 +361,28 @@
     const W = PAD + COVER + GAP + pw + PAD;
     const H = PAD + top + 18 + 64 + PAD;
 
+    // The card takes the skin's colours: its playlist background, text and
+    // current-track colours (a .wsz brings its own from PLEDIT; the built-ins
+    // fall back exactly like the playlist does), so every skin gets a card that
+    // matches it.
+    const css = getComputedStyle(document.body);
+    /** @param {string} name @param {string} fallback */
+    const skinColor = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+    const bg = skinColor("--skin-plbg", "#000000");
+    const fg = skinColor("--skin-plnormal", "rgb(0, 255, 0)");
+    const hi = skinColor("--skin-plcurrent", "#ffffff");
+
     const canvas = document.createElement("canvas");
     canvas.width = W;
     canvas.height = H;
     const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
-    ctx.fillStyle = "#0b0b10";
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = "#2b2b38";
+    // a faint frame in the skin's text colour
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = fg;
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+    ctx.globalAlpha = 1;
 
     // cover (or a quiet placeholder for local files / no art)
     const coverY = PAD + (top - COVER) / 2;
@@ -376,9 +390,10 @@
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(cover, PAD, coverY, COVER, COVER);
     } else {
-      ctx.fillStyle = "#16161f";
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = fg;
       ctx.fillRect(PAD, coverY, COVER, COVER);
-      ctx.fillStyle = "#00e05a";
+      ctx.globalAlpha = 1;
       ctx.font = "96px 'Segoe UI Symbol', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -395,23 +410,21 @@
     let y = PAD + top + 18;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillStyle = "#00e05a";
+    ctx.fillStyle = fg;
     ctx.font = "bold 11px 'Segoe UI', sans-serif";
     ctx.fillText("NOW PLAYING", textX, y);
     y += 16;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = hi;
     ctx.font = "bold 22px 'Segoe UI', sans-serif";
     ctx.fillText(fitText(ctx, title || "Spotiamp+", textW), textX, y);
     y += 28;
     if (subtitle) {
-      ctx.fillStyle = "#9aa3b2";
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = fg;
       ctx.font = "15px 'Segoe UI', sans-serif";
-      ctx.fillText(fitText(ctx, subtitle, textW - 220), textX, y);
+      ctx.fillText(fitText(ctx, subtitle, textW), textX, y);
+      ctx.globalAlpha = 1;
     }
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#5b6270";
-    ctx.font = "12px 'Segoe UI', sans-serif";
-    ctx.fillText("Spotiamp+ · Winamp-style player for Spotify", W - PAD, y + 3);
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("couldn't encode the card");
