@@ -5,9 +5,12 @@
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
+  import { SHADER_COMMON } from "./shader-common.js";
+  import { FRAG_B, MODE_NAMES_B, FEEDBACK_B } from "./shaders-b.js";
+  import { patternSources } from "./shader-split.js";
 
   let canvas;
-  const MODE_NAMES = [
+  const MODE_NAMES_A = [
     "tunnel",
     "kaleido",
     "warpgrid",
@@ -62,6 +65,9 @@
     "ribbon",
     "glitch",
   ];
+  // Patterns 1-50 live in FRAG below, 51-100 in shaders-b.js.
+  const BANK_A = MODE_NAMES_A.length;
+  const MODE_NAMES = [...MODE_NAMES_A, ...MODE_NAMES_B];
   const MODE_COUNT = MODE_NAMES.length;
   let mode = $state(0);
   const nextMode = () => (mode = (mode + 1) % MODE_COUNT);
@@ -137,44 +143,7 @@
     titleTimer = setTimeout(() => (titleShown = ""), 6000);
   }
 
-  const FRAG = `
-    precision highp float;
-    uniform vec2 iResolution;
-    uniform float iTime;
-    uniform float uBass;
-    uniform float uMid;
-    uniform float uTreble;
-    uniform float uLevel;
-    uniform float uMode;
-    uniform sampler2D uSpec;
-    // The previously rendered frame, for the one mode that feeds back into
-    // itself. Every other mode ignores it.
-    uniform sampler2D uPrev;
-
-    vec3 hsv(float h, float s, float v) {
-      vec3 rgb = clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
-      return v * mix(vec3(1.0), rgb, s);
-    }
-    float hash(vec2 p){ return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5); }
-    float noise(vec2 p){
-      vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
-      return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),
-                 mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x), f.y);
-    }
-    float fbm(vec2 p){ float v=0.0, a=0.5; for(int k=0;k<4;k++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
-    // Cosine gradient palette. Gives coherent, art-directed colour ramps
-    // instead of the full-rainbow sweep hsv() produces.
-    vec3 pal(float x, vec3 a, vec3 b, vec3 c, vec3 d){ return a + b*cos(6.28318*(c*x+d)); }
-
-    // Spectrum texture: 256 wide (frequency bin, low to high) x 64 tall
-    // (history, row 0 newest). One texture serves both the live analyser
-    // displays and the scrolling spectrogram.
-    float spec(float x){ return texture2D(uSpec, vec2(clamp(x,0.0,1.0), 0.0)).r; }
-    float specAt(float x, float age){ return texture2D(uSpec, vec2(clamp(x,0.0,1.0), clamp(age,0.0,1.0))).r; }
-    // Perceptual spread: low bins get more width, the way a real analyser lays
-    // its bands out.
-    float specLog(float x){ return spec(pow(clamp(x,0.0,1.0), 1.8)); }
-
+  const FRAG = SHADER_COMMON.slice(1) + `
     // How much of the previous frame a mode inherits — the trail character.
     //
     // The instrument displays get none on purpose: trails on an analyser, a VU
@@ -837,11 +806,49 @@
       return;
     }
 
-    const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
+    // One small program per pattern, built the first time it's shown (see
+    // shader-split.js: compiling all the patterns as one shader froze the
+    // window for seconds). With KHR_parallel_shader_compile the compile runs
+    // off this thread, and the previous pattern stays up until the new one is
+    // ready, a frame or three later.
+    const sourceA = patternSources(FRAG, BANK_A);
+    const sourceB = patternSources(FRAG_B, MODE_NAMES_B.length);
+    const parallel = gl.getExtension("KHR_parallel_shader_compile");
+    const vert = compile(gl, gl.VERTEX_SHADER, VERT);
+    const UNIFORMS = ["iResolution", "iTime", "uBass", "uMid", "uTreble", "uLevel", "uMode"];
+    /** @typedef {{prog: WebGLProgram, frag: WebGLShader, ready: boolean, failed: boolean, loc: Record<string, WebGLUniformLocation | null>}} PatternProgram */
+    /** @type {Map<number, PatternProgram>} */
+    const programs = new Map();
+    /** @param {number} i @returns {PatternProgram} */
+    function patternProgram(i) {
+      let p = programs.get(i);
+      if (!p) {
+        const frag = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(frag, i < BANK_A ? sourceA(i) : sourceB(i - BANK_A));
+        gl.compileShader(frag);
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vert);
+        gl.attachShader(prog, frag);
+        gl.bindAttribLocation(prog, 0, "p");
+        gl.linkProgram(prog);
+        p = { prog, frag, ready: false, failed: false, loc: {} };
+        programs.set(i, p);
+      }
+      const done = !parallel || gl.getProgramParameter(p.prog, parallel.COMPLETION_STATUS_KHR);
+      if (!p.ready && !p.failed && done) {
+        if (gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
+          gl.useProgram(p.prog);
+          for (const name of UNIFORMS) p.loc[name] = gl.getUniformLocation(p.prog, name);
+          gl.uniform1i(gl.getUniformLocation(p.prog, "uSpec"), 0);
+          gl.uniform1i(gl.getUniformLocation(p.prog, "uPrev"), 1);
+          p.ready = true;
+        } else {
+          console.error("shader", MODE_NAMES[i], gl.getShaderInfoLog(p.frag));
+          p.failed = true;
+        }
+      }
+      return p;
+    }
 
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -850,18 +857,9 @@
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
       gl.STATIC_DRAW,
     );
-    const pLoc = gl.getAttribLocation(prog, "p");
-    gl.enableVertexAttribArray(pLoc);
-    gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
-
-    const u = (n) => gl.getUniformLocation(prog, n);
-    const uRes = u("iResolution"),
-      uTime = u("iTime"),
-      uBassL = u("uBass"),
-      uMidL = u("uMid"),
-      uTrebL = u("uTreble"),
-      uLevelL = u("uLevel"),
-      uModeL = u("uMode");
+    // Every program binds "p" to attribute 0, so this is set once for all.
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     // Spectrum texture: 256 bins across, 64 frames of history down (row 0 is
     // the newest). The four smoothed bands can't express what an analyser or a
@@ -880,7 +878,6 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.uniform1i(u("uSpec"), 0);
 
     // Previous-frame texture for the feedback mode. Filled by copying the
     // backbuffer straight after the draw, which avoids framebuffer ping-pong
@@ -890,8 +887,10 @@
     // so the backbuffer has to be copied back after drawing them. The
     // instrument displays deliberately don't, and skipping the copy keeps them
     // on the exact render path they had before feedback existed.
+    // (The second bank lists the ones that do use it, FEEDBACK_B.)
     const NO_FEEDBACK = new Set(["spectrum", "waterfall", "vumeter", "ledladder", "matrix", "glitch"]);
-    const needsPrevFrame = (/** @type {number} */ i) => !NO_FEEDBACK.has(MODE_NAMES[i]);
+    const needsPrevFrame = (/** @type {number} */ i) =>
+      i < BANK_A ? !NO_FEEDBACK.has(MODE_NAMES[i]) : FEEDBACK_B.has(MODE_NAMES[i]);
     const prevTex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, prevTex);
@@ -901,7 +900,6 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     // One black pixel so the sampler is complete on the very first frame.
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0]));
-    gl.uniform1i(u("uPrev"), 1);
     gl.activeTexture(gl.TEXTURE0);
 
     /** Scroll the history down a row and write `row` into row 0. */
@@ -990,20 +988,36 @@
     }
 
     let raf = 0;
+    /** @type {PatternProgram | null} what's on screen; stays up while the next one compiles */
+    let current = null;
+    let currentMode = 0;
     function frame() {
       if (!running) return;
       if (!shown) {
         raf = 0;
         return;
       }
+      const wanted = patternProgram(mode);
+      if (wanted.ready) {
+        current = wanted;
+        currentMode = mode;
+      }
+      if (!current) {
+        // the very first pattern is still compiling
+        raf = requestAnimationFrame(frame);
+        return;
+      }
       resize();
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, (performance.now() - start) / 1000);
-      gl.uniform1f(uBassL, bass);
-      gl.uniform1f(uMidL, mid);
-      gl.uniform1f(uTrebL, treble);
-      gl.uniform1f(uLevelL, level);
-      gl.uniform1f(uModeL, mode);
+      gl.useProgram(current.prog);
+      const L = current.loc;
+      gl.uniform2f(L.iResolution, canvas.width, canvas.height);
+      gl.uniform1f(L.iTime, (performance.now() - start) / 1000);
+      gl.uniform1f(L.uBass, bass);
+      gl.uniform1f(L.uMid, mid);
+      gl.uniform1f(L.uTreble, treble);
+      gl.uniform1f(L.uLevel, level);
+      // each bank numbers its own patterns from 0
+      gl.uniform1f(L.uMode, currentMode < BANK_A ? currentMode : currentMode - BANK_A);
       if (specDirty) {
         gl.bindTexture(gl.TEXTURE_2D, specTex);
         gl.texImage2D(
@@ -1013,7 +1027,7 @@
         specDirty = false;
       }
       gl.drawArrays(gl.TRIANGLES, 0, 6);
-      if (needsPrevFrame(mode)) {
+      if (needsPrevFrame(currentMode)) {
         // Grab what was just drawn, before the browser composites it away, so
         // the next pass can inherit it.
         gl.activeTexture(gl.TEXTURE1);

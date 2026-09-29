@@ -17,14 +17,17 @@
       "<b>Q</b> queues the selected track to play next. The number on the row is its place in the queue.",
       "Picks up where you left off: your last track is ready at the same spot when you open the app.",
       "Scale every window 1× to 3× (right-click the playlist, <i>Windows</i>), or <b>Ctrl+D</b> for 2×.",
-      "Fullscreen visualizer: double-click it, <b>Esc</b> to come back.",
+      "50 new visualizer patterns, 100 in all: synthwave, a moonlit sea, an ECG, a spinning record, the C64 maze and more.",
+      "Fullscreen visualizer: double-click it, <b>Esc</b> to come back. It also opens instantly now.",
       "<i>Copy Now Playing card</i> (right-click the playlist): an image of the player and the song to paste into Discord.",
       "Mouse wheel over the main window changes the volume.",
       "Click a line of synced lyrics to jump the song there.",
       "<i>Normalize volume</i> evens out loudness between songs (right-click the playlist, <i>Audio</i>).",
       "Optional taskbar extras: song title, progress and ⏮ ⏯ ⏭ buttons (right-click the playlist, <i>Windows</i>).",
       "The playlist's total time now counts every track.",
+      "Something wrong? The error box (and the <b>?</b> tab) can copy diagnostic info for a bug report.",
       "Fixed: lists you saved looked empty in the Library.",
+      "Fixed: after an hour or so of music the windows could crash to a \"!\" page.",
     ],
   };
 
