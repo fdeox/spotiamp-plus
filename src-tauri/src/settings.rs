@@ -231,6 +231,10 @@ pub struct Settings {
     /// HashMap isn't Hash; there are only a handful of windows.
     #[serde(default)]
     pub windows: Vec<(String, WindowState)>,
+    /// The version whose "What's new" was last shown, so it opens once after
+    /// each update (whatsnew_window.rs).
+    #[serde(default)]
+    pub last_seen_version: Option<String>,
 }
 
 impl Settings {

@@ -1,4 +1,5 @@
 import { message } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
 /** The UI scale this window was created at (set by the Rust side before the
  *  page's first paint, see app_window::build_frameless_window); 1 if absent. */
@@ -73,7 +74,30 @@ export function* range(start, end) {
  * @param {Error} e
  */
 export async function handleError(e) {
-    await message(`${e}`, { title: "Spotiamp+", kind: "error" });
+    const COPY = "Copy diagnostic info";
+    const choice = await message(`${e}`, {
+        title: "Spotiamp+",
+        kind: "error",
+        buttons: { ok: COPY, cancel: "Close" },
+    });
+    if (choice === COPY) await copyDiagnostics(`${e}`);
+}
+
+/**
+ * Put what a bug report needs on the clipboard (version, Windows, audio setup,
+ * recent log errors; names and paths scrubbed) and say where to paste it.
+ * @param {string} [error] the error the user just saw, if any
+ */
+export async function copyDiagnostics(error) {
+    try {
+        await invoke("copy_diagnostics", { error: error ?? null });
+        await message(
+            "Diagnostic info copied.\n\nPaste it into /bug on the Spotiamp+ Discord or a GitHub issue. Your Spotify name, Windows user name and file paths are left out.",
+            { title: "Spotiamp+", kind: "info" },
+        );
+    } catch (err) {
+        await message(`Couldn't copy the diagnostic info (${err}).`, { title: "Spotiamp+", kind: "error" });
+    }
 }
 
 /**

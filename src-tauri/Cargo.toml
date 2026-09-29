@@ -79,6 +79,9 @@ windows = { version = "0.61", features = [
     "Win32_System_Memory",
     # Taskbar extras: thumbnail-button icons are drawn into a DIB.
     "Win32_Graphics_Gdi",
+    # Copy diagnostic info: the Windows build (registry) and the clipboard.
+    "Win32_System_Registry",
+    "Win32_System_DataExchange",
 ] }
 # Same version wry/tauri already build, so the WebView2 types line up: used to
 # catch a crashed renderer and reload it (app_window::watch_for_renderer_crash).

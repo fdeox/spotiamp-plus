@@ -17,6 +17,8 @@ mod eqf;
 mod library_window;
 mod art_window;
 mod taskbar;
+mod diagnostics;
+mod whatsnew_window;
 mod capture;
 mod lists;
 mod local_player;
@@ -137,6 +139,7 @@ fn open_external(target: String) -> Result<(), String> {
         "github" => "https://github.com/fdeox/spotiamp-plus",
         "discord" => "https://discord.gg/8Rq5Xycny4",
         "license" => "https://github.com/fdeox/spotiamp-plus/blob/main/LICENSE",
+        "releases" => "https://github.com/fdeox/spotiamp-plus/releases/latest",
         other => return Err(format!("unknown link target: {other}")),
     };
     open_in_browser(url);
@@ -428,6 +431,10 @@ pub fn run() {
             player_window::set_normalization,
             taskbar::set_taskbar_extras,
             taskbar::taskbar_update,
+            diagnostics::copy_diagnostics,
+            whatsnew_window::show_whats_new,
+            whatsnew_window::close_whats_new,
+            whatsnew_window::check_whats_new,
             player_window::get_skin,
             player_window::set_skin,
             wsz::pick_and_load_skin,

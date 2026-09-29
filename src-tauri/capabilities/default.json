@@ -9,7 +9,8 @@
     "visualizer",
     "eq",
     "lyrics",
-    "art"
+    "art",
+    "whatsnew"
   ],
   "permissions": [
     "core:default",

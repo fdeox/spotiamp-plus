@@ -681,6 +681,11 @@
         })
         .catch(() => {});
     }, 900);
+    // First run of a new version: show what's new once (after the windows
+    // above are back, so it opens on top of them).
+    const whatsNewTimer = setTimeout(() => {
+      invoke("check_whats_new").catch(() => {});
+    }, 2500);
 
     // Tick seek position and blink number display
     const tickerInterval = setInterval(() => {
@@ -915,6 +920,7 @@
 
     return () => {
       clearTimeout(reopenTimer);
+      clearTimeout(whatsNewTimer);
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
       playerEventsSubscription.then((unlisten) => unlisten());

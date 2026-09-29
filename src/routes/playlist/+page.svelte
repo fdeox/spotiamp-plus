@@ -4,6 +4,7 @@
     range,
     handleDrop,
     handleError,
+    copyDiagnostics,
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
@@ -498,6 +499,15 @@
   }
 
   let menuTab = $state("skins");
+  async function openWhatsNew() {
+    closeMenu();
+    await invoke("show_whats_new").catch(() => {});
+  }
+  async function copyDiagnosticInfo() {
+    closeMenu();
+    await copyDiagnostics();
+  }
+
   async function openDiscord() {
     closeMenu();
     // The URL itself lives in Rust's allowlist — we only name the target.
@@ -1201,11 +1211,13 @@
       <div class="ctx-tabs">
         <!-- controller mode: no audio pipeline of our own, so no device picker -->
         {#each (controllerMode
-          ? [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"]]
-          : [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"]]) as [id, label]}
+          ? [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["help", "?"]]
+          : [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"], ["help", "?"]]) as [id, label]}
           <button
             class="ctx-tab"
+            class:ctx-tab-help={id === "help"}
             class:active={menuTab === id}
+            title={id === "help" ? "Help" : undefined}
             onclick={() => (menuTab = id)}>{label}</button
           >
         {/each}
@@ -1323,6 +1335,14 @@
         <button class="ctx-item" onclick={addLocalFolder}>
           ♪ Add local folder…
         </button>
+      {:else if menuTab === "help"}
+        <button class="ctx-item" onclick={openWhatsNew}>
+          ✨ What's new &amp; keyboard keys
+        </button>
+        <button class="ctx-item" onclick={copyDiagnosticInfo}>
+          🩺 Copy diagnostic info
+        </button>
+        <div class="ctx-hint">for a bug report: paste it into /bug on Discord</div>
       {/if}
 
       <div class="ctx-sep"></div>
@@ -1773,6 +1793,10 @@
     background: #bdb9ad;
     color: #000;
     cursor: pointer;
+  }
+  /* the "?" tab only needs its one character */
+  .ctx-tab.ctx-tab-help {
+    flex: 0 0 18px;
   }
   .ctx-tab.active {
     background: #d4d0c8;
