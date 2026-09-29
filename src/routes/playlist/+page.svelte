@@ -347,11 +347,13 @@
     const subtitle = [track?.artist, track?.album].filter(Boolean).join(" · ");
     const cover = track?.albumArt ? await loadImage(track.albumArt).catch(() => null) : null;
 
-    // The capture is in physical pixels; draw the player at 2x its logical size
-    // so the pixel-art skin stays crisp on any display scaling.
+    // The capture is in physical pixels at the current UI scale; draw the player
+    // at 2x its classic size, so the card looks the same at any display or UI
+    // scale and the pixel-art skin stays crisp.
     const dpr = window.devicePixelRatio || 1;
-    const pw = Math.round((player.width / dpr) * 2);
-    const ph = Math.round((player.height / dpr) * 2);
+    const uiScale = REACTIVE_WINDOW_SIZE.zoom || 1;
+    const pw = Math.round((player.width / (dpr * uiScale)) * 2);
+    const ph = Math.round((player.height / (dpr * uiScale)) * 2);
     const PAD = 24;
     const GAP = 20;
     const COVER = 232;

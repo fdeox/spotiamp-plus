@@ -245,6 +245,10 @@ export class Playlist {
     resumeDone = false;
     rowsRestored = false;
     playerReady = false;
+    /** The row auto-loaded while restoring (addTrackRow loads the first one so
+     *  the player shows something). Only a default: the resume cue replaces it.
+     *  @type {Row | undefined} */
+    startupRow = undefined;
 
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
@@ -431,6 +435,7 @@ export class Playlist {
             // Persist after the initial load so any legacy playlist/album URIs
             // get normalised to the individual track URIs they expand into.
             this.persist();
+            this.startupRow = this.loadedRow;
             this.rowsRestored = true;
             this.maybeCueResume();
         })();
@@ -727,9 +732,10 @@ export class Playlist {
      * Resume last session: once the saved rows are back and the player is
      * listening, select the track that was playing at the last exit and hand
      * it to the player without playing it; the player's first play then picks
-     * up from the saved position. Runs once per launch, and not at all if
-     * something is already loaded. Only Spotify tracks are saved (a local row
-     * would start playing just by being loaded).
+     * up from the saved position. Runs once per launch, and not at all if the
+     * user already loaded something (the first row auto-loaded while restoring
+     * doesn't count). Only Spotify tracks are saved (a local row would start
+     * playing just by being loaded).
      */
     async maybeCueResume() {
         if (this.resumeDone || !this.rowsRestored || !this.playerReady) return;
@@ -741,7 +747,9 @@ export class Playlist {
         } catch {
             return;
         }
-        if (!point?.uri || this.loadedRow) return;
+        // Skip if the user already picked something themselves; the first row
+        // auto-loaded during restore doesn't count.
+        if (!point?.uri || (this.loadedRow && this.loadedRow !== this.startupRow)) return;
         const byIndex = this.rows[(point.index ?? 0) - 1];
         const row =
             byIndex?.uri?.asString === point.uri

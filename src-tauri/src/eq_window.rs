@@ -89,12 +89,20 @@ fn shift_docked_playlist(app_handle: &AppHandle, eq_shown: bool) {
     let Ok(playlist_pos) = playlist.outer_position() else {
         return;
     };
-    let Ok(eq_size) = eq.outer_size() else {
+    let (Ok(eq_pos), Ok(eq_size)) = (eq.outer_position(), eq.outer_size()) else {
         return;
     };
 
     let player_bottom = player_pos.y + player_size.height as i32;
     let eq_height = eq_size.height as i32;
+    // Only when the EQ really sits right under the player. It reopens at its
+    // remembered spot, and if the user had undocked it somewhere else, pushing
+    // the playlist down would just leave a gap under the player.
+    let eq_docked =
+        (eq_pos.x - player_pos.x).abs() <= 4 && (eq_pos.y - player_bottom).abs() <= 4;
+    if !eq_docked {
+        return;
+    }
     let aligned_x = (playlist_pos.x - player_pos.x).abs() <= 4;
     if !aligned_x {
         return;
