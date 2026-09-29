@@ -338,6 +338,17 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (toast = ""), 2600);
   }
+  // Typed a letter that isn't a shortcut: people expect that to search, so
+  // say where searching is. At most every 20 s, it's a hint, not a nag.
+  let lastTypedHintAt = 0;
+  $effect(() => {
+    if (!playlist.typedHint) return;
+    const now = Date.now();
+    if (now - lastTypedHintAt < 20000) return;
+    lastTypedHintAt = now;
+    untrack(() => showToast("Press J to jump to a track"));
+  });
+
   /** @param {string} src @returns {Promise<HTMLImageElement>} */
   function loadImage(src) {
     return new Promise((resolve, reject) => {

@@ -239,6 +239,9 @@ export class Playlist {
     queue = $state([]);
     /** J: the jump-to-file box over the playlist is open. */
     jumpOpen = $state(false);
+    /** Bumped when a letter with no shortcut is typed in the playlist, so the
+     *  page can point at J (people expect typing to search). */
+    typedHint = $state(0);
     /** Resume last session, a one-shot per launch: it waits for both the saved
      *  rows to be back and the player window to be listening (they start in
      *  parallel, so either can come first). */
@@ -354,6 +357,10 @@ export class Playlist {
                     // Winamp's jump-to-file
                     e.preventDefault();
                     this.openJump();
+                } else if (/^[\p{L}\p{N}]$/u.test(e.key) && this.rows.length) {
+                    // Typing here doesn't search (the letters are shortcuts):
+                    // let the page show where searching is.
+                    this.typedHint++;
                 }
             }
         }
