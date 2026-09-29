@@ -237,8 +237,49 @@ pub async fn get_track_metadata(
                 .map_err(|e| format!("Failed to get track by uri '{uri}' ({e:?})"))?,
         )
         .await
-        .map_err(|e| format!("Could not load track ({e:?})"))?,
+        .map_err(|e| match e {
+            crate::spotify::PlayError::MetadataError { e } => track_info_error(&e),
+            other => other.to_string(),
+        })?,
     ))
+}
+
+/// Track info for up to a few dozen tracks in one request (see
+/// `spotify::fetch_tracks`), in `uris` order; `None` where Spotify sent nothing.
+#[tauri::command]
+pub async fn get_tracks_metadata(
+    uris: Vec<String>,
+    player: State<'_, SharedPlayer>,
+) -> Result<Vec<Option<TrackMetadata>>, String> {
+    let session = player.lock().await.session_handle();
+    let uris = uris
+        .iter()
+        .map(|uri| SpotifyUri::from_uri(uri))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Bad track uri ({e:?})"))?;
+    let tracks = crate::spotify::fetch_tracks(&session, &uris)
+        .await
+        .map_err(|e| track_info_error(&e))?;
+    Ok(tracks
+        .iter()
+        .map(|track| track.as_ref().map(TrackMetadata::from))
+        .collect())
+}
+
+/// Why track info didn't come, in one word for the playlist: "busy" is worth
+/// another try in a moment (rate limit, network, a dropped connection),
+/// "missing" means Spotify has nothing for it. Logged by kind only.
+fn track_info_error(e: &librespot::core::Error) -> String {
+    use librespot::core::error::ErrorKind;
+    log::warn!("Could not load track info ({:?})", e.kind);
+    match e.kind {
+        ErrorKind::NotFound
+        | ErrorKind::InvalidArgument
+        | ErrorKind::FailedPrecondition
+        | ErrorKind::OutOfRange => "missing",
+        _ => "busy",
+    }
+    .to_string()
 }
 
 #[tauri::command]

@@ -23,8 +23,14 @@ use librespot::{
         mixer::VolumeGetter,
         player::{Player, PlayerEventChannel, duration_to_coefficient},
     },
+    protocol::{
+        extended_metadata::{BatchedEntityRequest, EntityRequest, ExtensionQuery},
+        extension_kind::ExtensionKind,
+        metadata::Track as TrackMessage,
+    },
 };
 use oauth2::TokenResponse;
+use protobuf::{EnumOrUnknown, Message};
 use tauri::AppHandle;
 use thiserror::Error;
 
@@ -575,6 +581,62 @@ pub async fn fetch_track(session: &Session, track_uri: SpotifyUri) -> Result<Tra
         }
         _ => Err(PlayError::GettingTrackForNonTrackUri(track_uri)),
     }
+}
+
+/// Track info for many tracks in one request: the same extended-metadata call
+/// `Track::get` makes, asked for a whole batch of tracks at once. librespot
+/// allows 300 requests per 30 s to spotify.com, shared with playback itself,
+/// so filling in a long playlist one request per song used it all up and
+/// songs then failed to load or play. Results are in `uris` order; `None`
+/// where Spotify sent nothing usable for that track.
+pub async fn fetch_tracks(
+    session: &Session,
+    uris: &[SpotifyUri],
+) -> Result<Vec<Option<Track>>, Error> {
+    let entity_request = uris
+        .iter()
+        .map(|uri| {
+            Ok(EntityRequest {
+                entity_uri: uri.to_uri()?,
+                query: vec![ExtensionQuery {
+                    extension_kind: EnumOrUnknown::new(ExtensionKind::TRACK_V4),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let response = session
+        .spclient()
+        .get_extended_metadata(BatchedEntityRequest {
+            entity_request,
+            ..Default::default()
+        })
+        .await?;
+
+    let mut found = std::collections::HashMap::new();
+    for data in response
+        .extended_metadata
+        .iter()
+        .flat_map(|array| array.extension_data.iter())
+    {
+        let Some(any) = data.extension_data.as_ref() else {
+            continue;
+        };
+        match TrackMessage::parse_from_bytes(&any.value)
+            .map_err(Error::from)
+            .and_then(|message| Track::try_from(&message))
+        {
+            Ok(track) => {
+                found.insert(data.entity_uri.clone(), track);
+            }
+            Err(e) => log::debug!("Unreadable track info in a batch ({:?})", e.kind),
+        }
+    }
+    Ok(uris
+        .iter()
+        .map(|uri| uri.to_uri().ok().and_then(|uri| found.remove(&uri)))
+        .collect())
 }
 
 pub async fn fetch_track_ids(

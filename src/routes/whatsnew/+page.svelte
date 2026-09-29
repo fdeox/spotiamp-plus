@@ -32,6 +32,8 @@
       "Optional taskbar extras: song title, progress and ⏮ ⏯ ⏭ buttons (right-click the playlist, <i>Windows</i>).",
       "The playlist's total time now counts every track.",
       "Something wrong? The error box (and the <b>?</b> tab) can copy diagnostic info for a bug report.",
+      "Long playlists fill in many times faster, in the playlist and in the Library.",
+      "Fixed: in a long playlist some songs got stuck on \"Failed to load\" or \"loading…\" and wouldn't play.",
       "Fixed: lists you saved looked empty in the Library.",
       "Fixed: after an hour or so of music the windows could crash to a \"!\" page.",
     ],

@@ -215,17 +215,34 @@
 
   // Resolve names for a list of {uri, added_ms} refs, filling the right pane
   // top-down. `added_ms` is the playlist "date added" (null for liked/search).
+  // 50 tracks per request: one request per song ran into Spotify's request
+  // limit on long playlists, which then also kept songs from playing.
   /** @param {{uri: string, added_ms: number|null}[]} refs @param {number} token */
   async function loadTrackMetas(refs, token) {
-    for (const ref of refs) {
+    const BATCH = 50;
+    for (let i = 0; i < refs.length; i += BATCH) {
       if (token !== loadToken) return; // switched away, abandon
+      const chunk = refs.slice(i, i + BATCH);
+      const ask = () =>
+        /** @type {Promise<any[]>} */ (
+          invoke("get_tracks_metadata", { uris: chunk.map((ref) => ref.uri) })
+        );
+      /** @type {any[]} */
+      let metas;
       try {
-        const meta = await invoke("get_track_metadata", { uri: ref.uri });
-        if (token !== loadToken) return;
-        tracks = [...tracks, { ...meta, addedMs: ref.added_ms ?? null }];
+        metas = await ask();
       } catch (e) {
-        /* skip a track we can't read */
+        // a busy moment: once more after a breather, then skip these
+        await new Promise((r) => setTimeout(r, 1500));
+        if (token !== loadToken) return;
+        metas = await ask().catch(() => []);
       }
+      if (token !== loadToken) return;
+      // a track Spotify sent nothing for is skipped
+      const found = chunk.flatMap((ref, j) =>
+        metas[j] ? [{ ...metas[j], addedMs: ref.added_ms ?? null }] : [],
+      );
+      tracks = [...tracks, ...found];
     }
   }
 

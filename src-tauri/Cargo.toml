@@ -27,6 +27,9 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 librespot = { version = "0.8", default-features = false, features = ["rodio-backend", "rustls-tls-native-roots"] }
+# librespot's own protobuf version, to ask for many tracks' info in one request
+# (spotify::fetch_tracks).
+protobuf = "3.7"
 # Same cpal that librespot's rodio backend resolves — used to enumerate output
 # devices for the audio-device picker (so device names match what rodio expects),
 # and (0.7.0) to output decoded local files through the same EQ + visualizer.

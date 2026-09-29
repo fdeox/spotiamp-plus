@@ -83,6 +83,8 @@ export class SpotifyTrack {
      * @param {number} durationInMs
      * @param {SpotifyUri} uri
      * @param {boolean} unavailable
+     * @param {string} [album]
+     * @param {string | null} [albumArt]
      */
     constructor(artist, name, durationInMs, uri, unavailable, album = "", albumArt = null) {
         this.name = name;
@@ -101,8 +103,34 @@ export class SpotifyTrack {
      * @returns {Promise<SpotifyTrack>}
      */
     static async loadFromUri(uri) {
-        /** @type {{artist: string, name: string, duration: number, uri: string, unavailable: boolean, album: string, albumArt: string | null}} */
+        /** @type {TrackData} */
         const trackData = await invoke("get_track_metadata", { uri: uri.asString });
+        return SpotifyTrack.fromData(uri, trackData);
+    }
+
+    /**
+     * Many tracks' info in one request (a long playlist asked one song at a
+     * time runs into Spotify's request limit). In `uris` order; null where
+     * Spotify sent nothing for that track.
+     * @param {SpotifyUri[]} uris
+     * @returns {Promise<(SpotifyTrack | null)[]>}
+     */
+    static async loadMany(uris) {
+        /** @type {(TrackData | null)[]} */
+        const list = await invoke("get_tracks_metadata", { uris: uris.map((uri) => uri.asString) });
+        return uris.map((uri, i) => {
+            const trackData = list[i];
+            return trackData ? SpotifyTrack.fromData(uri, trackData) : null;
+        });
+    }
+
+    /**
+     * @param {SpotifyUri} uri
+     * @param {TrackData} trackData
+     */
+    static fromData(uri, trackData) {
         return new SpotifyTrack(trackData.artist, trackData.name, trackData.duration, uri, trackData.unavailable, trackData.album, trackData.albumArt);
     }
 }
+
+/** @typedef {{artist: string, name: string, duration: number, uri: string, unavailable: boolean, album: string, albumArt: string | null}} TrackData */

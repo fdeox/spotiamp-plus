@@ -9,6 +9,18 @@ import { SpotifyTrack, SpotifyUri, durationToString } from "./spotify.svelte";
  * @typedef {TrackRow | LocalRow} Row
  */
 
+/** Failed tries at a row's track info before the background fill stops
+ *  asking for it (playing the row still asks). */
+const MAX_TRACK_TRIES = 3;
+/** Tracks asked for per request by the background fill. */
+const PRELOAD_BATCH = 50;
+/** Songs in a row that next/previous skips for not loading before giving up
+ *  (Spotify unreachable: no point walking the whole list). */
+const MAX_SKIPPED = 5;
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 class PlaylistRow {
     /**
      * @type {HTMLElement | undefined}
@@ -64,20 +76,81 @@ export class TrackRow extends PlaylistRow {
         this.loadingMessage = "loading…";
     }
 
+    /** Failed attempts at this row's track info (see MAX_TRACK_TRIES). */
+    failures = 0;
+
     populateTrack() {
         if (!this.trackPromise) {
-            this.trackPromise = SpotifyTrack.loadFromUri(this.uri)
-                .then((track) => {
-                    this.track = track;
-                    return track;
-                })
-                .catch((e) => {
-                    this.loadingMessage = `Failed to load track ${this.uri.id} (${e})`;
-                    throw e;
-                });
+            this.trackPromise = this.settle(this.loadAlone());
         }
 
         return this.trackPromise;
+    }
+
+    /** One request for just this row's track info. */
+    loadAlone() {
+        return SpotifyTrack.loadFromUri(this.uri).catch((e) => {
+            // "missing": Spotify has nothing for it, asking again won't help
+            this.failures = e === "missing" ? MAX_TRACK_TRIES : this.failures + 1;
+            throw e;
+        });
+    }
+
+    /**
+     * Keep the track `request` brings. On a failure forget the attempt, so
+     * playing the row, scrolling to it or the next background pass asks
+     * again: a busy moment shouldn't leave a song dead for the whole session.
+     * @param {Promise<SpotifyTrack>} request
+     * @returns {Promise<SpotifyTrack>}
+     */
+    settle(request) {
+        const promise = request.then(
+            (track) => {
+                this.track = track;
+                return track;
+            },
+            (e) => {
+                if (this.trackPromise === promise) this.trackPromise = undefined;
+                this.loadingMessage =
+                    e === "missing" ? "Unavailable track"
+                    : this.failures >= MAX_TRACK_TRIES ? "Couldn't load track info"
+                    : "loading…";
+                throw e;
+            },
+        );
+        return promise;
+    }
+
+    /**
+     * Fill in many rows' track info with one request. A row the batch has
+     * nothing for is asked for on its own, one at a time, which also finds
+     * out why.
+     * @param {TrackRow[]} rows
+     */
+    static async populateMany(rows) {
+        const batch = SpotifyTrack.loadMany(rows.map((row) => row.uri));
+        /** @type {Promise<unknown>} */
+        let alone = Promise.resolve();
+        rows.forEach((row, i) => {
+            const promise = row.settle(
+                batch.then(
+                    (tracks) => {
+                        const track = tracks[i];
+                        if (track) return track;
+                        const turn = alone.then(() => row.loadAlone());
+                        alone = turn.catch(() => {}).then(() => sleep(150));
+                        return turn;
+                    },
+                    // The whole batch failing isn't this row's own failure:
+                    // leave it on "loading…" for a later pass.
+                    () => Promise.reject("busy"),
+                ),
+            );
+            row.trackPromise = promise;
+            promise.catch(() => {});
+        });
+        await batch;
+        await alone;
     }
 
     getOnEnterViewport() {
@@ -88,10 +161,15 @@ export class TrackRow extends PlaylistRow {
          * @this HTMLElement
          */
         function eventCallback() {
-            enterExitViewportObserver.unobserve(this);
-            self.populateTrack().catch((/** @type {unknown} */ e) => {
-                console.warn(`Could not load metadata for ${self.uri.id}`, e);
-            });
+            const element = this;
+            // Stop watching only once it has loaded: a row that failed tries
+            // again the next time it scrolls into view.
+            self.populateTrack().then(
+                () => enterExitViewportObserver.unobserve(element),
+                (/** @type {unknown} */ e) => {
+                    console.warn(`Could not load metadata for ${self.uri.id}`, e);
+                },
+            );
         };
         return eventCallback;
     }
@@ -99,7 +177,12 @@ export class TrackRow extends PlaylistRow {
     /** @param {boolean} [playNow] have the player start it (see play()) */
     async loadTrack(playNow = false) {
         try {
-            await this.populateTrack();
+            await this.populateTrack().catch(async (e) => {
+                // Once more after a moment: most failures are a busy second.
+                if (e === "missing") throw e;
+                await sleep(1500);
+                return this.populateTrack();
+            });
             if (this.track) {
                 this.playlist.loadedRow = this;
                 await emitWindowEvent("playlistWindow", { TrackLoaded: this.track, PlayNow: playNow });
@@ -526,8 +609,10 @@ export class Playlist {
      * Fill in every row's track info in the background, not just the rows that
      * have scrolled into view: the total time at the bottom then counts the
      * whole list, and J has every name ready. Starts a moment after rows stop
-     * arriving, two requests at a time with a short breather so a long playlist
-     * doesn't hammer Spotify. Not in Free Mode (no session to ask).
+     * arriving and asks for PRELOAD_BATCH tracks per request, one request at a
+     * time: librespot allows 300 requests per 30 s, shared with playback, and
+     * one per song used it all up on a long playlist (songs then failed to
+     * load or play). Not in Free Mode (no session to ask).
      * @param {number} delayMs
      */
     schedulePreload(delayMs) {
@@ -546,39 +631,43 @@ export class Playlist {
         this.preloadRunning = true;
         let failures = 0;
         try {
-            const pending = this.rows.filter(
-                (r) => r instanceof TrackRow && !r.track && !r.trackPromise,
-            );
-            let next = 0;
-            const worker = async () => {
-                while (next < pending.length && failures < 5) {
-                    const row = /** @type {TrackRow} */ (pending[next++]);
-                    // skip rows loaded meanwhile or no longer in the list
-                    if (row.track || row.trackPromise || !this.rows.includes(row)) continue;
-                    try {
-                        await row.populateTrack();
-                        failures = 0;
-                    } catch {
-                        // Most likely the session isn't up (yet): leave the row
-                        // as not-loaded rather than stuck on "Failed to load", so
-                        // scrolling to it or the next round can try again.
-                        failures++;
-                        row.trackPromise = undefined;
-                        row.loadingMessage = "loading…";
-                    }
-                    await new Promise((r) => setTimeout(r, 40));
+            const pending = this.unloadedRows();
+            for (let i = 0; i < pending.length && failures < 3; i += PRELOAD_BATCH) {
+                // skip rows loaded meanwhile or no longer in the list
+                const rows = pending
+                    .slice(i, i + PRELOAD_BATCH)
+                    .filter((row) => !row.track && !row.trackPromise && this.rows.includes(row));
+                if (rows.length === 0) continue;
+                try {
+                    await TrackRow.populateMany(rows);
+                    failures = 0;
+                } catch {
+                    // Most likely the session isn't up (yet); the rows stay
+                    // on "loading…" for the next round.
+                    failures++;
                 }
-            };
-            await Promise.all([worker(), worker()]);
+                await sleep(300);
+            }
         } finally {
             this.preloadRunning = false;
         }
         // Several failures in a row: Spotify's unreachable for now, try later.
-        if (failures >= 5) this.schedulePreload(60000);
+        if (failures >= 3) this.schedulePreload(60000);
         else if (this.preloadAgain) {
             this.preloadAgain = false;
             this.schedulePreload(1000);
         }
+        // Rows that failed on their own get another go in a while.
+        else if (this.unloadedRows().length) this.schedulePreload(30000);
+    }
+
+    /** Spotify rows still without track info that are worth asking for. */
+    unloadedRows() {
+        return /** @type {TrackRow[]} */ (
+            this.rows.filter(
+                (r) => r instanceof TrackRow && !r.track && !r.trackPromise && r.failures < MAX_TRACK_TRIES,
+            )
+        );
     }
 
     /**
@@ -878,34 +967,30 @@ export class Playlist {
 
     /**
      * Load the names of Spotify rows that haven't scrolled into view yet, so the
-     * jump box searches the whole playlist instead of only what's been seen.
-     * A few at a time; rows already loaded (or loading) are skipped.
+     * jump box searches the whole playlist instead of only what's been seen:
+     * the background fill, started now instead of waiting for its turn.
      */
     async loadAllNames() {
-        const pending = this.rows.filter(
-            (r) => r instanceof TrackRow && !r.track && !r.trackPromise,
-        );
-        let next = 0;
-        const worker = async () => {
-            while (next < pending.length) {
-                const row = /** @type {TrackRow} */ (pending[next++]);
-                await row.populateTrack().catch(() => {});
-            }
-        };
-        await Promise.all(Array.from({ length: 6 }, worker));
+        if (this.preloadRunning) return;
+        clearTimeout(this.preloadTimer);
+        await this.preloadAll();
     }
 
     /**
      * @param {number} offset
      * @param {boolean} skipUnavailable
+     * @param {Row} [fromRow] move on from this row instead of the loaded one
+     *   (a row that couldn't be loaded never becomes the loaded one)
+     * @param {number} [skipped] rows skipped so far, to give up at some point
      * @returns {Promise<boolean>} true if the end in that direction has been reached
      */
-    async move(offset, skipUnavailable) {
+    async move(offset, skipUnavailable, fromRow = undefined, skipped = 0) {
         if (this.rows.length === 0) {
             return true;
         }
-        const currRowIndex = this.loadedRow
-            ? this.rows.indexOf(this.loadedRow)
+        const fromHere = fromRow ?? this.loadedRow;
+        const currRowIndex = fromHere
+            ? this.rows.indexOf(fromHere)
             : 0;
 
         // Queued rows (Q) play next, in queue order, before the normal or
@@ -925,6 +1010,9 @@ export class Playlist {
                 const track = await row.loadTrack();
                 if (track && skipUnavailable && track.unavailable) {
                     return await this.move(offset, skipUnavailable);
+                }
+                if (!track && skipUnavailable && skipped < MAX_SKIPPED) {
+                    return await this.move(offset, skipUnavailable, fromHere ?? undefined, skipped + 1);
                 }
             } else if (row instanceof LocalRow) {
                 await row.loadTrack();
@@ -979,6 +1067,11 @@ export class Playlist {
             const track = await row.loadTrack();
             if (track && skipUnavailable && track.unavailable) {
                 return await this.move(offset, skipUnavailable);
+            }
+            // Its info wouldn't load even on a second try: go on to the next
+            // song instead of the music just stopping there.
+            if (!track && skipUnavailable && skipped < MAX_SKIPPED) {
+                return await this.move(offset, skipUnavailable, row, skipped + 1);
             }
         } else if (row instanceof LocalRow) {
             await row.loadTrack(); // plays through the local engine
