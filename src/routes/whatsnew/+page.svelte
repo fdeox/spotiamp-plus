@@ -22,6 +22,8 @@
       "Fullscreen visualizer: double-click it, <b>Esc</b> to come back. It also opens instantly now.",
       "<i>Copy Now Playing card</i> (right-click the playlist): an image of the player and the song to paste into Discord.",
       "Mouse wheel over the main window changes the volume.",
+      "The keyboard shortcuts work from every window now, not just the main one.",
+      "The right-click menu is a proper Winamp-style menu, with each key shown next to what it does. It opens on the main window too.",
       "Click a line of synced lyrics to jump the song there.",
       "<i>Normalize volume</i> evens out loudness between songs (right-click the playlist, <i>Audio</i>).",
       "Optional taskbar extras: song title, progress and ⏮ ⏯ ⏭ buttons (right-click the playlist, <i>Windows</i>).",
@@ -38,6 +40,7 @@
     ["Z X C V B", "Previous, play, pause, stop, next"],
     ["← →", "Seek 5 seconds"],
     ["↑ ↓ / wheel", "Volume"],
+    ["S / R", "Shuffle, repeat"],
     ["Ctrl+D", "Everything 2× bigger"],
     ["O / Shift+O", "Add music files / a folder"],
     ["L", "Open the Library"],
@@ -101,8 +104,9 @@
       </tbody>
     </table>
     <p class="wn-hint">
-      Everything else is in the playlist's right-click menu. You can open this
-      again from its <b>?</b> tab.
+      The keys work in every window, except the Library, where typing searches.
+      Everything else is in the right-click menu, with each key shown next to
+      what it does. You can open this again from its <b>Help</b> menu.
     </p>
   </div>
 

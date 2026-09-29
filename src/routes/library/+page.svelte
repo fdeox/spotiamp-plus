@@ -4,6 +4,11 @@
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
+  import { forwardShortcuts } from "$lib/shortcuts.js";
+
+  // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
+  // typing letters in the Library searches the list.
+  onMount(() => forwardShortcuts({ keys: new Set() }));
 
   let playlists = $state([]);
   let loading = $state(true);

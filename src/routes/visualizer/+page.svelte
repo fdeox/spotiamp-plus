@@ -8,6 +8,10 @@
   import { SHADER_COMMON } from "./shader-common.js";
   import { FRAG_B, MODE_NAMES_B, FEEDBACK_B } from "./shaders-b.js";
   import { patternSources } from "./shader-split.js";
+  import { forwardShortcuts } from "$lib/shortcuts.js";
+
+  // The main window's keys work here too (lib/shortcuts.js).
+  onMount(() => forwardShortcuts());
 
   let canvas;
   const MODE_NAMES_A = [

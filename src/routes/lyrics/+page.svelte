@@ -4,6 +4,10 @@
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
+  import { forwardShortcuts } from "$lib/shortcuts.js";
+
+  // The main window's keys work here too (lib/shortcuts.js).
+  onMount(() => forwardShortcuts());
 
   let lines = $state([]);
   let synced = $state(false);

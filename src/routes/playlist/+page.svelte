@@ -629,6 +629,10 @@
     return /** @type {Blob} */ (blob);
   }
   async function copyNowPlayingCard() {
+    // The clipboard only takes writes from a focused page, and the menu may
+    // have been opened over the main window: bring this one forward first.
+    await getCurrentWindow().setFocus().catch(() => {});
+    window.focus();
     try {
       // Hand the clipboard a promise so the write starts inside the click while
       // the card is still being put together.

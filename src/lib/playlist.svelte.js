@@ -331,6 +331,10 @@ export class Playlist {
             } else if (ctrl && e.key.toLowerCase() == "a") {
                 e.preventDefault();
                 this.selectedRows = [...this.rows];
+            } else if (ctrl && !e.altKey && e.key.toLowerCase() == "d") {
+                // Ctrl+D: scale, handled by the main window
+                e.preventDefault();
+                emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: true });
             } else if (!ctrl && !e.altKey) {
                 // Winamp transport keys, forwarded to the player
                 const k = e.key.toLowerCase();
@@ -357,6 +361,14 @@ export class Playlist {
                     // Winamp's jump-to-file
                     e.preventDefault();
                     this.openJump();
+                } else if (
+                    k == "s" || k == "r" || k == "l" || k == "o" ||
+                    (k == " " && t?.tagName != "BUTTON")
+                ) {
+                    // The main window's other keys (shuffle, repeat, library,
+                    // add files, play/pause) work here too: it handles them.
+                    e.preventDefault();
+                    emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: false });
                 } else if (/^[\p{L}\p{N}]$/u.test(e.key) && this.rows.length) {
                     // Typing here doesn't search (the letters are shortcuts):
                     // let the page show where searching is.

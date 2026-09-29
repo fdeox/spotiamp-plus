@@ -922,6 +922,20 @@
       }
     };
     document.addEventListener("keydown", onPlayerKeyDown);
+    // The same keys pressed in the other windows (see lib/shortcuts.js).
+    const forwardedKeySubscription = subscribeToWindowEvent("forwardedKey", (e) =>
+      onPlayerKeyDown(
+        /** @type {any} */ ({
+          key: e.key,
+          shiftKey: e.shift,
+          ctrlKey: e.ctrl,
+          metaKey: false,
+          altKey: false,
+          target: null,
+          preventDefault() {},
+        }),
+      ),
+    );
 
     const audioDeviceSubscription = listen("audioDeviceChanged", () =>
       reapplyAfterDeviceChange(),
@@ -938,6 +952,7 @@
       trackPositionSubscription.then((unlisten) => unlisten());
       lyricsSeekSubscription.then((unlisten) => unlisten());
       mediaKeySubscription.then((unlisten) => unlisten());
+      forwardedKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       stopLocalPoll();
       document.removeEventListener("keydown", onPlayerKeyDown);

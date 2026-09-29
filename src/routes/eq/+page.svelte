@@ -4,6 +4,10 @@
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
+  import { forwardShortcuts } from "$lib/shortcuts.js";
+
+  // The main window's keys work here too (lib/shortcuts.js).
+  onMount(() => forwardShortcuts());
 
   // Classic Winamp presets, dB per band (60,170,310,600,1k,3k,6k,12k,14k,16k)
   const PRESETS = {
