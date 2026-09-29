@@ -26,17 +26,35 @@ docking windows that snap together like classic Winamp.
 >Bug fixes, stability improvements, security updates, and important compatibility fixes will continue. New features will primarily be considered based on community requests, usefulness, and available time.
 >Feature suggestions can be submitted through the Spotiamp+ Discord community.
 
+## 🆕 Coming in 0.7.3
+
+- **J** opens *Jump to track*: type part of a song or artist name, pick with the
+  arrows, **Enter** plays it. **Q** queues the selected track to play next
+  (the number in brackets is its place in the queue). Both work from the main
+  window and the playlist.
+- **Pick up where you left off**: reopen the app and your last track is cued at
+  the same spot, ready to press play.
+- **Scale every window** to 1x, 1.5x, 2x or 3x (right-click the playlist →
+  *Windows*, or **Ctrl+D** for 2x), docking kept intact.
+- **Fullscreen visualizer**: double-click it (or Alt+Enter), **Esc** to come
+  back. The song title fades in on each new track.
+- **Copy Now Playing card**: an image of the player, the cover and the track in
+  your skin's colours, ready to paste into Discord.
+- Fix: lists saved from the playlist no longer look empty in the Library.
+
 ## Features
 
 - 🎵 **Native Spotify playback** — Premium account via librespot (Ogg 320 kbps),
   seek, volume, gapless.
-- 💿 **Local file playback** — play your own MP3, FLAC, M4A/AAC, WAV, OGG or Opus
+- 💿 **Local file playback** — play your own MP3, FLAC, M4A/AAC, WAV or OGG
   files right alongside Spotify. Add files or a whole folder from the playlist
   menu (or press **O** / **Shift+O**); they land in the playlist as normal rows,
   mixed with Spotify tracks, with next/previous walking the lot. Name, artist and
   length come from the file's own tags, and the EQ and visualizer work on them too.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
-  a two-pane Library (playlists + tracks), load or queue anything.
+  a two-pane Library (playlists + tracks), load or queue anything. In a long
+  list, **just start typing** a song or artist name and the selection jumps to it
+  (what you typed shows in the header).
 - 🔎 **Spotify catalogue search** — search the whole catalogue right in the
   Library. Double-clicking a search result **adds it to the end of the current
   playlist** (it doesn't replace what's playing), so you can build a playlist by
@@ -62,6 +80,10 @@ docking windows that snap together like classic Winamp.
   change.
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
   line in time with playback (right-click the playlist → *Lyrics…*).
+- 🖼️ **Album art window** — the current cover in its own resizable window that
+  docks like the others (right-click the playlist → *Windows* → *Album art…*).
+- 😴 **Sleep timer** — pause playback after 15, 30, 45 or 60 minutes (right-click
+  the playlist → *Sleep timer*; each click steps to the next length).
 - 🎛️ **Media keys** — the play/pause/next keys on your keyboard and the buttons
   on your headset control playback even when Spotiamp+ is in the background
   (registered through the Windows media session).
@@ -72,8 +94,8 @@ docking windows that snap together like classic Winamp.
   Winamp style.
 - ↕️ **Sortable library** — click a column header (Artist / Album / Title / Date
   added / Time) to sort your tracks.
-- 🪟 **Remembers your layout** — the library, visualizer and lyrics windows
-  reopen where and how you left them on the next launch.
+- 🪟 **Remembers your layout** — the library, visualizer, lyrics and album art
+  windows reopen where and how you left them on the next launch.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
@@ -137,8 +159,14 @@ no need to revisit this page. Windows 10/11 (x64) only for now.
 | `Ctrl+A` | select all |
 | `Delete` | remove selected |
 | `Enter` | play selected |
-| `↑` `↓` | move selection (`Alt+↑/↓` reorder) |
+| `↑` `↓` | move selection (`Shift` extends it, `Alt+↑/↓` reorders) |
 | `Z X C V B` | transport (forwarded to the player) |
+
+**Library window**
+
+| Key | Action |
+| --- | --- |
+| start typing | jump to the first track whose title (or artist) matches |
 
 Double-click the main window's spectrum to open the visualizer; click the
 visualizer to cycle patterns.
@@ -150,7 +178,8 @@ visualizer to cycle patterns.
 - a **search result** → appends it to the end of the current playlist (does not
   replace what's playing) — search again and again to build a list
 
-## Build from source
+<details>
+<summary><b>Build from source</b></summary>
 
 Requires Rust (stable), Node.js, and the platform toolchain for
 [Tauri 2](https://v2.tauri.app/start/prerequisites/) (on Windows: VS C++ Build
@@ -162,14 +191,8 @@ npm run tauri dev      # run in development
 npm run tauri build    # produce a release installer (src-tauri/target/release/bundle)
 ```
 
-## Credits
+</details>
 
-Built on [**tedsteen/Spotiamp**](https://github.com/tedsteen/Spotiamp) (MIT), the
-original Tauri + librespot Winamp-style player.
+---
 
-Winamp is a trademark of its respective owners; this is an independent
-fan project and is not affiliated with or endorsed by Winamp or Spotify.
-
-## License
-
-[MIT](LICENSE) — original © Ted Steen, additions © fdeox.
+<sub>[MIT License](LICENSE) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
