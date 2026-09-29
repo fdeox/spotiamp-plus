@@ -116,6 +116,20 @@ pub async fn set_audio_device(
     Ok(())
 }
 
+/// Toggle volume normalisation; rebuilds the player like a device switch, so
+/// the frontend reloads the current track afterwards (audioDeviceChanged).
+#[tauri::command]
+pub async fn set_normalization(
+    enabled: bool,
+    player: State<'_, SharedPlayer>,
+    app_handle: AppHandle,
+) -> Result<(), ()> {
+    let player_window = app_handle.get_webview_window("player").ok_or(())?;
+    let channel = player.lock().await.set_normalisation(enabled);
+    crate::spawn_event_forwarder(player_window, channel);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_double_size(active: bool) {
     Settings::current_mut().player.double_size_active = active;

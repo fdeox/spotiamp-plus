@@ -424,6 +424,7 @@ pub fn run() {
             player_window::pause,
             player_window::stop,
             player_window::get_player_settings,
+            player_window::set_normalization,
             player_window::get_skin,
             player_window::set_skin,
             wsz::pick_and_load_skin,

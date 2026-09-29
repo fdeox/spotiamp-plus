@@ -152,6 +152,10 @@ pub struct PlayerSettings {
     /// the pulled 0.7.1 player-only zoom, which shouldn't suddenly apply.
     #[serde(default)]
     pub ui_scale_pct: Option<u16>,
+    /// Even out loudness between tracks (librespot's normalisation, the same
+    /// as Spotify's own "Normalize volume" setting). Off by default.
+    #[serde(default)]
+    pub normalize: bool,
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -177,6 +181,7 @@ impl Default for PlayerSettings {
             show_eq: false,
             resume: None,
             ui_scale_pct: None,
+            normalize: false,
         }
     }
 }

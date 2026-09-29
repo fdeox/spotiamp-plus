@@ -283,7 +283,7 @@ impl SpotifyPlayer {
             position_update_interval: Some(Duration::from_secs(1)),
             bitrate: Bitrate::Bitrate320,
             gapless: true,
-            normalisation: false,
+            normalisation: Settings::current().player.normalize,
             normalisation_type: NormalisationType::default(),
             normalisation_method: NormalisationMethod::Dynamic,
             normalisation_pregain_db: 0.0,
@@ -436,6 +436,18 @@ impl SpotifyPlayer {
     pub fn set_audio_device(&mut self, device: Option<String>) -> PlayerEventChannel {
         *self.audio_device.lock().unwrap() = device.clone();
         Settings::current_mut().player.audio_device = device;
+        self.rebuild_player()
+    }
+
+    /// Turn loudness normalisation on or off. librespot reads it from the
+    /// PlayerConfig, fixed when the player is built, so this rebuilds the player
+    /// the same way a device switch does (the frontend then reloads the track).
+    pub fn set_normalisation(&mut self, enabled: bool) -> PlayerEventChannel {
+        Settings::current_mut().player.normalize = enabled;
+        self.rebuild_player()
+    }
+
+    fn rebuild_player(&mut self) -> PlayerEventChannel {
         self.player.stop();
         self.player = Self::build_player(
             &self.session.inner,

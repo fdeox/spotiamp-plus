@@ -230,10 +230,12 @@
 
   // --- always on top ---
   let alwaysOnTop = $state(false);
+  let normalizeVolume = $state(false);
   async function loadAlwaysOnTop() {
     try {
       const settings = await invoke("get_player_settings");
       alwaysOnTop = Boolean(settings?.always_on_top);
+      normalizeVolume = Boolean(settings?.normalize);
     } catch {
       alwaysOnTop = false;
     }
@@ -286,6 +288,16 @@
     await invoke("set_audio_device", { device: name }).catch(() => {});
     // the player was rebuilt on the new device — ask the player window to
     // resume the current track there.
+    await emit("audioDeviceChanged", {});
+  }
+
+  // Normalize volume: evens out loudness between tracks. The player is rebuilt
+  // for it, so the current track is picked up again the same way as after a
+  // device switch.
+  async function toggleNormalize() {
+    closeMenu();
+    normalizeVolume = !normalizeVolume;
+    await invoke("set_normalization", { enabled: normalizeVolume }).catch(() => {});
     await emit("audioDeviceChanged", {});
   }
 
@@ -1249,6 +1261,15 @@
           </button>
         {/each}
       {:else if menuTab === "audio"}
+        <button
+          class="ctx-item"
+          title="Evens out loudness between tracks, like Spotify's own setting"
+          onclick={toggleNormalize}
+        >
+          <span class="ctx-dot">{normalizeVolume ? "●" : ""}</span>Normalize volume
+        </button>
+        <div class="ctx-sep"></div>
+        <div class="ctx-hint">Output device</div>
         <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
           <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
         </button>
