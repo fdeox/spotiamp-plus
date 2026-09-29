@@ -498,6 +498,30 @@
     if (!controllerMode) invoke("set_volume", { volume });
   });
 
+  // Mouse wheel anywhere on the main window changes the volume, like Winamp:
+  // 2% a notch, with "VOLUME: n%" in the ticker for a moment. Touchpads send
+  // many small deltas, so they're summed until a notch's worth has built up.
+  let wheelVolumeDelta = 0;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let wheelVolumeTimer;
+  /** @param {WheelEvent} e */
+  function onWheelVolume(e) {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    wheelVolumeDelta += e.deltaMode == WheelEvent.DOM_DELTA_PIXEL ? e.deltaY / 100 : e.deltaY / 3;
+    const notches = Math.trunc(wheelVolumeDelta);
+    if (notches === 0) return;
+    wheelVolumeDelta -= notches;
+    volume = Math.min(100, Math.max(0, volume - notches * 2));
+    if (uiInputState == "nothing" || uiInputState == "volume-change") {
+      uiInputState = "volume-change";
+      clearTimeout(wheelVolumeTimer);
+      wheelVolumeTimer = setTimeout(() => {
+        if (uiInputState == "volume-change") uiInputState = "nothing";
+      }, 1000);
+    }
+  }
+
   // snap the balance to centre when it's close, like Winamp's detent
   const balanceRow = $derived(Math.round((Math.abs(balance) / 100) * 27));
   $effect(() => {
@@ -742,6 +766,16 @@
       },
     );
 
+    // Clicking a synced lyrics line jumps there — only for the song it belongs
+    // to, and only once it's playing or paused (a stopped track has nothing to
+    // seek in).
+    const lyricsSeekSubscription = subscribeToWindowEvent("lyricsSeek", (e) => {
+      const nowUri = loadedTrack?.isLocal ? null : currentTrackUri;
+      if (!e.uri || e.uri !== nowUri) return;
+      if (playerState != "playing" && playerState != "paused") return;
+      seek(Math.max(0, e.positionMs));
+    });
+
     const playerEventsSubscription = subscribeToWindowEvent(
       "player",
       (event) => {
@@ -878,6 +912,7 @@
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       eqWindowEventSubscription.then((unlisten) => unlisten());
       trackPositionSubscription.then((unlisten) => unlisten());
+      lyricsSeekSubscription.then((unlisten) => unlisten());
       mediaKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       stopLocalPoll();
@@ -977,7 +1012,7 @@
   }
 </script>
 
-<main class:shade={shadeActive}>
+<main class:shade={shadeActive} onwheel={onWheelVolume}>
   <div class="sprite main-sprite"></div>
 
   <!-- 🦙 easter egg: click the Winamp titlebar logo -->
