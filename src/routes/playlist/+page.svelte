@@ -7,10 +7,11 @@
     copyDiagnostics,
     REACTIVE_WINDOW_SIZE,
   } from "$lib/common.svelte.js";
-  import { emitWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { Menu } from "@tauri-apps/api/menu";
   import { emit } from "@tauri-apps/api/event";
   import { onMount, tick, untrack } from "svelte";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { getCurrentWindow, Window } from "@tauri-apps/api/window";
   import { Playlist } from "$lib/playlist.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
@@ -166,13 +167,32 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
-  // --- right-click menu (skins + shortcuts) ---
-  const SKINS = ["classic", "cherry", "amber", "emerald"];
-  let menu = $state({ show: false, x: 0, y: 0 });
+  // --- right-click menu ---
   let currentSkin = $state("classic");
   invoke("get_skin")
     .then((s) => (currentSkin = s || "classic"))
     .catch(() => {});
+  // Which .wsz is on: the settings only say "custom", so the menu remembers
+  // the pick itself ("bundled:<name>", "file" or "museum") to tick the right
+  // entry. Only a convenience: without it, nothing custom is ticked.
+  const WORN_KEY = "spotiamp.wornSkin";
+  let wornCustom = $state(readWorn());
+  function readWorn() {
+    try {
+      return localStorage.getItem(WORN_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  }
+  /** @param {string} value */
+  function setWorn(value) {
+    wornCustom = value;
+    try {
+      localStorage.setItem(WORN_KEY, value);
+    } catch {
+      /* storage off: the tick just won't survive a restart */
+    }
+  }
 
   // --- in-app updates ---
   // The manifest and the downloaded package are both signature-checked against
@@ -225,7 +245,6 @@
       });
     } finally {
       updateBusy = false;
-      closeMenu();
     }
   }
 
@@ -236,7 +255,6 @@
   // Song title on the taskbar button, progress across it, and prev/play/next
   // under its thumbnail. Opt-in.
   async function toggleTaskbarExtras() {
-    closeMenu();
     taskbarExtras = !taskbarExtras;
     await invoke("set_taskbar_extras", { enabled: taskbarExtras }).catch(() => {});
   }
@@ -251,32 +269,169 @@
     }
   }
   async function toggleAlwaysOnTop() {
-    closeMenu();
     alwaysOnTop = !alwaysOnTop;
     await invoke("set_always_on_top", { active: alwaysOnTop }).catch(() => {});
   }
 
+  // Windows' own popup menu, the way Winamp's was: submenus, each command's
+  // key shown next to it, and never cut off by a small window. Built fresh on
+  // every open so the ticks match the current state. The main window opens
+  // the same menu (it asks over playerWindow: MenuRequested).
+  /** @param {MouseEvent} e */
   function openMenu(e) {
     e.preventDefault();
-    loadAudioDevices();
-    loadAlwaysOnTop();
-    const mw = 200,
-      mh = 220;
-    // The page is CSS-zoomed by the UI scale while the pointer and viewport are
-    // not, so bring them into the page's own units first.
-    const z = REACTIVE_WINDOW_SIZE.zoom || 1;
-    menu = {
-      show: true,
-      x: Math.min(e.clientX / z, Math.max(2, window.innerWidth / z - mw)),
-      y: Math.min(e.clientY / z, Math.max(2, window.innerHeight / z - mh)),
-    };
+    showMenu(null);
+  }
+  /** @type {Menu | null} */
+  let openedMenu = null;
+  let menuBusy = false;
+  /** @param {string | null} windowLabel where to show it (null = here) */
+  async function showMenu(windowLabel) {
+    if (menuBusy) return;
+    menuBusy = true;
+    try {
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop()]);
+      const menu = await Menu.new({ items: menuItems() });
+      openedMenu?.close().catch(() => {});
+      openedMenu = menu;
+      const target = windowLabel ? await Window.getByLabel(windowLabel) : null;
+      await menu.popup(undefined, target ?? undefined);
+    } catch (e) {
+      invoke("log_frontend_error", { window: "playlist", message: `menu: ${e}` }).catch(() => {});
+    } finally {
+      menuBusy = false;
+    }
+  }
+
+  /** A literal "&" in a Windows menu needs doubling (a single one marks the Alt key). */
+  const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
+
+  function menuItems() {
+    const sep = { item: /** @type {const} */ ("Separator") };
+    const isWorn = (/** @type {string} */ custom) => currentSkin === "custom" && wornCustom === custom;
+    /** @type {any[]} */
+    const playItems = [
+      { text: "Play", accelerator: "X", action: () => emitWindowEvent("playlistWindow", { PlayRequested: null }) },
+      { text: "Pause", accelerator: "C", action: () => emitWindowEvent("playlistWindow", { PauseRequested: null }) },
+      { text: "Stop", accelerator: "V", action: () => emitWindowEvent("playlistWindow", { StopRequested: null }) },
+      { text: "Previous", accelerator: "Z", action: () => playlist.previous(true) },
+      { text: "Next", accelerator: "B", action: () => playlist.next(true) },
+    ];
+    if (!controllerMode) {
+      playItems.push(sep, {
+        text: "Autoplay similar songs when the list ends",
+        checked: playlist.autoplay,
+        action: () => (playlist.autoplay = !playlist.autoplay),
+      });
+    }
+    const listItems = controllerMode
+      ? [{ text: "Clear playlist", action: () => playlist.clear() }]
+      : [
+          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
+          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          sep,
+          { text: "Save as a list…", action: openSaveList },
+          { text: "Clear playlist", action: () => playlist.clear() },
+        ];
+    const skinItems = [
+      { text: "Classic", checked: currentSkin === "classic", action: () => chooseSkin("classic") },
+      ...bundledSkins.map((name) => ({
+        text: menuText(prettySkinName(name)),
+        checked: isWorn(`bundled:${name}`),
+        action: () => chooseBundledSkin(name),
+      })),
+      {
+        text: "&Colors",
+        items: ["cherry", "amber", "emerald"].map((c) => ({
+          text: c[0].toUpperCase() + c.slice(1),
+          checked: currentSkin === c,
+          action: () => chooseSkin(c),
+        })),
+      },
+      sep,
+      { text: "Load .wsz from disk…", checked: isWorn("file"), action: loadWszSkin },
+      { text: "Skin &Museum…", checked: isWorn("museum"), action: openSkinMuseum },
+    ];
+    const windowItems = [
+      ...(controllerMode ? [] : [{ text: "Library", accelerator: "L", action: openLibraryWindow }]),
+      { text: "Visualizer", action: () => invoke("set_visualizer_window_visible", { visible: true }) },
+      ...(controllerMode
+        ? []
+        : [
+            { text: "Lyrics", action: () => invoke("set_lyrics_window_visible", { visible: true }) },
+            { text: "Album art", action: () => invoke("set_art_window_visible", { visible: true }) },
+          ]),
+      sep,
+      { text: "Always on top", checked: alwaysOnTop, action: toggleAlwaysOnTop },
+      { text: "Taskbar extras (title, progress, buttons)", checked: taskbarExtras, action: toggleTaskbarExtras },
+      {
+        text: "S&cale",
+        items: [1, 1.5, 2, 3].map((z) => ({
+          text: `${z}×`,
+          checked: REACTIVE_WINDOW_SIZE.zoom === z,
+          ...(z === 2 ? { accelerator: "Ctrl+D" } : {}),
+          action: () => setUiScale(z),
+        })),
+      },
+    ];
+    const audioItems = [
+      { text: "Normalize volume", checked: normalizeVolume, action: toggleNormalize },
+      {
+        text: "&Output device",
+        items: [
+          { text: "System default", checked: !currentAudioDevice, action: () => pickAudioDevice(null) },
+          ...(audioDevices.length ? [sep] : []),
+          ...audioDevices.map((d) => ({
+            text: menuText(d),
+            checked: currentAudioDevice === d,
+            action: () => pickAudioDevice(d),
+          })),
+        ],
+      },
+    ];
+    const helpItems = [
+      { text: "What's new and keyboard keys", action: openWhatsNew },
+      { text: "Copy diagnostic info", action: copyDiagnosticInfo },
+      {
+        text: updateBusy
+          ? "Checking for updates…"
+          : updateAvailable
+            ? `Update to ${updateAvailable}…`
+            : "Check for updates",
+        enabled: !updateBusy,
+        action: checkForUpdates,
+      },
+      sep,
+      { text: "Join our Discord", action: openDiscord },
+    ];
+    return [
+      { text: "&Play", items: playItems },
+      { text: "P&laylist", items: listItems },
+      { text: "&Skins", items: skinItems },
+      { text: "&Windows", items: windowItems },
+      ...(controllerMode ? [] : [{ text: "&Audio", items: audioItems }]),
+      sep,
+      { text: "Jump to track…", accelerator: "J", action: () => playlist.openJump() },
+      { text: "Play selected next", accelerator: "Q", action: () => playlist.toggleQueue() },
+      { text: "Copy Now Playing card", action: copyNowPlayingCard },
+      {
+        text: "Sleep &timer",
+        items: SLEEP_STEPS.map((m) => ({
+          text: m ? `${m} minutes` : "Off",
+          checked: sleepMinutes === m,
+          action: () => setSleep(m),
+        })),
+      },
+      sep,
+      ...(controllerMode ? [{ text: "Premium sign-in…", action: switchToPremium }] : []),
+      { text: "&Help", items: helpItems },
+    ];
   }
 
   // UI scale for every window (Windows tab); Ctrl+D in the main window toggles
   // 1x / 2x. The menu closes first, it's laid out at the old scale.
   /** @param {number} s */
   function setUiScale(s) {
-    closeMenu();
     invoke("set_ui_scale", { pct: Math.round(s * 100) }).catch(() => {});
   }
 
@@ -293,7 +448,6 @@
     }
   }
   async function pickAudioDevice(name) {
-    closeMenu();
     currentAudioDevice = name;
     await invoke("set_audio_device", { device: name }).catch(() => {});
     // the player was rebuilt on the new device — ask the player window to
@@ -305,7 +459,6 @@
   // for it, so the current track is picked up again the same way as after a
   // device switch.
   async function toggleNormalize() {
-    closeMenu();
     normalizeVolume = !normalizeVolume;
     await invoke("set_normalization", { enabled: normalizeVolume }).catch(() => {});
     await emit("audioDeviceChanged", {});
@@ -313,7 +466,19 @@
 
   // --- save the current queue as an app-local list (browse them in the Library
   //     window's "Spotiamp+" tree node) ---
+  // A native menu can't hold a text box, so "Save as a list…" asks for the
+  // name in a small box over the playlist (like J's).
   let newListName = $state("");
+  let saveListOpen = $state(false);
+  /** @type {HTMLInputElement | undefined} */
+  let saveListInput = $state();
+  async function openSaveList() {
+    newListName = "";
+    saveListOpen = true;
+    await tick();
+    await getCurrentWindow().setFocus().catch(() => {});
+    saveListInput?.focus();
+  }
   async function saveCurrentAsList() {
     const name = newListName.trim();
     if (!name) return;
@@ -323,9 +488,9 @@
       .map((r) => r.uri.asString);
     await invoke("save_list", { name, uris }).catch(() => {});
     newListName = "";
-    closeMenu();
+    saveListOpen = false;
+    showToast(`Saved "${name}": it's in the Library under Spotiamp+`);
   }
-  const closeMenu = () => (menu.show = false);
 
   // --- Now Playing card ---
   // One click copies a shareable image: the real player exactly as it looks
@@ -464,7 +629,6 @@
     return /** @type {Blob} */ (blob);
   }
   async function copyNowPlayingCard() {
-    closeMenu();
     try {
       // Hand the clipboard a promise so the write starts inside the click while
       // the card is still being put together.
@@ -484,50 +648,43 @@
   // Local files: pick from disk and add them straight into the playlist as
   // LocalRows (the first starts playing). Same as the player's O / Shift+O.
   async function addLocalFiles() {
-    closeMenu();
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_files").catch(() => [])
     );
     if (paths?.length) playlist.addLocalFiles(paths);
   }
   async function addLocalFolder() {
-    closeMenu();
     const paths = /** @type {string[]} */ (
       await invoke("local_pick_folder").catch(() => [])
     );
     if (paths?.length) playlist.addLocalFiles(paths);
   }
 
-  let menuTab = $state("skins");
   async function openSkinMuseum() {
-    closeMenu();
     await invoke("show_museum").catch(() => {});
   }
   async function openWhatsNew() {
-    closeMenu();
     await invoke("show_whats_new").catch(() => {});
   }
   async function copyDiagnosticInfo() {
-    closeMenu();
     await copyDiagnostics();
   }
 
   async function openDiscord() {
-    closeMenu();
     // The URL itself lives in Rust's allowlist — we only name the target.
     await invoke("open_external", { target: "discord" }).catch(() => {});
   }
 
   // --- sleep timer ---
-  // Pauses playback after a while. Cycles Off → 15 → 30 → 45 → 60 → Off; each
-  // click restarts the countdown at that length. Works in both modes, since
+  // Pauses playback after a while (Off, 15, 30, 45 or 60 minutes); picking a
+  // length restarts the countdown. Works in both modes, since
   // PauseRequested is what the player already listens for.
   let sleepMinutes = $state(0);
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let sleepTimer;
   const SLEEP_STEPS = [0, 15, 30, 45, 60];
-  function cycleSleep() {
-    const next = SLEEP_STEPS[(SLEEP_STEPS.indexOf(sleepMinutes) + 1) % SLEEP_STEPS.length];
+  /** @param {number} next minutes, 0 = off */
+  function setSleep(next) {
     clearTimeout(sleepTimer);
     sleepMinutes = next;
     if (next > 0) {
@@ -544,23 +701,22 @@
   // Controller mode → Premium: forget the mode flag and relaunch into the
   // normal OAuth + librespot path.
   async function switchToPremium() {
-    closeMenu();
     await invoke("leave_controller_mode").catch(() => {});
     await relaunch().catch(() => {});
   }
   async function chooseSkin(skin) {
     currentSkin = skin;
-    closeMenu();
+    setWorn("");
     await invoke("set_skin", { skin });
     emitWindowEvent("skinChanged", { skin });
   }
   // load a classic Winamp 2.x skin (.wsz) from disk
   async function loadWszSkin() {
-    closeMenu();
     try {
       const name = await invoke("pick_and_load_skin");
       if (name === null) return; // cancelled
       currentSkin = "custom";
+      setWorn("file");
       emitWindowEvent("skinChanged", { skin: "custom" });
     } catch (e) {
       handleError(new Error(`Could not load skin: ${e}`));
@@ -574,10 +730,10 @@
     .catch(() => {});
   const prettySkinName = (name) => name.replaceAll("_", " ");
   async function chooseBundledSkin(name) {
-    closeMenu();
     try {
       await invoke("load_bundled_skin", { name });
       currentSkin = "custom";
+      setWorn(`bundled:${name}`);
       emitWindowEvent("skinChanged", { skin: "custom" });
     } catch (e) {
       handleError(new Error(`Could not load skin: ${e}`));
@@ -630,10 +786,29 @@
     // Quietly check for a new version on launch so the pill can flag it.
     checkForUpdatesSilently();
 
+    // Right-click on the main window: the same menu, shown there.
+    /** @type {(() => void) | undefined} */
+    let unsubMenu;
+    subscribeToWindowEvent("playerWindow", (e) => {
+      if (e.MenuRequested !== undefined) showMenu("player");
+    }).then((u) => (unsubMenu = u));
+    // A skin put on from the Skin Museum window: tick it in the menu.
+    /** @type {(() => void) | undefined} */
+    let unsubSkin;
+    subscribeToWindowEvent("skinChanged", (e) => {
+      if (e.skin === "custom" && e.from === "museum") {
+        currentSkin = "custom";
+        setWorn("museum");
+      }
+    }).then((u) => (unsubSkin = u));
+
     // Cleanups
     return () => {
       cleanupDropHandler();
       playlist.dispose();
+      unsubMenu?.();
+      unsubSkin?.();
+      openedMenu?.close().catch(() => {});
     };
   });
 
@@ -1202,191 +1377,23 @@
 
   <div class="draggable-corner" use:makeResizable></div>
 
-  {#if menu.show}
-    <div
-      class="ctx-backdrop"
-      onclick={closeMenu}
-      oncontextmenu={(e) => {
-        e.preventDefault();
-        closeMenu();
-      }}
-    ></div>
-    <div class="ctx-menu" style:left="{menu.x}px" style:top="{menu.y}px">
-      <div class="ctx-tabs">
-        <!-- controller mode: no audio pipeline of our own, so no device picker -->
-        {#each (controllerMode
-          ? [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["help", "?"]]
-          : [["skins", "Skins"], ["colors", "Colors"], ["windows", "Windows"], ["audio", "Audio"], ["list", "List"], ["help", "?"]]) as [id, label]}
-          <button
-            class="ctx-tab"
-            class:ctx-tab-help={id === "help"}
-            class:active={menuTab === id}
-            title={id === "help" ? "Help" : undefined}
-            onclick={() => (menuTab = id)}>{label}</button
-          >
-        {/each}
-      </div>
-
-      {#if menuTab === "skins"}
-        <button class="ctx-item" onclick={() => chooseSkin("classic")}>
-          <span class="ctx-dot">{currentSkin === "classic" ? "●" : ""}</span>classic
-        </button>
-        {#each bundledSkins as name}
-          <button class="ctx-item" onclick={() => chooseBundledSkin(name)}>
-            <span class="ctx-dot"></span>{prettySkinName(name)}
-          </button>
-        {/each}
-        <button class="ctx-item" onclick={loadWszSkin}>
-          <span class="ctx-dot">{currentSkin === "custom" ? "●" : ""}</span>load .wsz…
-        </button>
-        <button
-          class="ctx-item"
-          title="Browse thousands of classic Winamp skins and put one on with a click"
-          onclick={openSkinMuseum}
-        >
-          <span class="ctx-dot"></span>🏛️ Skin Museum…
-        </button>
-      {:else if menuTab === "colors"}
-        {#each ["cherry", "amber", "emerald"] as s}
-          <button class="ctx-item" onclick={() => chooseSkin(s)}>
-            <span class="ctx-dot">{currentSkin === s ? "●" : ""}</span>{s}
-          </button>
-        {/each}
-      {:else if menuTab === "windows"}
-        <!-- Library and Lyrics browse/render through the librespot session; the
-             Visualizer works in both modes (loopback audio in Free Mode). -->
-        {#if !controllerMode}
-          <button
-            class="ctx-item"
-            onclick={() => {
-              closeMenu();
-              openLibraryWindow();
-            }}>Library…</button
-          >
-        {/if}
-        <button
-          class="ctx-item"
-          onclick={() => {
-            closeMenu();
-            invoke("set_visualizer_window_visible", { visible: true });
-          }}>Visualizer…</button
-        >
-        {#if !controllerMode}
-          <button
-            class="ctx-item"
-            onclick={() => {
-              closeMenu();
-              invoke("set_lyrics_window_visible", { visible: true });
-            }}>Lyrics…</button
-          >
-          <button
-            class="ctx-item"
-            onclick={() => {
-              closeMenu();
-              invoke("set_art_window_visible", { visible: true });
-            }}>Album art…</button
-          >
-        {/if}
-        <button
-          class="ctx-item"
-          onclick={() => {
-            closeMenu();
-            playlist.clear();
-          }}>Clear playlist</button
-        >
-        <button class="ctx-item" onclick={toggleAlwaysOnTop}>
-          <span class="ctx-dot">{alwaysOnTop ? "●" : ""}</span>Always on top
-        </button>
-        <button
-          class="ctx-item"
-          title="Song title on the taskbar button and in Alt+Tab, the track's progress across the button, and previous / play / next under its thumbnail"
-          onclick={toggleTaskbarExtras}
-        >
-          <span class="ctx-dot">{taskbarExtras ? "●" : ""}</span>Taskbar: title, progress, buttons
-        </button>
-        <div class="ctx-hint">Scale, every window (Ctrl+D = 2×)</div>
-        {#each [1, 1.5, 2, 3] as s}
-          <button class="ctx-item" onclick={() => setUiScale(s)}>
-            <span class="ctx-dot">{REACTIVE_WINDOW_SIZE.zoom === s ? "●" : ""}</span>{s}×
-          </button>
-        {/each}
-      {:else if menuTab === "audio"}
-        <button
-          class="ctx-item"
-          title="Evens out loudness between tracks, like Spotify's own setting"
-          onclick={toggleNormalize}
-        >
-          <span class="ctx-dot">{normalizeVolume ? "●" : ""}</span>Normalize volume
-        </button>
-        <div class="ctx-sep"></div>
-        <div class="ctx-hint">Output device</div>
-        <button class="ctx-item" onclick={() => pickAudioDevice(null)}>
-          <span class="ctx-dot">{!currentAudioDevice ? "●" : ""}</span>System default
-        </button>
-        {#each audioDevices as dev}
-          <button class="ctx-item" title={dev} onclick={() => pickAudioDevice(dev)}>
-            <span class="ctx-dot">{currentAudioDevice === dev ? "●" : ""}</span>{dev}
-          </button>
-        {/each}
-      {:else if menuTab === "list"}
-        <div class="ctx-listrow" onpointerdown={(e) => e.stopPropagation()}>
-          <input
-            class="ctx-listinput"
-            bind:value={newListName}
-            placeholder="save queue as…"
-            onkeydown={(e) => e.key === "Enter" && saveCurrentAsList()}
-          />
-          <button class="ctx-listbtn" onclick={saveCurrentAsList}>Save</button>
-        </div>
-        <div class="ctx-hint">browse lists in Library ▸ Spotiamp+</div>
-        <div class="ctx-sep"></div>
-        <button class="ctx-item" onclick={addLocalFiles}>
-          ♪ Add local file(s)…
-        </button>
-        <button class="ctx-item" onclick={addLocalFolder}>
-          ♪ Add local folder…
-        </button>
-      {:else if menuTab === "help"}
-        <button class="ctx-item" onclick={openWhatsNew}>
-          ✨ What's new &amp; keyboard keys
-        </button>
-        <button class="ctx-item" onclick={copyDiagnosticInfo}>
-          🩺 Copy diagnostic info
-        </button>
-        <div class="ctx-hint">for a bug report: paste it into /bug on Discord</div>
-      {/if}
-
-      <div class="ctx-sep"></div>
-      {#if controllerMode}
-        <!-- back to the OAuth + librespot path on next launch -->
-        <button
-          class="ctx-item"
-          title="have Premium now? switch back to full streaming mode"
-          onclick={switchToPremium}
-        >
-          ★ Premium sign-in…
-        </button>
-      {:else}
-        <button
-          class="ctx-item"
-          title="when the queue ends, keep playing similar songs (Spotify radio)"
-          onclick={() => (playlist.autoplay = !playlist.autoplay)}
-        >
-          <span class="ctx-dot">{playlist.autoplay ? "☑" : "☐"}</span>Autoplay similar
-        </button>
-      {/if}
-      <button class="ctx-item" onclick={copyNowPlayingCard}>
-        📸 Copy Now Playing card
-      </button>
-      <button class="ctx-item" onclick={cycleSleep}>
-        😴 Sleep timer: {sleepMinutes ? `${sleepMinutes} min` : "Off"}
-      </button>
-      <button class="ctx-item" onclick={checkForUpdates}>
-        {updateBusy ? "⏳ Checking…" : "⬆️ Check for updates"}
-      </button>
-      <button class="ctx-item ctx-discord" onclick={openDiscord}>
-        💬 Join our Discord
-      </button>
+  {#if saveListOpen}
+    <!-- "Save as a list…": name the list -->
+    <div class="jump-backdrop" role="presentation" onmousedown={() => (saveListOpen = false)}></div>
+    <div class="jump-box save-box" role="dialog" aria-label="Save as a list">
+      <input
+        class="jump-input"
+        bind:this={saveListInput}
+        bind:value={newListName}
+        onkeydown={(e) => {
+          if (e.key === "Enter") saveCurrentAsList();
+          else if (e.key === "Escape") saveListOpen = false;
+        }}
+        placeholder="name for this list…"
+        spellcheck="false"
+        aria-label="List name"
+      />
+      <div class="jump-empty">Enter saves it, Esc cancels. Lists live in the Library under Spotiamp+.</div>
     </div>
   {/if}
 </span>
@@ -1578,6 +1585,9 @@
     background: var(--skin-plselbg, #0000c6);
     color: var(--skin-plcurrent, #fff);
   }
+  .save-box {
+    height: auto;
+  }
   .jump-empty {
     padding: 2px 3px;
     opacity: 0.6;
@@ -1762,148 +1772,6 @@
     bottom: calc(21px * var(--zoom));
   }
 
-  /* right-click menu — classic Win98 look, like Winamp's own menus */
-  .ctx-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 200;
-  }
-  .ctx-menu {
-    position: fixed;
-    z-index: 201;
-    min-width: 196px;
-    max-width: 230px;
-    max-height: 92vh;
-    overflow-y: auto;
-    background: #d4d0c8;
-    border: 1px solid #000;
-    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
-    padding: 2px;
-    font-family: "MS Sans Serif", Tahoma, sans-serif;
-    font-size: 11px;
-    color: #000;
-  }
-  .ctx-head {
-    padding: 1px 18px 2px 6px;
-    color: #505050;
-    font-size: 10px;
-    font-weight: bold;
-  }
-  .ctx-tabs {
-    display: flex;
-    gap: 1px;
-    margin: -1px -1px 3px;
-  }
-  .ctx-tab {
-    flex: 1;
-    font-family: inherit;
-    font-size: 10px;
-    padding: 2px 2px;
-    border: 1px solid #808080;
-    border-top: none;
-    background: #bdb9ad;
-    color: #000;
-    cursor: pointer;
-  }
-  /* the "?" tab only needs its one character */
-  .ctx-tab.ctx-tab-help {
-    flex: 0 0 18px;
-  }
-  .ctx-tab.active {
-    background: #d4d0c8;
-    font-weight: bold;
-    border-color: #000;
-  }
-  .ctx-hint {
-    padding: 2px 6px;
-    color: #707070;
-    font-size: 9px;
-    font-style: italic;
-  }
-  .ctx-discord {
-    color: #5865f2;
-    font-weight: bold;
-  }
-  .ctx-discord:hover {
-    background: #5865f2;
-    color: #fff;
-  }
-  .ctx-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 2px 10px 2px 4px;
-    background: transparent;
-    border: none;
-    color: #000;
-    font-family: inherit;
-    font-size: 11px;
-    cursor: default;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ctx-item:hover {
-    background: #000080;
-    color: #fff;
-  }
-  .ctx-dot {
-    display: inline-block;
-    width: 11px;
-    text-align: center;
-  }
-  .ctx-sep {
-    height: 0;
-    border-top: 1px solid #808080;
-    border-bottom: 1px solid #fff;
-    margin: 3px 2px;
-  }
-  .ctx-listrow {
-    display: flex;
-    gap: 3px;
-    padding: 2px 4px;
-  }
-  .ctx-listinput {
-    flex: 1;
-    min-width: 0;
-    font-family: inherit;
-    font-size: 11px;
-    border: 1px solid #808080;
-    padding: 1px 3px;
-  }
-  .ctx-listbtn {
-    font-family: inherit;
-    font-size: 10px;
-    border: 1px solid #808080;
-    background: #ece9d8;
-    cursor: pointer;
-  }
-  .ctx-listitem {
-    display: flex;
-    align-items: stretch;
-  }
-  .ctx-listload {
-    flex: 1;
-    min-width: 0;
-  }
-  .ctx-count {
-    color: #808080;
-  }
-  .ctx-listload:hover .ctx-count {
-    color: #cfcfe0;
-  }
-  .ctx-del {
-    width: 16px;
-    border: none;
-    background: transparent;
-    color: #a00;
-    font-weight: bold;
-    cursor: pointer;
-  }
-  .ctx-del:hover {
-    background: #a00;
-    color: #fff;
-  }
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
   .my-playlists-btn {

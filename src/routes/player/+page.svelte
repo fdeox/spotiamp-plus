@@ -498,6 +498,15 @@
     if (!controllerMode) invoke("set_volume", { volume });
   });
 
+  // Right-click opens the app menu here too, like Winamp's main window. The
+  // playlist window builds it (the settings it ticks live there) and shows it
+  // at the pointer over this window.
+  /** @param {MouseEvent} e */
+  function openMainMenu(e) {
+    e.preventDefault();
+    emitWindowEvent("playerWindow", { MenuRequested: null });
+  }
+
   // Mouse wheel anywhere on the main window changes the volume, like Winamp:
   // 2% a notch, with "VOLUME: n%" in the ticker for a moment. Touchpads send
   // many small deltas, so they're summed until a notch's worth has built up.
@@ -1027,7 +1036,7 @@
   }
 </script>
 
-<main class:shade={shadeActive} onwheel={onWheelVolume}>
+<main class:shade={shadeActive} onwheel={onWheelVolume} oncontextmenu={openMainMenu}>
   <div class="sprite main-sprite"></div>
 
   <!-- 🦙 easter egg: click the Winamp titlebar logo -->
