@@ -10,7 +10,8 @@
     "eq",
     "lyrics",
     "art",
-    "whatsnew"
+    "whatsnew",
+    "museum"
   ],
   "permissions": [
     "core:default",

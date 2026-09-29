@@ -499,6 +499,10 @@
   }
 
   let menuTab = $state("skins");
+  async function openSkinMuseum() {
+    closeMenu();
+    await invoke("show_museum").catch(() => {});
+  }
   async function openWhatsNew() {
     closeMenu();
     await invoke("show_whats_new").catch(() => {});
@@ -1234,6 +1238,13 @@
         {/each}
         <button class="ctx-item" onclick={loadWszSkin}>
           <span class="ctx-dot">{currentSkin === "custom" ? "●" : ""}</span>load .wsz…
+        </button>
+        <button
+          class="ctx-item"
+          title="Browse thousands of classic Winamp skins and put one on with a click"
+          onclick={openSkinMuseum}
+        >
+          <span class="ctx-dot"></span>🏛️ Skin Museum…
         </button>
       {:else if menuTab === "colors"}
         {#each ["cherry", "amber", "emerald"] as s}

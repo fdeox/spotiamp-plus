@@ -183,6 +183,12 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
             || name == "NUMS_EX.BMP"
             || EXTRA_FILES.contains(&name.as_str())
         {
+            // Real sprite sheets are a few hundred KB at most; refuse anything
+            // that would unpack to something huge (skins also come from the
+            // internet now, via the Skin Museum).
+            if entry.size() > 16 * 1024 * 1024 {
+                return Err(format!("{name} in this skin is far too large"));
+            }
             let mut bytes = Vec::new();
             entry
                 .read_to_end(&mut bytes)
@@ -221,6 +227,11 @@ pub async fn pick_and_load_skin(app_handle: AppHandle) -> Result<Option<String>,
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_default(),
     ))
+}
+
+/// Put on a skin from raw .wsz bytes (the Skin Museum's downloads).
+pub fn apply_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
+    extract_wsz_bytes(bytes)
 }
 
 /// The display names of the skins embedded in the binary, for the skin menu.
