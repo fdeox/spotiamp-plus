@@ -829,6 +829,8 @@
         case "r": acted(); repeat = (repeat + 1) % 3; break;
         // J: Winamp's jump to file, opened over the playlist
         case "j": acted(); emitWindowEvent("playerWindow", { JumpRequested: null }); break;
+        // Q: queue the playlist's selection to play next, from here too
+        case "q": acted(); emitWindowEvent("playerWindow", { QueueRequested: null }); break;
         case "arrowup": acted(); volume = Math.min(100, volume + 5); break;
         case "arrowdown": acted(); volume = Math.max(0, volume - 5); break;
         case "arrowright":

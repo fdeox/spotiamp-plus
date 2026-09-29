@@ -386,6 +386,9 @@ export class Playlist {
                 } else if (event.JumpRequested !== undefined) {
                     // J pressed in the main window, like Winamp
                     this.openJump();
+                } else if (event.QueueRequested !== undefined) {
+                    // Q pressed in the main window: queue the playlist's selection
+                    this.toggleQueue();
                 } else if (event.PlayerReady !== undefined) {
                     this.playerReady = true;
                     this.maybeCueResume();
