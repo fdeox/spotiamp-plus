@@ -682,6 +682,12 @@
       emitWindowEvent("art", {
         uri: nowUri,
         playing: playerState == "playing",
+        // for the fullscreen visualizer's song-title flash (local files too)
+        title: loadedTrack
+          ? loadedTrack.artist
+            ? `${loadedTrack.artist} - ${loadedTrack.name}`
+            : loadedTrack.name
+          : "",
       });
       if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
     }, 1000);

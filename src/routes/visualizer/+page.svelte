@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
@@ -72,6 +73,69 @@
   const togglePin = () => (pinned = !pinned);
 
   const close = () => invoke("set_visualizer_window_visible", { visible: false });
+
+  // Fullscreen, MilkDrop-style: double-click the picture (or Alt+Enter / F11)
+  // to fill the monitor, Esc or another double-click to come back. The frame
+  // goes away, and the cursor and the little overlays hide when the mouse rests.
+  const appWindow = getCurrentWindow();
+  let fullscreen = $state(false);
+  let idle = $state(false);
+  let idleTimer;
+  function wake() {
+    idle = false;
+    clearTimeout(idleTimer);
+    if (fullscreen) idleTimer = setTimeout(() => (idle = true), 2500);
+  }
+  async function setFullscreen(on) {
+    if (on === fullscreen) return;
+    fullscreen = on;
+    try {
+      await appWindow.setFullscreen(on);
+    } catch (e) {
+      fullscreen = !on;
+      console.error("fullscreen failed", e);
+    }
+    wake();
+    if (fullscreen) flashTitle();
+  }
+
+  // The first click of a double-click has already stepped the pattern; the
+  // double-click puts it back, so going fullscreen keeps what you were watching.
+  let modeBeforeClick = null;
+  function onCanvasClick(e) {
+    if (e.detail > 1) return;
+    modeBeforeClick = mode;
+    nextMode();
+  }
+  function onCanvasDblClick() {
+    if (modeBeforeClick !== null) mode = modeBeforeClick;
+    modeBeforeClick = null;
+    setFullscreen(!fullscreen);
+  }
+
+  function onKey(e) {
+    if (e.key === "Escape" && fullscreen) {
+      e.preventDefault();
+      setFullscreen(false);
+    } else if (e.key === "F11" || (e.key === "Enter" && e.altKey)) {
+      e.preventDefault();
+      setFullscreen(!fullscreen);
+    }
+  }
+
+  // Song title, shown for a few seconds on each track change while fullscreen
+  // (and once on entering it), the way MilkDrop does.
+  let songTitle = "";
+  let titleShown = $state("");
+  let titleSeq = $state(0);
+  let titleTimer;
+  function flashTitle() {
+    if (!songTitle) return;
+    titleShown = songTitle;
+    titleSeq++;
+    clearTimeout(titleTimer);
+    titleTimer = setTimeout(() => (titleShown = ""), 6000);
+  }
 
   const FRAG = `
     precision highp float;
@@ -900,8 +964,17 @@
         Math.min(window.devicePixelRatio || 1, 2) * (REACTIVE_WINDOW_SIZE.zoom || 1),
         4,
       );
-      const w = Math.floor(canvas.clientWidth * dpr);
-      const h = Math.floor(canvas.clientHeight * dpr);
+      let w = Math.floor(canvas.clientWidth * dpr);
+      let h = Math.floor(canvas.clientHeight * dpr);
+      // Fullscreen on a 4K monitor would be over 8 million shader pixels a
+      // frame. Past about 1080p worth, render smaller and let it upscale (the
+      // picture is soft anyway); normal window sizes never get here.
+      const MAX_PIXELS = 1920 * 1080;
+      if (w * h > MAX_PIXELS) {
+        const k = Math.sqrt(MAX_PIXELS / (w * h));
+        w = Math.floor(w * k);
+        h = Math.floor(h * k);
+      }
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -960,12 +1033,43 @@
       }
     }).then((u2) => (unsub = u2));
 
+    // The player sends the current track once a second on the art channel.
+    let unsubArt;
+    subscribeToWindowEvent("art", (e) => {
+      const t = e.title || "";
+      if (t !== songTitle) {
+        songTitle = t;
+        if (fullscreen) flashTitle();
+      }
+    }).then((u) => (unsubArt = u));
+
+    // Fullscreen can also end from outside (hidden from the player's menu,
+    // Win+Down): follow the real window state so the frame comes back.
+    let unsubResized;
+    appWindow
+      .onResized(() => {
+        appWindow
+          .isFullscreen()
+          .then((on) => {
+            if (on !== fullscreen) {
+              fullscreen = on;
+              wake();
+            }
+          })
+          .catch(() => {});
+      })
+      .then((u) => (unsubResized = u));
+
     return () => {
       running = false;
       cancelAnimationFrame(raf);
       clearTimeout(pollTimer);
       clearInterval(cycle);
+      clearTimeout(idleTimer);
+      clearTimeout(titleTimer);
       if (unsub) unsub();
+      unsubArt?.();
+      unsubResized?.();
     };
   });
 
@@ -990,7 +1094,9 @@
   }
 </script>
 
-<div class="viz-window">
+<svelte:window onkeydown={onKey} onmousemove={wake} />
+
+<div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle}>
   <div class="viz-titlebar" use:makeVizDraggable>
     <div class="viz-tl"></div>
     <span class="viz-title">VISUALIZER</span>
@@ -1002,9 +1108,18 @@
     <canvas
       bind:this={canvas}
       class="viz-canvas"
-      onclick={nextMode}
-      title="click to change pattern"
+      onclick={onCanvasClick}
+      ondblclick={onCanvasDblClick}
+      title={fullscreen ? "" : "click: next pattern · double-click: fullscreen"}
     ></canvas>
+    {#if fullscreen}
+      <span class="viz-fshint">Double-click or Esc to exit fullscreen</span>
+    {/if}
+    {#key titleSeq}
+      {#if fullscreen && titleShown}
+        <div class="viz-songtitle">{titleShown}</div>
+      {/if}
+    {/key}
     <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
     <button
       class="viz-pin"
@@ -1181,5 +1296,87 @@
     height: 16px;
     cursor: nwse-resize;
     z-index: 20;
+  }
+
+  /* Fullscreen: just the picture, edge to edge. */
+  .viz-window.fs {
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    background: #000;
+  }
+  .fs .viz-titlebar,
+  .fs .viz-resize {
+    display: none;
+  }
+  .fs .viz-stage {
+    margin: 0;
+    border: none;
+    box-shadow: none;
+  }
+  .fs .viz-canvas {
+    cursor: default;
+  }
+  .fs .viz-preset,
+  .fs .viz-pin {
+    font-size: 12px;
+    transition: opacity 0.4s;
+  }
+  /* mouse at rest: hide the cursor and the overlays */
+  .idle,
+  .idle .viz-canvas {
+    cursor: none;
+  }
+  .idle .viz-preset,
+  .idle .viz-pin,
+  .idle .viz-fshint {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .viz-fshint {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: monospace;
+    font-size: 12px;
+    color: #6effa0;
+    text-shadow: 0 0 3px #000, 0 0 2px #000;
+    opacity: 0.6;
+    pointer-events: none;
+    transition: opacity 0.4s;
+  }
+  .viz-songtitle {
+    position: absolute;
+    left: 50%;
+    bottom: 14%;
+    transform: translateX(-50%);
+    max-width: 86%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: clamp(16px, 3vw, 44px);
+    font-weight: 600;
+    color: #fff;
+    text-shadow:
+      0 0 10px rgba(110, 255, 160, 0.55),
+      0 2px 4px #000;
+    pointer-events: none;
+    animation: viz-songtitle 6s ease forwards;
+  }
+  @keyframes viz-songtitle {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, 8px);
+    }
+    10%,
+    80% {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    100% {
+      opacity: 0;
+    }
   }
 </style>

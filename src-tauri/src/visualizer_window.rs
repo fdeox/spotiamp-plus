@@ -55,6 +55,11 @@ pub async fn set_visualizer_window_visible(
         window.show().map_err(|_| ())?;
         window.set_focus().map_err(|_| ())?;
     } else {
+        // Leave fullscreen first so the dock sees the real window rect, and it
+        // comes back windowed next time.
+        if window.is_fullscreen().unwrap_or(false) {
+            let _ = window.set_fullscreen(false);
+        }
         window.hide().map_err(|_| ())?;
     }
     app_window::set_dock_visible(&window, visible);

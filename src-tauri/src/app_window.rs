@@ -200,6 +200,12 @@ pub fn remember_position(
             if physical_position.x <= -30000 || physical_position.y <= -30000 {
                 return;
             }
+            // A fullscreen visualizer sits at the monitor's corner; that isn't
+            // where the window lives, and quitting in fullscreen would otherwise
+            // reopen it there.
+            if window.is_fullscreen().unwrap_or(false) {
+                return;
+            }
             save_position(
                 physical_position.to_logical(
                     window.scale_factor().unwrap_or_else(|_| {
