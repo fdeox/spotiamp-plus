@@ -542,6 +542,18 @@
     lastTypedHintAt = now;
     untrack(() => showToast("Press J to jump to a track"));
   });
+  // An add skipped songs already in the playlist (no song is listed twice).
+  $effect(() => {
+    const { count, seq } = playlist.duplicateNotice;
+    if (!seq) return;
+    untrack(() =>
+      showToast(
+        count === 1
+          ? "That song is already in the playlist"
+          : `${count} songs were already in the playlist, skipped`,
+      ),
+    );
+  });
 
   /** @param {string} src @returns {Promise<HTMLImageElement>} */
   function loadImage(src) {
@@ -791,7 +803,7 @@
     await playlist.clear();
     // uri is "spotify:playlist:ID" but addUrls expects an open.spotify.com URL
     const id = uri.split(":").pop();
-    await playlist.addUrls([`https://open.spotify.com/playlist/${id}`]);
+    await playlist.addUrls([`https://open.spotify.com/playlist/${id}`], false);
   }
 
 

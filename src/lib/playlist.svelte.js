@@ -396,7 +396,7 @@ export class Playlist {
                 } else if (event.UrlsDropped) {
                     const urls = event.UrlsDropped;
                     this.clear().then(() => {
-                        this.addUrls(urls);
+                        this.addUrls(urls, false);
                     });
                 } else if (event.UrlsAppended) {
                     // append without clearing (e.g. adding one search result)
@@ -497,17 +497,25 @@ export class Playlist {
     }
 
     /**
-     * Add a single track row to the playlist (without persisting).
+     * Add a single track row to the playlist (without persisting). A song
+     * already in the list isn't added a second time.
      * @param {SpotifyUri} uri
+     * @returns {Promise<boolean>} false if it was already there
      */
     async addTrackRow(uri) {
+        if (this.rows.some((r) => r.uri?.asString === uri.asString)) return false;
         const row = new TrackRow(uri, this);
         this.rows.push(row);
         this.schedulePreload(3000);
         if (!this.loadedRow) {
             await row.loadTrack();
         }
+        return true;
     }
+
+    /** Bumped when an add skipped songs already in the list, so the page can
+     *  say so instead of the drop seeming to do nothing. */
+    duplicateNotice = $state({ count: 0, seq: 0 });
 
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     preloadTimer = undefined;
@@ -578,8 +586,10 @@ export class Playlist {
      * individual track URIs so the playlist always consists of concrete tracks
      * (whose metadata is still lazily loaded as they enter the viewport).
      * @param {SpotifyUri} uri
+     * @returns {Promise<number>} how many songs were skipped as already listed
      */
     async addUri(uri) {
+        let skipped = 0;
         if (uri.type == "playlist" || uri.type == "album") {
             // get_track_ids returns {uri, added_ms} refs (for the library's Date
             // column); here we only need the uris.
@@ -589,24 +599,31 @@ export class Playlist {
                 trackRefs = await invoke("get_track_ids", { uri: uri.asString });
             } catch (e) {
                 console.warn(`Could not expand ${uri.asString}`, e);
-                return;
+                return 0;
             }
             for (const ref of trackRefs) {
-                await this.addTrackRow(SpotifyUri.fromString(ref.uri));
+                if (!(await this.addTrackRow(SpotifyUri.fromString(ref.uri)))) skipped++;
             }
-        } else {
-            await this.addTrackRow(uri);
+        } else if (!(await this.addTrackRow(uri))) {
+            skipped++;
         }
+        return skipped;
     }
 
     /**
      * @param {string[]} urls
+     * @param {boolean} [notify] say if songs already in the list were skipped
+     *   (off when the list was just cleared for these: nothing was "already" there)
      */
-    async addUrls(urls) {
+    async addUrls(urls, notify = true) {
+        let skipped = 0;
         for (const url of urls) {
-            await this.addUri(SpotifyUri.fromUrl(url));
+            skipped += await this.addUri(SpotifyUri.fromUrl(url));
         }
         this.persist();
+        if (notify && skipped) {
+            this.duplicateNotice = { count: skipped, seq: this.duplicateNotice.seq + 1 };
+        }
     }
 
     /**
@@ -635,6 +652,9 @@ export class Playlist {
      * @param {string} path
      */
     async addLocalRow(path) {
+        // Already listed: hand back that row instead of adding it again.
+        const existing = this.rows.find((r) => r instanceof LocalRow && r.path === path);
+        if (existing) return /** @type {LocalRow} */ (existing);
         let meta;
         try {
             const m = await invoke("local_metadata", { path });
@@ -1018,8 +1038,9 @@ export class Playlist {
         /** @type {Row[]} */
         const added = [];
         for (const uri of picks) {
-            await this.addTrackRow(SpotifyUri.fromString(uri));
-            added.push(this.rows[this.rows.length - 1]);
+            if (await this.addTrackRow(SpotifyUri.fromString(uri))) {
+                added.push(this.rows[this.rows.length - 1]);
+            }
         }
         if (how === "queue") this.queue = [...this.queue, ...added];
         this.persist();
