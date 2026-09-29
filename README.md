@@ -38,7 +38,20 @@ docking windows that snap together like classic Winamp.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
   a two-pane Library (playlists + tracks), load or queue anything. In the
   **Library window**, just start typing a song or artist name and the selection
-  jumps to it (what you typed shows in the header).
+  jumps to it (what you typed shows in the header). **Pin** your favourite
+  playlists to the top (right-click one), and **drag** songs or whole playlists
+  from the Library onto the playlist.
+- 🕘 **Recently played & Most played** — two lists in the Library, kept on your
+  own computer by Spotiamp+ (nothing is sent anywhere).
+- 🔢 **Jump to track & queue** — press **J** and type part of a song's name to
+  find it in the playlist (arrows pick, **Enter** plays); press **Q** to play
+  the selected song next. The number on a row is its place in the queue.
+- 🪄 **Instant mix** — right-click → *Instant mix*: 20 songs like the selected
+  one, added to the end of the playlist or queued to play next.
+- ⏯️ **Picks up where you left off** — your last track is ready at the same
+  spot when you open the app again.
+- 🚫 **No duplicates** — a song is never listed twice; adding one that's
+  already there says so instead.
 - 🔎 **Spotify catalogue search** — search the whole catalogue right in the
   Library. Double-clicking a search result **adds it to the end of the current
   playlist** (it doesn't replace what's playing), so you can build a playlist by
@@ -49,25 +62,38 @@ docking windows that snap together like classic Winamp.
   behind it (biquad peaking filters on the decoded audio), preamp, presets and
   the animated response curve. **Load and save `.EQF` presets** (yours, or real
   Winamp ones). Plus a **balance** slider next to the volume.
-- 🎨 **Skins** — right-click the playlist to switch skins live: **Classic**,
+- 🎨 **Skins** — right-click → *Skins* to switch skins live: **Classic**,
   **Cherry**, **Amber**, **Emerald**, plus **six bundled classic Winamp skins**
   right in the menu — the *Classified* series by
   [Victhor](https://victhor.deviantart.com/) and the Sony/Nucleo hardware-style
-  skins (all rights remain with their original authors). Or **load any classic
-  Winamp 2.x skin (`.wsz`)** with *load .wsz…* — thousands are free at the
-  [Winamp Skin Museum](https://skins.webamp.org/). Every window — player,
+  skins (all rights remain with their original authors). Open the
+  **Skin Museum** right inside Spotiamp+ (*Skins → Skin Museum…*) to browse
+  thousands of classic skins from the
+  [Winamp Skin Museum](https://skins.webamp.org/) and put one on with a click,
+  or **load any Winamp 2.x skin (`.wsz`)** from disk. Every window — player,
   equalizer, playlist **and the media library** — reskins live and persists
   across restarts.
-- 🌀 **WebGL visualizer** — a window with **50 audio-reactive patterns**:
-  spectrum analysers, VU meters, a scrolling spectrogram, a Milkdrop-style
-  feedback mode and more, cycling on click, on a timer, and on every track
-  change.
+- 🌀 **WebGL visualizer** — a window with **100 audio-reactive patterns**:
+  spectrum analysers, VU meters, a scrolling spectrogram, Milkdrop-style
+  feedback modes, synthwave, a spinning record and more, cycling on click, on
+  a timer, and on every track change. **Double-click it for fullscreen**
+  (**Esc** to come back).
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
-  line in time with playback (right-click the playlist → *Lyrics…*).
+  line in time with playback; **click a line to jump the song there**
+  (right-click → *Windows → Lyrics*).
 - 🖼️ **Album art window** — the current cover in its own resizable window that
-  docks like the others (right-click the playlist → *Windows* → *Album art…*).
+  docks like the others (right-click → *Windows → Album art*).
+- 🔍 **Scale** — every window at 1×, 1.5×, 2× or 3× (right-click →
+  *Windows → Scale*), or **Ctrl+D** for 2×.
+- 🔊 **Normalize volume** — evens out loudness between songs (right-click →
+  *Audio*), like Spotify's own setting. Pick the **output device** there too.
+- 📌 **Taskbar extras** (optional) — the song title on the taskbar button,
+  progress across it and ⏮ ⏯ ⏭ buttons under its thumbnail (right-click →
+  *Windows*).
+- 🖼️ **Now Playing card** — right-click → *Copy Now Playing card*: an image of
+  the player and the song, ready to paste into Discord or anywhere.
 - 😴 **Sleep timer** — pause playback after 15, 30, 45 or 60 minutes (right-click
-  the playlist → *Sleep timer*; each click steps to the next length).
+  → *Sleep timer*).
 - 🎛️ **Media keys** — the play/pause/next keys on your keyboard and the buttons
   on your headset control playback even when Spotiamp+ is in the background
   (registered through the Windows media session).
@@ -83,9 +109,16 @@ docking windows that snap together like classic Winamp.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
-- 🔄 **Built-in updater** — Spotiamp+ flags a new version on launch, and *Check
-  for updates* in the right-click menu downloads and installs it (signed).
-- ⌨️ **Keyboard shortcuts** — classic Winamp keys (see below).
+- 🔄 **Built-in updater** — Spotiamp+ flags a new version on launch, and
+  right-click → *Help → Check for updates* downloads and installs it (signed).
+  After an update, a *What's new* window lists the changes once.
+- 🩺 **Diagnostic info** — something wrong? Right-click → *Help → Copy
+  diagnostic info* (or the button in an error box) copies what's needed for a
+  bug report.
+- 🖱️ **Winamp-style right-click menu** — on the playlist and the main window,
+  with each key shown next to what it does.
+- ⌨️ **Keyboard shortcuts** — classic Winamp keys that work from every window
+  (see below), plus the **mouse wheel** over the main window for volume.
 
 ## Screenshots
 
@@ -103,8 +136,9 @@ docking windows that snap together like classic Winamp.
 
 ### Load any classic Winamp skin
 
-Right-click the playlist → *load .wsz…* (or pick one of the bundled skins). Every
-window — player, equalizer, playlist and library — reskins live.
+Right-click → *Skins → Skin Museum…* to browse and put one on with a click, or
+*Skins → Load .wsz from disk…* (or pick one of the bundled skins). Every window —
+player, equalizer, playlist and library — reskins live.
 
 | Bento Classified | Winamp3 Classified | Winamp5 Classified |
 | :--------------: | :----------------: | :----------------: |
@@ -122,19 +156,27 @@ window — player, equalizer, playlist and library — reskins live.
 3. Launch Spotiamp+ and log in with your Spotify account — **Premium** streams
    directly, **Free** falls back to Free Mode.
 
-From then on, **Check for updates** in the right-click menu keeps you current —
-no need to revisit this page. Windows 10/11 (x64) only for now.
+From then on, right-click → *Help → Check for updates* keeps you current — no
+need to revisit this page. Windows 10/11 (x64) only for now.
 
 ## Keyboard shortcuts
 
-**Main window**
+These work in the main window **and every other window** (equalizer,
+playlist, visualizer, lyrics, album art). In the Library, typing searches
+instead, so there only `Ctrl+D` works. The right-click menu shows each key next
+to what it does.
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
 | `Z` `X` `C` `V` `B` | prev / play / pause / stop / next | `Space` | play–pause |
-| `↑` `↓` | volume | `←` `→` | seek ∓5s |
-| `S` | shuffle | `R` | repeat |
+| `↑` `↓` / mouse wheel | volume | `←` `→` | seek ∓5s |
+| `S` | shuffle | `R` | repeat (off / all / one) |
+| `J` | jump to a track | `Q` | play the selected track next |
 | `L` | open Library | `O` / `Shift+O` | add local file(s) / folder |
+| `Ctrl+D` | everything 2× bigger | | |
+
+The mouse wheel works over the main window. In the playlist window the arrow
+keys move the selection instead (see below).
 
 **Playlist window**
 
@@ -144,7 +186,10 @@ no need to revisit this page. Windows 10/11 (x64) only for now.
 | `Delete` | remove selected |
 | `Enter` | play selected |
 | `↑` `↓` | move selection (`Shift` extends it, `Alt+↑/↓` reorders) |
-| `Z X C V B` | transport (forwarded to the player) |
+
+Typing letters in the playlist doesn't search, because letters are shortcuts:
+press **`J`** and type part of a song's name, pick with `↑` `↓`, `Enter` plays
+it, `Esc` closes.
 
 **Library window**
 
@@ -152,8 +197,8 @@ no need to revisit this page. Windows 10/11 (x64) only for now.
 | --- | --- |
 | start typing | jump to the first track whose title (or artist) matches |
 
-Double-click the main window's spectrum to open the visualizer; click the
-visualizer to cycle patterns.
+**Visualizer:** double-click the main window's spectrum to open it; click it to
+cycle patterns, double-click it for fullscreen, `Esc` to come back.
 
 **In the Library, double-click…**
 
