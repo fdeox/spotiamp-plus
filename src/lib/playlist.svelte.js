@@ -441,9 +441,11 @@ export class Playlist {
             this.startupRow = this.loadedRow;
             this.rowsRestored = true;
             this.maybeCueResume();
+            this.schedulePreload(5000);
         })();
 
         this.dispose = () => {
+            clearTimeout(this.preloadTimer);
             document.removeEventListener("keydown", playlistKeyDownListener);
             playerWindowSubscription.then((unlisten) => unlisten());
             playerSubscription.then((unlisten) => unlisten());
@@ -480,8 +482,73 @@ export class Playlist {
     async addTrackRow(uri) {
         const row = new TrackRow(uri, this);
         this.rows.push(row);
+        this.schedulePreload(3000);
         if (!this.loadedRow) {
             await row.loadTrack();
+        }
+    }
+
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    preloadTimer = undefined;
+    preloadRunning = false;
+    preloadAgain = false;
+
+    /**
+     * Fill in every row's track info in the background, not just the rows that
+     * have scrolled into view: the total time at the bottom then counts the
+     * whole list, and J has every name ready. Starts a moment after rows stop
+     * arriving, two requests at a time with a short breather so a long playlist
+     * doesn't hammer Spotify. Not in Free Mode (no session to ask).
+     * @param {number} delayMs
+     */
+    schedulePreload(delayMs) {
+        if (!this.persistEnabled) return;
+        clearTimeout(this.preloadTimer);
+        this.preloadTimer = setTimeout(() => this.preloadAll(), delayMs);
+    }
+
+    async preloadAll() {
+        // Wait for the saved playlist to finish coming back first.
+        if (!this.rowsRestored) return this.schedulePreload(3000);
+        if (this.preloadRunning) {
+            this.preloadAgain = true;
+            return;
+        }
+        this.preloadRunning = true;
+        let failures = 0;
+        try {
+            const pending = this.rows.filter(
+                (r) => r instanceof TrackRow && !r.track && !r.trackPromise,
+            );
+            let next = 0;
+            const worker = async () => {
+                while (next < pending.length && failures < 5) {
+                    const row = /** @type {TrackRow} */ (pending[next++]);
+                    // skip rows loaded meanwhile or no longer in the list
+                    if (row.track || row.trackPromise || !this.rows.includes(row)) continue;
+                    try {
+                        await row.populateTrack();
+                        failures = 0;
+                    } catch {
+                        // Most likely the session isn't up (yet): leave the row
+                        // as not-loaded rather than stuck on "Failed to load", so
+                        // scrolling to it or the next round can try again.
+                        failures++;
+                        row.trackPromise = undefined;
+                        row.loadingMessage = "loading…";
+                    }
+                    await new Promise((r) => setTimeout(r, 40));
+                }
+            };
+            await Promise.all([worker(), worker()]);
+        } finally {
+            this.preloadRunning = false;
+        }
+        // Several failures in a row: Spotify's unreachable for now, try later.
+        if (failures >= 5) this.schedulePreload(60000);
+        else if (this.preloadAgain) {
+            this.preloadAgain = false;
+            this.schedulePreload(1000);
         }
     }
 
