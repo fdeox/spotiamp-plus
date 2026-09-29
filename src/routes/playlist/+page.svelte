@@ -303,6 +303,22 @@
     }
   }
 
+  // Instant mix: songs like the selected (or playing) one, from Spotify radio.
+  /** @param {"append" | "queue"} how */
+  async function runInstantMix(how) {
+    showToast("Finding similar songs…");
+    try {
+      const { added, seed } = await playlist.instantMix(how);
+      showToast(
+        added
+          ? `Added ${added} songs like ${seed || "that one"}${how === "queue" ? ", playing next" : ""}`
+          : "Select a Spotify song for the mix first",
+      );
+    } catch {
+      showToast("Couldn't get a mix right now");
+    }
+  }
+
   /** A literal "&" in a Windows menu needs doubling (a single one marks the Alt key). */
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
@@ -413,6 +429,17 @@
       sep,
       { text: "Jump to track…", accelerator: "J", action: () => playlist.openJump() },
       { text: "Play selected next", accelerator: "Q", action: () => playlist.toggleQueue() },
+      ...(controllerMode
+        ? []
+        : [
+            {
+              text: "Instant &mix: 20 similar songs",
+              items: [
+                { text: "Add them to the end of the playlist", action: () => runInstantMix("append") },
+                { text: "Queue them to play next", action: () => runInstantMix("queue") },
+              ],
+            },
+          ]),
       { text: "Copy Now Playing card", action: copyNowPlayingCard },
       {
         text: "Sleep &timer",

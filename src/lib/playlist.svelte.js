@@ -999,6 +999,33 @@ export class Playlist {
      * The queue ran out with autoplay on: append Spotify radio seeded from the
      * last track and keep playing. Falls back to stopping if nothing comes back.
      */
+    /**
+     * Instant mix: 20 songs like the selected one (or the one playing), from
+     * Spotify's radio for it, skipping any already in the list. Added at the
+     * end, or queued to play next.
+     * @param {"append" | "queue"} how
+     * @returns {Promise<{added: number, seed: string}>} seed = its name
+     */
+    async instantMix(how) {
+        const seedRow =
+            this.selectedRows.find((r) => r instanceof TrackRow) ??
+            (this.loadedRow instanceof TrackRow ? this.loadedRow : undefined);
+        const seed = seedRow?.uri?.asString;
+        if (!seed || !(seedRow instanceof TrackRow)) return { added: 0, seed: "" };
+        const uris = /** @type {string[]} */ (await invoke("get_radio", { uri: seed }));
+        const have = new Set(this.rows.map((r) => r.uri?.asString));
+        const picks = (uris ?? []).filter((u) => !have.has(u)).slice(0, 20);
+        /** @type {Row[]} */
+        const added = [];
+        for (const uri of picks) {
+            await this.addTrackRow(SpotifyUri.fromString(uri));
+            added.push(this.rows[this.rows.length - 1]);
+        }
+        if (how === "queue") this.queue = [...this.queue, ...added];
+        this.persist();
+        return { added: added.length, seed: seedRow.track?.name ?? "" };
+    }
+
     async autoplayFromRadio() {
         if (this.autoplayBusy) return;
         this.autoplayBusy = true;

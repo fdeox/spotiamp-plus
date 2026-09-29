@@ -276,6 +276,44 @@
     }
   }
 
+  // Listening history (history.rs → Library ▸ Recently played / Most played).
+  // A play counts after 30 s, or half of a short track, the usual scrobbling
+  // rule; if it keeps going, the longer listening time is noted when it ends.
+  // Kept on this computer only. Not in Free Mode (the Spotify app plays there).
+  let playLog = { key: "", startedAt: 0, ms: 0, loggedMs: 0 };
+  function historyTick() {
+    if (controllerMode) return;
+    const key = !loadedTrack
+      ? ""
+      : loadedTrack.isLocal
+        ? `local:${loadedTrack.path}`
+        : (loadedTrack.uri?.asString ?? "");
+    if (key !== playLog.key) {
+      finishPlay();
+      playLog = { key, startedAt: Date.now(), ms: 0, loggedMs: 0 };
+    }
+    if (!key || playerState != "playing") return;
+    playLog.ms += 1000;
+    const duration = loadedTrack?.durationInMs || 0;
+    if (!playLog.loggedMs && (playLog.ms >= 30000 || (duration > 0 && playLog.ms >= duration / 2))) {
+      playLog.loggedMs = playLog.ms;
+      invoke("history_add", {
+        entry: {
+          uri: key,
+          title: loadedTrack?.name ?? "",
+          artist: loadedTrack?.artist ?? "",
+          at: playLog.startedAt,
+          ms: playLog.ms,
+        },
+      }).catch(() => {});
+    }
+  }
+  function finishPlay() {
+    if (playLog.loggedMs && playLog.ms - playLog.loggedMs >= 10000) {
+      invoke("history_extend", { at: playLog.startedAt, ms: playLog.ms }).catch(() => {});
+    }
+  }
+
   // Resume last session: remember the Spotify track and spot (every 10 s of
   // playback, and on pause / stop) so the next launch can cue it.
   /** @param {number} [ms] */
@@ -745,6 +783,7 @@
         durationMs: loadedTrack?.durationInMs ?? 0,
       }).catch(() => {});
       if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
+      historyTick();
     }, 1000);
 
     const playlistWindowEventSubscription = subscribeToWindowEvent(

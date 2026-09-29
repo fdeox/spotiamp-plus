@@ -208,6 +208,9 @@ pub struct Settings {
     /// App-local named lists (Winamp-style playlists kept in the app).
     #[serde(default)]
     pub saved_lists: Vec<SavedList>,
+    /// Spotify playlists pinned to the top of the Library (uris, in order).
+    #[serde(default)]
+    pub pinned_playlists: Vec<String>,
     /// Controller ("free") mode: instead of streaming through librespot —
     /// which a non-Premium account can't do — Spotiamp+ mirrors and drives
     /// the official Spotify app through the Windows media session. Persisted

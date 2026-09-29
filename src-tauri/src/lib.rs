@@ -20,6 +20,7 @@ mod taskbar;
 mod diagnostics;
 mod whatsnew_window;
 mod museum;
+mod history;
 mod capture;
 mod lists;
 mod local_player;
@@ -459,6 +460,13 @@ pub fn run() {
             museum::museum_apply,
             museum::show_museum,
             museum::close_museum,
+            history::history_add,
+            history::history_extend,
+            history::history_recent,
+            history::history_top,
+            history::history_clear,
+            lists::get_pinned_playlists,
+            lists::set_playlist_pinned,
             player_window::get_skin,
             player_window::set_skin,
             wsz::pick_and_load_skin,

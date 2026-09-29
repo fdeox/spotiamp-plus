@@ -28,6 +28,21 @@ pub fn delete_list(name: String) {
     Settings::current_mut().saved_lists.retain(|l| l.name != name);
 }
 
+/// Spotify playlists pinned to the top of the Library (their uris, in order).
+#[tauri::command]
+pub fn get_pinned_playlists() -> Vec<String> {
+    Settings::current().pinned_playlists.clone()
+}
+
+#[tauri::command]
+pub fn set_playlist_pinned(uri: String, pinned: bool) {
+    let mut settings = Settings::current_mut();
+    settings.pinned_playlists.retain(|u| u != &uri);
+    if pinned && !uri.is_empty() {
+        settings.pinned_playlists.push(uri);
+    }
+}
+
 /// Append a track to a list (creating the list if it doesn't exist). Ignores
 /// duplicates so the same track isn't added twice.
 #[tauri::command]

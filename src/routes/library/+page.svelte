@@ -5,10 +5,26 @@
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
+  import { Menu } from "@tauri-apps/api/menu";
+  import { ask } from "@tauri-apps/plugin-dialog";
 
   // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
   // typing letters in the Library searches the list.
   onMount(() => forwardShortcuts({ keys: new Set() }));
+
+  // Rows and playlists here can be dragged onto the playlist window. Dropped
+  // back on the Library itself, the webview would open the link and lose the
+  // page, so drops here are simply ignored.
+  onMount(() => {
+    /** @param {DragEvent} e */
+    const ignore = (e) => e.preventDefault();
+    window.addEventListener("dragover", ignore);
+    window.addEventListener("drop", ignore);
+    return () => {
+      window.removeEventListener("dragover", ignore);
+      window.removeEventListener("drop", ignore);
+    };
+  });
 
   let playlists = $state([]);
   let loading = $state(true);
@@ -64,7 +80,8 @@
   // tree UI state
   let expandLocal = $state(true);
   let expandPlaylists = $state(true);
-  // which tree item is active: "search" | "liked" | "list:<name>" | a playlist uri
+  // which tree item is active: "search" | "liked" | "recent" | "top" | "list:<name>" | a playlist uri
+  /** @type {string | null} */
   let activeNode = $state(null);
   // selected row in the track list (for the Play / Enqueue buttons)
   let selectedTrack = $state(-1);
@@ -439,6 +456,117 @@
     }
   }
 
+  // --- listening history (history.rs): Recently played / Most played ---
+  /** @param {"recent" | "top"} kind */
+  async function selectHistory(kind) {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = kind;
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      /** @type {{uri: string, at: number, plays: number}[]} */
+      const items = await invoke(kind === "recent" ? "history_recent" : "history_top", { limit: 100 });
+      if (token !== loadToken) return;
+      // Spotify tracks only here: this pane reads Spotify metadata.
+      const spotify = items.filter((i) => i.uri.startsWith("spotify:track:"));
+      trackUris = spotify.map((i) => i.uri);
+      // the Date column shows when each was last played
+      await loadTrackMetas(spotify.map((i) => ({ uri: i.uri, added_ms: i.at })), token);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+  /** @param {"recent" | "top"} kind */
+  async function loadHistoryIntoMain(kind) {
+    try {
+      /** @type {{uri: string}[]} */
+      const items = await invoke(kind === "recent" ? "history_recent" : "history_top", { limit: 100 });
+      const urls = items.filter((i) => i.uri.startsWith("spotify:track:")).map((i) => trackUrl(i.uri));
+      if (urls.length) emitWindowEvent("playerWindow", { UrlsDropped: urls });
+    } catch {
+      /* nothing to load */
+    }
+  }
+  async function clearHistory() {
+    const sure = await ask("Forget everything Spotiamp+ has noted as played on this computer?", {
+      title: "Clear listening history",
+      kind: "warning",
+    }).catch(() => false);
+    if (!sure) return;
+    await invoke("history_clear").catch(() => {});
+    if (activeNode === "recent" || activeNode === "top") selectHistory(activeNode);
+  }
+
+  // --- pinned playlists (kept in the settings) ---
+  /** @type {string[]} */
+  let pinned = $state([]);
+  invoke("get_pinned_playlists")
+    .then((uris) => (pinned = /** @type {string[]} */ (uris)))
+    .catch(() => {});
+  const pinnedPlaylists = $derived(
+    pinned.map((uri) => playlists.find((p) => p.uri === uri)).filter(Boolean),
+  );
+  /** @param {string} uri @param {boolean} on */
+  async function setPinned(uri, on) {
+    pinned = on ? [...pinned.filter((u) => u !== uri), uri] : pinned.filter((u) => u !== uri);
+    await invoke("set_playlist_pinned", { uri, pinned: on }).catch(() => {});
+  }
+
+  // --- right-click menus (Windows' own, like the main menu) ---
+  /** @type {Menu | null} */
+  let openedMenu = null;
+  /** @param {any[]} items */
+  async function popMenu(items) {
+    try {
+      const menu = await Menu.new({ items });
+      openedMenu?.close().catch(() => {});
+      openedMenu = menu;
+      await menu.popup();
+    } catch {
+      /* no menu then */
+    }
+  }
+  /** @param {MouseEvent} e @param {any} pl */
+  function playlistMenu(e, pl) {
+    e.preventDefault();
+    const isPinned = pinned.includes(pl.uri);
+    popMenu([
+      { text: "Play", action: () => loadPlaylistIntoMain(pl) },
+      {
+        text: "Add to the playlist",
+        action: () => emitWindowEvent("playerWindow", { UrlsAppended: [playlistUrl(pl.uri)] }),
+      },
+      { item: "Separator" },
+      { text: isPinned ? "Unpin" : "Pin to the top", action: () => setPinned(pl.uri, !isPinned) },
+    ]);
+  }
+  /** @param {MouseEvent} e @param {"recent" | "top"} kind */
+  function historyMenu(e, kind) {
+    e.preventDefault();
+    popMenu([
+      { text: "Play all", action: () => loadHistoryIntoMain(kind) },
+      { item: "Separator" },
+      { text: "Clear listening history…", action: clearHistory },
+    ]);
+  }
+
+  // --- drag onto the playlist window (it takes open.spotify.com links, the
+  //     same as a drag from the Spotify app) ---
+  /** @param {DragEvent} e @param {string[]} urls */
+  function dragLinks(e, urls) {
+    if (!e.dataTransfer || !urls.length) return;
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData("text/uri-list", urls.join("\r\n"));
+    e.dataTransfer.setData("text/plain", urls.join("\n"));
+  }
+
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -453,7 +581,11 @@
   }
 
   const headTitle = $derived(
-    activeNode === "liked"
+    activeNode === "recent"
+      ? "Recently played"
+      : activeNode === "top"
+      ? "Most played"
+      : activeNode === "liked"
       ? "Favorite Songs"
       : activeNode?.startsWith?.("list:")
         ? activeNode.slice(5)
@@ -500,6 +632,29 @@
   <div class="ml-body">
     <!-- left: navigation tree -->
     <div class="ml-tree" style="flex-basis: {treeWidth}px;">
+      {#if pinnedPlaylists.length}
+        <div class="ml-node ml-root ml-dim-head">
+          <span class="ml-ic ml-ic-pin"></span>Pinned
+        </div>
+        {#each pinnedPlaylists as pl (pl.uri)}
+          <div
+            class="ml-node ml-child"
+            class:active={activeNode === pl.uri}
+            role="button"
+            tabindex="0"
+            draggable="true"
+            title="double-click to load into the player, or drag it onto the playlist"
+            onclick={() => selectPlaylist(pl)}
+            ondblclick={() => loadPlaylistIntoMain(pl)}
+            oncontextmenu={(e) => playlistMenu(e, pl)}
+            ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
+            onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
+          >
+            <span class="ml-ic ml-ic-list"></span>{pl.name}
+          </div>
+        {/each}
+      {/if}
+
       <div
         class="ml-node ml-root"
         class:active={activeNode === "liked"}
@@ -511,6 +666,33 @@
         onkeydown={(e) => e.key === "Enter" && selectLiked()}
       >
         <span class="ml-ic ml-ic-fav"></span>Favorite Songs
+      </div>
+
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "recent"}
+        role="button"
+        tabindex="0"
+        title="what you've played in Spotiamp+, newest first; double-click to load them"
+        onclick={() => selectHistory("recent")}
+        ondblclick={() => loadHistoryIntoMain("recent")}
+        oncontextmenu={(e) => historyMenu(e, "recent")}
+        onkeydown={(e) => e.key === "Enter" && selectHistory("recent")}
+      >
+        <span class="ml-ic ml-ic-recent"></span>Recently played
+      </div>
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "top"}
+        role="button"
+        tabindex="0"
+        title="what you've played most in Spotiamp+; double-click to load them"
+        onclick={() => selectHistory("top")}
+        ondblclick={() => loadHistoryIntoMain("top")}
+        oncontextmenu={(e) => historyMenu(e, "top")}
+        onkeydown={(e) => e.key === "Enter" && selectHistory("top")}
+      >
+        <span class="ml-ic ml-ic-top"></span>Most played
       </div>
 
       <div
@@ -537,7 +719,9 @@
               class:active={activeNode === "list:" + list.name}
               role="button"
               tabindex="0"
-              title="double-click to load into the player"
+              title="double-click to load into the player, or drag it onto the playlist"
+              draggable="true"
+              ondragstart={(e) => dragLinks(e, list.uris.map(trackUrl))}
               onclick={() => selectSavedList(list)}
               ondblclick={() => loadListIntoMain(list)}
               onkeydown={(e) => e.key === "Enter" && selectSavedList(list)}
@@ -585,9 +769,12 @@
               class:active={activeNode === pl.uri}
               role="button"
               tabindex="0"
-              title="double-click to load into the player"
+              title="double-click to load into the player, or drag it onto the playlist; right-click to pin"
+              draggable="true"
               onclick={() => selectPlaylist(pl)}
               ondblclick={() => loadPlaylistIntoMain(pl)}
+              oncontextmenu={(e) => playlistMenu(e, pl)}
+              ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
               onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
             >
               <span class="ml-ic ml-ic-list"></span>{pl.name}
@@ -664,6 +851,11 @@
               class:odd={i % 2 === 1}
               role="button"
               tabindex="0"
+              draggable="true"
+              ondragstart={(e) => {
+                selectedTrack = i;
+                dragLinks(e, [trackUrl(t.uri)]);
+              }}
               onclick={() => (selectedTrack = i)}
               ondblclick={() => loadTrackIntoMain(i)}
               onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
@@ -944,6 +1136,30 @@
   }
   .ml-ic-fav::before {
     content: "♥";
+  }
+  .ml-ic-pin,
+  .ml-ic-recent,
+  .ml-ic-top {
+    background: none;
+    font-size: 10px;
+    line-height: 12px;
+    text-align: center;
+  }
+  .ml-ic-pin {
+    color: #e8c547;
+  }
+  .ml-ic-pin::before {
+    content: "★";
+  }
+  .ml-ic-recent::before {
+    content: "◷";
+  }
+  .ml-ic-top::before {
+    content: "▲";
+  }
+  .ml-dim-head {
+    opacity: 0.8;
+    cursor: default;
   }
   .ml-ic-pl {
     background: color-mix(in srgb, currentColor 35%, transparent);
