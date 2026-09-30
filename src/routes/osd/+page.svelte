@@ -12,17 +12,14 @@
   /** @type {Card | null} */
   let card = $state(null);
   let artOk = $state(true);
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let hideTimer;
 
+  // osd.rs hides the window when the card's time is up (timers in this page
+  // don't run reliably: WebView2 counts a window shown without focus as hidden).
   /** @param {Card} c */
   function present(c) {
     if (card && card.seq === c.seq) return;
     card = c;
     artOk = true;
-    // (no fade: the window isn't see-through, so only its contents would fade)
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => invoke("osd_hide").catch(() => {}), 4000);
   }
 
   onMount(() => {
@@ -34,7 +31,6 @@
     const off = getCurrentWindow().listen("osdShow", (e) => present(/** @type {Card} */ (e.payload)));
     return () => {
       off.then((f) => f()).catch(() => {});
-      clearTimeout(hideTimer);
     };
   });
 </script>

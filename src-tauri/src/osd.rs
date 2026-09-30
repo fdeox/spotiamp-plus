@@ -15,6 +15,8 @@ const WIDTH: f64 = 300.0;
 const HEIGHT: f64 = 72.0;
 /// Gap to the screen edge (logical px).
 const MARGIN: f64 = 16.0;
+/// How long a card stays up.
+const SHOW_FOR: std::time::Duration = std::time::Duration::from_secs(6);
 
 #[derive(Serialize, Clone)]
 pub struct Card {
@@ -101,8 +103,21 @@ pub async fn osd_show(
         None => build(&app).map_err(|e| e.to_string())?,
     };
     place(&app, &window);
+    let seq = card.seq;
     let _ = app.emit_to("osd", "osdShow", card);
     show_without_focus(&window);
+    // Hide it from here, not from the page: shown without activation, the
+    // page counts as hidden to WebView2 and its timers can't be relied on (the
+    // card stayed up for good). A newer song's card keeps the window up.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(SHOW_FOR).await;
+        let latest = current().lock().ok().and_then(|c| c.as_ref().map(|c| c.seq));
+        if latest == Some(seq) {
+            if let Some(w) = app.get_webview_window("osd") {
+                let _ = w.hide();
+            }
+        }
+    });
     Ok(())
 }
 
