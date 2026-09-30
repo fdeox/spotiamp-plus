@@ -395,10 +395,10 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         inner_size,
     )?;
 
-    app_window::apply_position(
-        &window,
-        Settings::current().player.window_state.get_position(),
-    );
+    // (read first: moving the window saves its position, which needs the
+    // settings lock this read would still hold)
+    let position = Settings::current().player.window_state.get_position();
+    app_window::apply_position(&window, position);
     app_window::remember_position(&window, "player window", |position| {
         Settings::current_mut()
             .player

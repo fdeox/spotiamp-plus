@@ -27,6 +27,10 @@ pub fn build_frameless_window(
     route: &str,
     inner_size: InnerWindowSize,
 ) -> Result<WebviewWindow, tauri::Error> {
+    // Read settings up front: a guard kept alive across `.build()` (which waits
+    // for the main thread to create the window) deadlocks against a main thread
+    // that wants to save something meanwhile, like a window's new position.
+    let always_on_top = crate::settings::Settings::current().player.always_on_top;
     // Sizes are stored at 1x; every window opens at the UI scale straight away,
     // and the page learns the same number before its first paint, so nothing
     // flashes at 1x first (the whole page is CSS-zoomed, see global.css).
@@ -53,7 +57,7 @@ pub fn build_frameless_window(
         .accept_first_mouse(true)
         // Applied here so every window — including ones opened later — comes up
         // matching the user's always-on-top choice.
-        .always_on_top(crate::settings::Settings::current().player.always_on_top)
+        .always_on_top(always_on_top)
         .build()
         .inspect(|window| {
             #[cfg(target_os = "windows")]

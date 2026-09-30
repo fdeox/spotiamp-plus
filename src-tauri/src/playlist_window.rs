@@ -35,16 +35,14 @@ pub fn build_window(
     let window =
         app_window::build_frameless_window(app, "playlist", "Playlist", "playlist", inner_size)?;
 
-    app_window::apply_position(
-        &window,
-        Some(
-            Settings::current()
-                .playlist
-                .window_state
-                .get_position()
-                .unwrap_or(initial_position),
-        ),
-    );
+    // (read first: moving the window saves its position, which needs the
+    // settings lock this read would still hold)
+    let position = Settings::current()
+        .playlist
+        .window_state
+        .get_position()
+        .unwrap_or(initial_position);
+    app_window::apply_position(&window, Some(position));
     app_window::remember_position(&window, "playlist window", |position| {
         Settings::current_mut()
             .playlist

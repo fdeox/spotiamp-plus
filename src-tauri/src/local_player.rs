@@ -130,10 +130,10 @@ impl LocalPlayer {
 /// chosen device matters when the system default is a virtual/monitor output.
 fn select_output_device() -> Option<cpal::Device> {
     let host = cpal::default_host();
-    crate::settings::Settings::current()
-        .player
-        .audio_device
-        .clone()
+    // clone the name out first so the settings aren't locked while the audio
+    // devices are listed (that can take a while)
+    let picked = crate::settings::Settings::current().player.audio_device.clone();
+    picked
         .and_then(|name| {
             host.output_devices().ok().and_then(|mut devs| {
                 devs.find(|d| d.name().map(|n| n == name).unwrap_or(false))
