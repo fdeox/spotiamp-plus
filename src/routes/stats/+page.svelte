@@ -1,7 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
@@ -245,6 +245,59 @@
 
   const close = () => invoke("set_stats_window_visible", { visible: false });
 
+  // COPY: this window as a picture (skin and all), with a small Spotiamp+
+  // strip under it, straight to the clipboard for Discord and the like.
+  let copyLabel = $state("COPY");
+  let capturing = $state(false);
+  async function buildCard() {
+    capturing = true; // hides the COPY button itself
+    await tick();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let shot;
+    try {
+      const png = /** @type {ArrayBuffer} */ (await invoke("capture_window_png", { label: "stats" }));
+      shot = await createImageBitmap(new Blob([png], { type: "image/png" }));
+    } finally {
+      capturing = false;
+    }
+    // the capture is in screen pixels; size the strip to match
+    const px = (window.devicePixelRatio || 1) * (REACTIVE_WINDOW_SIZE.zoom || 1);
+    const strip = Math.round(22 * px);
+    const canvas = document.createElement("canvas");
+    canvas.width = shot.width;
+    canvas.height = shot.height + strip;
+    const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+    const css = getComputedStyle(/** @type {Element} */ (document.querySelector(".st")));
+    ctx.fillStyle = css.getPropertyValue("--frame").trim() || "#1a1a2a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(shot, 0, 0);
+    ctx.fillStyle = css.getPropertyValue("--fg").trim() || "#00ff41";
+    ctx.font = `${Math.round(14 * px)}px "px sans nouveaux", sans-serif`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    const p = PERIODS.find((p) => p.id === period);
+    ctx.fillText(
+      `SPOTIAMP+  ·  MY LISTENING, ${p?.label ?? ""}`,
+      canvas.width / 2,
+      shot.height + strip / 2,
+    );
+    return await new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"),
+    );
+  }
+  async function copyCard() {
+    window.focus();
+    try {
+      // a promise, so the clipboard write starts inside the click
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": buildCard() })]);
+      copyLabel = "COPIED";
+    } catch (e) {
+      copyLabel = "FAILED";
+      invoke("log_frontend_error", { window: "stats", message: `stats card: ${e}` }).catch(() => {});
+    }
+    setTimeout(() => (copyLabel = "COPY"), 1800);
+  }
+
   function makeStatsDraggable(element) {
     makeDockedDraggable(element, "stats", "statsWindow");
   }
@@ -281,6 +334,16 @@
           {p.label}
         </button>
       {/each}
+      {#if stats?.plays}
+        <button
+          class="st-play"
+          style:visibility={capturing ? "hidden" : "visible"}
+          onclick={copyCard}
+          title="copy these stats as a picture, to paste into Discord or anywhere"
+        >
+          {copyLabel}
+        </button>
+      {/if}
     </div>
 
     {#if loading && !stats}
