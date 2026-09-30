@@ -25,6 +25,7 @@
   },
   "bundle": {
     "active": true,
+    "copyright": "Copyright (c) 2026 fdeox. Based on Spotiamp, (c) 2025 Ted Steen. MIT License.",
     "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "icon": [
