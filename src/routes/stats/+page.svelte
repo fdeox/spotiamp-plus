@@ -35,6 +35,18 @@
   let allTimeline = $state(/** @type {[number, number][]} */ ([]));
   let loading = $state(true);
 
+  // The top list scrolls with a Winamp handle (see .st-scroll), not the
+  // browser's scrollbar.
+  /** @type {HTMLDivElement | undefined} */
+  let listEl = $state();
+  let scrollPos = $state(0);
+  let scrollMax = $state(0);
+  function syncScroll() {
+    if (!listEl) return;
+    scrollMax = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+    scrollPos = listEl.scrollTop;
+  }
+
   /** Local midnight of the day `at` falls on. */
   function dayStart(at) {
     const d = new Date(at);
@@ -207,6 +219,12 @@
         })),
   );
   const topMax = $derived(Math.max(1, ...topList.map((t) => t.plays)));
+  // re-measure the scroll handle's range when the list or the window changes
+  $effect(() => {
+    topList.length;
+    REACTIVE_WINDOW_SIZE.height;
+    tick().then(syncScroll);
+  });
 
   /** @param {string | null} uri */
   function playTrack(uri) {
@@ -401,7 +419,8 @@
           <button class="st-play" onclick={playTop} title="put these songs in the playlist, most played first">PLAY THESE</button>
         {/if}
       </div>
-      <div class="st-list">
+      <div class="st-listwrap">
+      <div class="st-list" bind:this={listEl} onscroll={syncScroll}>
         {#each topList as t, i}
           <div
             class="st-row"
@@ -416,6 +435,18 @@
             <span class="st-count">{t.plays}×</span>
           </div>
         {/each}
+      </div>
+      <!-- Winamp's own scroll handle (the skin's PLEDIT sprite), like the Library's -->
+      <input
+        type="range"
+        class="st-scroll"
+        min="0"
+        max={scrollMax}
+        step="1"
+        value={scrollPos}
+        oninput={(e) => listEl && (listEl.scrollTop = +e.currentTarget.value)}
+        aria-label="Scroll the list"
+      />
       </div>
 
       <div class="st-foot">
@@ -654,11 +685,42 @@
     letter-spacing: 0.4px;
   }
 
-  .st-list {
+  .st-listwrap {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    display: flex;
     border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
+  }
+  .st-list {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .st-list::-webkit-scrollbar {
+    display: none;
+  }
+  /* the same handle as the Library's list and the playlist */
+  .st-scroll {
+    cursor: url(/src/static/assets/skins/base-2.91/EQSLID.CUR), default;
+    writing-mode: vertical-lr;
+    direction: ltr;
+    appearance: none;
+    width: 10px;
+    flex: 0 0 10px;
+    margin: 0;
+    background: var(--skin-genexwndbg, var(--bg));
+    box-shadow: inset 1px 0 0 var(--skin-genexdivider, #0e1a0e);
+  }
+  .st-scroll::-webkit-slider-thumb {
+    background: var(--skin-pledit);
+    appearance: none;
+    width: 8px;
+    height: 18px;
+    background-position: -52px -53px;
+  }
+  .st-scroll::-webkit-slider-thumb:active {
+    background-position-x: -61px;
   }
   .st-row {
     position: relative;
