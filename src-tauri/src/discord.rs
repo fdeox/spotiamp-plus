@@ -3,7 +3,7 @@
 //! silently does nothing and never blocks playback.
 
 use std::{
-    sync::Mutex,
+    sync::{Mutex, OnceLock, mpsc},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -32,6 +32,48 @@ fn ensure_connected(guard: &mut Option<DiscordIpcClient>) -> bool {
     guard.is_some()
 }
 
+/// One presence change, applied in order on the Discord thread.
+enum Update {
+    Set {
+        name: String,
+        artist: String,
+        album: String,
+        album_art: Option<String>,
+        elapsed_ms: i64,
+        duration_ms: i64,
+        playing: bool,
+    },
+    Clear,
+}
+
+/// Talking to Discord is pipe I/O that can stall (Discord busy, updating,
+/// frozen). These commands used to run it on the UI thread, where a stall
+/// would freeze every window, so it happens on a thread of its own instead:
+/// the commands only queue the change and return. One thread keeps the
+/// changes in order, so a quick pause after a play never ends up "listening".
+fn send(update: Update) {
+    static QUEUE: OnceLock<Mutex<mpsc::Sender<Update>>> = OnceLock::new();
+    let queue = QUEUE.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Update>();
+        let _ = std::thread::Builder::new()
+            .name("discord-presence".into())
+            .spawn(move || {
+                for update in rx {
+                    match update {
+                        Update::Set { name, artist, album, album_art, elapsed_ms, duration_ms, playing } => {
+                            apply_activity(name, artist, album, album_art, elapsed_ms, duration_ms, playing)
+                        }
+                        Update::Clear => apply_clear(),
+                    }
+                }
+            });
+        Mutex::new(tx)
+    });
+    if let Ok(tx) = queue.lock() {
+        let _ = tx.send(update);
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn set_discord_activity(
@@ -43,6 +85,23 @@ pub fn set_discord_activity(
     // as a group session and hid it from the compact profile card
     _playlist_index: i32,
     _playlist_length: i32,
+    elapsed_ms: i64,
+    duration_ms: i64,
+    playing: bool,
+) {
+    send(Update::Set { name, artist, album, album_art, elapsed_ms, duration_ms, playing });
+}
+
+#[tauri::command]
+pub fn clear_discord_activity() {
+    send(Update::Clear);
+}
+
+fn apply_activity(
+    name: String,
+    artist: String,
+    album: String,
+    album_art: Option<String>,
     elapsed_ms: i64,
     duration_ms: i64,
     playing: bool,
@@ -102,8 +161,7 @@ pub fn set_discord_activity(
     }
 }
 
-#[tauri::command]
-pub fn clear_discord_activity() {
+fn apply_clear() {
     if let Ok(mut guard) = CLIENT.lock()
         && let Some(client) = guard.as_mut()
     {
