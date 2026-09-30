@@ -711,6 +711,16 @@
       >
         <span class="ml-ic ml-ic-top"></span>Most played
       </div>
+      <div
+        class="ml-node ml-root"
+        role="button"
+        tabindex="0"
+        title="your listening stats: time, top songs and artists, when you listen"
+        onclick={() => invoke("set_stats_window_visible", { visible: true })}
+        onkeydown={(e) => e.key === "Enter" && invoke("set_stats_window_visible", { visible: true })}
+      >
+        <span class="ml-ic ml-ic-top"></span>Listening stats
+      </div>
 
       <div
         class="ml-node ml-root"

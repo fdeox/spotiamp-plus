@@ -12,6 +12,10 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.4": [
+      "<b>Listening stats</b>: time listened, top songs and artists, your streak and when you listen, for the last 7 days, 30 days, year or all time (Library, or right-click the playlist, <i>Windows</i>). Kept on this computer only.",
+      "Lighter on the CPU while music plays.",
+    ],
     "0.7.3": [
       "<b>J</b> jumps to any track: type part of its name, pick with the arrows, <b>Enter</b> plays it.",
       "<b>Q</b> queues the selected track to play next. The number on the row is its place in the queue.",

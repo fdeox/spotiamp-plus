@@ -306,10 +306,15 @@
           ms: playLog.ms,
         },
       }).catch(() => {});
+    } else if (playLog.loggedMs && playLog.ms - playLog.loggedMs >= 60000) {
+      // note the time listened each minute too, so quitting mid-song (or a
+      // long mix) still counts it for the stats
+      finishPlay();
     }
   }
   function finishPlay() {
     if (playLog.loggedMs && playLog.ms - playLog.loggedMs >= 10000) {
+      playLog.loggedMs = playLog.ms;
       invoke("history_extend", { at: playLog.startedAt, ms: playLog.ms }).catch(() => {});
     }
   }
@@ -725,6 +730,7 @@
       visualizer: "set_visualizer_window_visible",
       lyrics: "set_lyrics_window_visible",
       art: "set_art_window_visible",
+      stats: "set_stats_window_visible",
     });
     const reopenTimer = setTimeout(() => {
       invoke("windows_to_reopen")

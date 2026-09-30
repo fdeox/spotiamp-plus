@@ -17,6 +17,7 @@ export const DOCKABLE_LABELS = [
   "eq",
   "lyrics",
   "art",
+  "stats",
 ];
 
 /**

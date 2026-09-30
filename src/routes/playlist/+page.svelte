@@ -376,6 +376,7 @@
         : [
             { text: "Lyrics", action: () => invoke("set_lyrics_window_visible", { visible: true }) },
             { text: "Album art", action: () => invoke("set_art_window_visible", { visible: true }) },
+            { text: "Listening stats", action: () => invoke("set_stats_window_visible", { visible: true }) },
           ]),
       sep,
       { text: "Always on top", checked: alwaysOnTop, action: toggleAlwaysOnTop },

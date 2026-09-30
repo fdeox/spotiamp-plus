@@ -16,6 +16,7 @@ mod eq_window;
 mod eqf;
 mod library_window;
 mod art_window;
+mod stats_window;
 mod taskbar;
 mod diagnostics;
 mod whatsnew_window;
@@ -466,6 +467,7 @@ pub fn run() {
             history::history_recent,
             history::history_top,
             history::history_clear,
+            history::history_stats,
             lists::get_pinned_playlists,
             lists::set_playlist_pinned,
             player_window::get_skin,
@@ -518,6 +520,7 @@ pub fn run() {
             eqf::export_eqf,
             lyrics_window::set_lyrics_window_visible,
             art_window::set_art_window_visible,
+            stats_window::set_stats_window_visible,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,
