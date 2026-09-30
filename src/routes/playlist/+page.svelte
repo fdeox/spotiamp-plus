@@ -435,6 +435,9 @@
           { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
           { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
           sep,
+          { text: "Open playlist file (.m3u)…", action: openM3u },
+          { text: "Save as playlist file (.m3u)…", action: saveM3u },
+          sep,
           { text: "Save as a list…", action: openSaveList },
           { text: "Clear playlist", action: () => playlist.clear() },
         ];
@@ -794,6 +797,40 @@
       await invoke("local_pick_folder").catch(() => [])
     );
     if (paths?.length) playlist.addLocalFiles(paths);
+  }
+
+  // Winamp's playlist files (m3u.rs): local files by path, Spotify songs as
+  // open.spotify.com links, so other players still get the local ones.
+  async function openM3u() {
+    try {
+      const opened = /** @type {{entries: {kind: "spotify" | "local", value: string}[], skipped: number} | null} */ (
+        await invoke("m3u_open")
+      );
+      if (!opened) return; // cancelled
+      if (!opened.entries.length) {
+        showToast("No songs in that file that Spotiamp+ can play");
+        return;
+      }
+      await playlist.openM3uEntries(opened.entries);
+      showToast(
+        `Opened ${opened.entries.length} songs` +
+          (opened.skipped ? `, skipped ${opened.skipped} (missing files or other streams)` : ""),
+      );
+    } catch (e) {
+      showToast(`Couldn't open it: ${e}`);
+    }
+  }
+  async function saveM3u() {
+    if (!playlist.rows.length) {
+      showToast("The playlist is empty");
+      return;
+    }
+    try {
+      const saved = await invoke("m3u_save", { rows: await playlist.m3uRows() });
+      if (saved) showToast("Playlist file saved");
+    } catch (e) {
+      showToast(`Couldn't save it: ${e}`);
+    }
   }
 
   async function openSkinMuseum() {

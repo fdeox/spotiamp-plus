@@ -752,6 +752,38 @@ export class Playlist {
     }
 
     /**
+     * Replace the playlist with an opened .m3u's songs, in the file's order
+     * (Spotify songs and local files mixed as they come).
+     * @param {{kind: "spotify" | "local", value: string}[]} entries
+     */
+    async openM3uEntries(entries) {
+        await this.clear();
+        for (const e of entries) {
+            if (e.kind === "spotify") {
+                await this.addTrackRow(SpotifyUri.fromString(e.value));
+            } else {
+                await this.addLocalRow(e.value);
+            }
+        }
+        this.persist();
+    }
+
+    /** The rows as .m3u lines: where each is, its name and its length. */
+    async m3uRows() {
+        // names of rows that haven't been in view yet
+        await this.loadAllNames().catch(() => {});
+        return this.rows.map((r) =>
+            r instanceof LocalRow
+                ? { location: r.path, title: r.displayName, duration_ms: r.durationMs ?? 0 }
+                : {
+                      location: r.uri.asString,
+                      title: r.track ? r.displayName : "",
+                      duration_ms: r.track?.durationInMs ?? 0,
+                  },
+        );
+    }
+
+    /**
      * Append one local file as a row (reading its tags), without playing it.
      * Used both by addLocalFiles and by the launch reload.
      * @param {string} path
