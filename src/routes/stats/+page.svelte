@@ -33,6 +33,9 @@
   let stats = $state(/** @type {Stats | null} */ (null));
   /** every play ever, for the streak */
   let allTimeline = $state(/** @type {[number, number][]} */ ([]));
+  /** all time, for the badges */
+  let allStats = $state(/** @type {Stats | null} */ (null));
+  let lovedCount = $state(0);
   let loading = $state(true);
 
   // The top list scrolls with a Winamp handle (see .st-scroll), not the
@@ -65,13 +68,17 @@
   async function refresh() {
     const my = ++token;
     try {
-      const [s, all] = await Promise.all([
+      const [s, all, loved] = await Promise.all([
         invoke("history_stats", { since: sinceFor(period), limit: 50 }),
-        invoke("history_stats", { since: 0, limit: 0 }),
+        // all time, with the single top song and artist, for the badges
+        invoke("history_stats", { since: 0, limit: 1 }),
+        invoke("get_loved").catch(() => []),
       ]);
       if (my !== token) return;
       stats = /** @type {Stats} */ (s);
-      allTimeline = /** @type {Stats} */ (all).timeline;
+      allStats = /** @type {Stats} */ (all);
+      allTimeline = allStats.timeline;
+      lovedCount = /** @type {string[]} */ (loved).length;
     } catch {
       if (my === token) stats = null;
     } finally {
@@ -219,8 +226,72 @@
         })),
   );
   const topMax = $derived(Math.max(1, ...topList.map((t) => t.plays)));
+
+  /**
+   * Badges, from all the listening ever noted (whatever period is picked).
+   * @typedef {{glyph: string, name: string, desc: string, value: number, goal: number, unit: string, done: boolean}} Badge
+   * @returns {Badge[]}
+   */
+  function badgeList(/** @type {Stats | null} */ all, /** @type {number} */ loved) {
+    const tl = all?.timeline ?? [];
+    const hours = (all?.ms ?? 0) / 3_600_000;
+    /** @type {Map<number, number>} listening per day */
+    const days = new Map();
+    let night = 0;
+    let early = 0;
+    for (const [at, ms] of tl) {
+      const d = dayStart(at);
+      days.set(d, (days.get(d) ?? 0) + ms);
+      const h = new Date(at).getHours();
+      if (h < 5) night = 1;
+      else if (h < 8) early = 1;
+    }
+    const bestDayHours = Math.max(0, ...days.values()) / 3_600_000;
+    // the longest run of days in a row with some listening
+    let longest = 0;
+    let run = 0;
+    /** @type {number | null} */
+    let prev = null;
+    for (const d of [...days.keys()].sort((a, b) => a - b)) {
+      run = prev !== null && Math.round((d - prev) / DAY) === 1 ? run + 1 : 1;
+      longest = Math.max(longest, run);
+      prev = d;
+    }
+    const topSong = all?.top_tracks?.[0]?.plays ?? 0;
+    const topArtist = all?.top_artists?.[0]?.plays ?? 0;
+    /** @returns {Badge} */
+    const b = (glyph, name, desc, value, goal, unit = "") => ({
+      glyph, name, desc, value: Math.min(value, goal), goal, unit, done: value >= goal,
+    });
+    return [
+      b("♫", "First spin", "Play your first song", all?.plays ?? 0, 1),
+      b("◷", "Warming up", "One hour of music", hours, 1, " h"),
+      b("◷", "Ten hours", "Ten hours of music", hours, 10, " h"),
+      b("◎", "A full day", "24 hours of music", hours, 24, " h"),
+      b("★", "Century", "100 hours of music", hours, 100, " h"),
+      b("☾", "Night owl", "A song between midnight and 5 am", night, 1),
+      b("☼", "Early bird", "A song between 5 and 8 in the morning", early, 1),
+      b("»", "Marathon", "Three hours of music in one day", bestDayHours, 3, " h"),
+      b("✦", "On a roll", "Music three days in a row", longest, 3, " days"),
+      b("✦", "Every day", "Music seven days in a row", longest, 7, " days"),
+      b("♪", "Explorer", "50 different artists", all?.artists ?? 0, 50),
+      b("♬", "Crate digger", "250 different songs", all?.tracks ?? 0, 250),
+      b("↻", "On repeat", "One song played ten times", topSong, 10),
+      b("♥", "Big fan", "50 plays of one artist", topArtist, 50),
+      b("♡", "Collector", "Love ten songs (F)", loved, 10),
+    ];
+  }
+  const badges = $derived(badgeList(allStats, lovedCount));
+  const badgesDone = $derived(badges.filter((x) => x.done).length);
+  /** "3.4/10 h", "12/50" */
+  function progress(/** @type {Badge} */ x) {
+    const v = x.unit === " h" ? Math.floor(x.value * 10) / 10 : Math.floor(x.value);
+    return `${v}/${x.goal}${x.unit}`;
+  }
+
   // re-measure the scroll handle's range when the list or the window changes
   $effect(() => {
+    listTab;
     topList.length;
     REACTIVE_WINDOW_SIZE.height;
     tick().then(syncScroll);
@@ -415,12 +486,30 @@
       <div class="st-listhead">
         <button class="st-tab" class:on={listTab === "songs"} onclick={() => (listTab = "songs")}>TOP SONGS</button>
         <button class="st-tab" class:on={listTab === "artists"} onclick={() => (listTab = "artists")}>TOP ARTISTS</button>
+        <button
+          class="st-tab"
+          class:on={listTab === "badges"}
+          onclick={() => (listTab = "badges")}
+          title="badges for all your listening in Spotiamp+"
+        >
+          BADGES {badgesDone}/{badges.length}
+        </button>
         {#if listTab === "songs"}
           <button class="st-play" onclick={playTop} title="put these songs in the playlist, most played first">PLAY THESE</button>
         {/if}
       </div>
       <div class="st-listwrap">
       <div class="st-list" bind:this={listEl} onscroll={syncScroll}>
+        {#if listTab === "badges"}
+          {#each badges as x}
+            <div class="st-row st-badge" class:done={x.done} title="{x.name}: {x.desc}">
+              <div class="st-fill" style:width="{(x.value / x.goal) * 100}%"></div>
+              <span class="st-rank">{x.glyph}</span>
+              <span class="st-name">{x.name} <span class="st-desc">· {x.desc}</span></span>
+              <span class="st-count">{x.done ? "✓" : progress(x)}</span>
+            </div>
+          {/each}
+        {:else}
         {#each topList as t, i}
           <div
             class="st-row"
@@ -435,6 +524,7 @@
             <span class="st-count">{t.plays}×</span>
           </div>
         {/each}
+        {/if}
       </div>
       <!-- Winamp's own scroll handle (the skin's PLEDIT sprite), like the Library's -->
       <input
@@ -570,6 +660,7 @@
   .st-tabs,
   .st-listhead {
     display: flex;
+    flex-wrap: wrap;
     gap: 3px;
     flex: 0 0 auto;
   }
@@ -762,6 +853,26 @@
   .st-count {
     flex: 0 0 auto;
     color: var(--hi);
+  }
+  /* badges: dim until earned */
+  .st-badge {
+    color: color-mix(in srgb, var(--fg) 55%, transparent);
+  }
+  .st-badge .st-count {
+    color: inherit;
+  }
+  .st-badge.done {
+    color: var(--fg);
+  }
+  .st-badge.done .st-rank,
+  .st-badge.done .st-count {
+    color: var(--hi);
+  }
+  .st-badge .st-rank {
+    text-align: center;
+  }
+  .st-desc {
+    color: color-mix(in srgb, var(--fg) 55%, transparent);
   }
 
   .st-foot {
