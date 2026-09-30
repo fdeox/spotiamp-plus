@@ -995,12 +995,27 @@
     /** @type {PatternProgram | null} what's on screen; stays up while the next one compiles */
     let current = null;
     let currentMode = 0;
+    // At most 60 frames a second (30 once it's been quiet for a few seconds).
+    // Drawing every refresh cost three times the GPU on a 165 Hz screen, and
+    // the trails fade per frame, so they now look the same on every monitor.
+    let lastDraw = 0;
+    let quietSince = performance.now();
     function frame() {
       if (!running) return;
       if (!shown) {
         raf = 0;
         return;
       }
+      const t = performance.now();
+      if (level > 0.01) quietSince = t;
+      const interval = t - quietSince > 3000 ? 1000 / 30 : 1000 / 60;
+      const elapsed = t - lastDraw;
+      // (a millisecond of slack so a 60 Hz screen doesn't drop to 30)
+      if (elapsed < interval - 1) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+      lastDraw = t - (elapsed % interval);
       const wanted = patternProgram(mode);
       if (wanted.ready) {
         current = wanted;
