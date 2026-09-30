@@ -13,12 +13,15 @@
   /** @type {Record<string, string[]>} */
   const NOTES = {
     "0.7.4": [
-      "<b>Listening stats</b>: time listened, top songs and artists, your streak and when you listen, for the last 7 days, 30 days, year or all time (Library, or right-click the playlist, <i>Windows</i>). Kept on this computer only.",
-      "<b>F</b> loves a song ♡: the playing one in the main window, the selected ones in the playlist. They're in the Library under <i>Loved songs</i>.",
+      "<b>Listening stats</b>: time listened, top songs and artists, your streak and when you listen, for the last 7 days, 30 days, year or all time (Library, or right-click the playlist, <i>Windows</i>). <i>COPY</i> puts them on the clipboard as a picture. Kept on this computer only.",
+      "<b>F</b> loves a song ♡: the playing one in the main window, the selected ones in the playlist. They're in the Library under <i>Loved songs</i>, with a ♡ next to them everywhere.",
       "<b>Ctrl+V</b>: stop after the current song, like Winamp.",
-      "Right-click a song in the playlist for its own commands: play next, love, add to a list, copy its Spotify link, show a local file in its folder, remove.",
+      "Right-click a song, in the playlist or the Library, for its own commands: play next, love, add to a list, copy its Spotify link, show a local file in its folder.",
+      "Open and save <b>.m3u</b> playlist files (right-click the playlist, <i>Playlist</i>): local files and Spotify songs, in order.",
+      "Optional on-screen display: the new song, with its cover, in the corner of the screen for a few seconds (right-click the playlist, <i>Windows</i>).",
       "Repeat one and autoplay now work for local files too.",
       "Lighter on the CPU while music plays.",
+      "Fixed: opening the right-click menu right after picking something in it (like a skin) could freeze the whole app.",
     ],
     "0.7.3": [
       "<b>J</b> jumps to any track: type part of its name, pick with the arrows, <b>Enter</b> plays it.",

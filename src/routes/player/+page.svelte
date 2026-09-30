@@ -344,6 +344,20 @@
       finishPlay();
     }
   }
+  // On-screen display (osd.rs, opt-in): the song, once, when a new one starts
+  // playing. Rust ignores the call unless it's switched on.
+  let osdKey = "";
+  function osdTick() {
+    if (controllerMode || !loadedTrack || playerState != "playing") return;
+    const key = loadedTrack.isLocal ? `local:${loadedTrack.path}` : (loadedTrack.uri?.asString ?? "");
+    if (!key || key === osdKey) return;
+    osdKey = key;
+    invoke("osd_show", {
+      title: loadedTrack.name ?? "",
+      artist: loadedTrack.artist ?? "",
+      art: loadedTrack.isLocal ? null : (loadedTrack.albumArt ?? null),
+    }).catch(() => {});
+  }
   function finishPlay() {
     if (playLog.loggedMs && playLog.ms - playLog.loggedMs >= 10000) {
       playLog.loggedMs = playLog.ms;
@@ -824,6 +838,7 @@
       }).catch(() => {});
       if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
       historyTick();
+      osdTick();
     }, 1000);
 
     const playlistWindowEventSubscription = subscribeToWindowEvent(

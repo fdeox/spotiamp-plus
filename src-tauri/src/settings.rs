@@ -160,6 +160,10 @@ pub struct PlayerSettings {
     /// and prev/play/next under its thumbnail (taskbar.rs). Opt-in.
     #[serde(default)]
     pub taskbar_extras: bool,
+    /// On-screen display: the song, with its cover, for a few seconds in the
+    /// screen's corner when it changes (osd.rs). Opt-in.
+    #[serde(default)]
+    pub osd: bool,
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -187,6 +191,7 @@ impl Default for PlayerSettings {
             ui_scale_pct: None,
             normalize: false,
             taskbar_extras: false,
+            osd: false,
         }
     }
 }

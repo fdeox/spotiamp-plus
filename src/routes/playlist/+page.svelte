@@ -258,12 +258,20 @@
     taskbarExtras = !taskbarExtras;
     await invoke("set_taskbar_extras", { enabled: taskbarExtras }).catch(() => {});
   }
+  // On-screen display: the new song in the screen's corner (osd.rs). Opt-in.
+  let osdEnabled = $state(false);
+  async function toggleOsd() {
+    osdEnabled = !osdEnabled;
+    await invoke("set_osd", { enabled: osdEnabled }).catch(() => {});
+    if (osdEnabled) showToast("The next song will show in the corner of the screen");
+  }
   async function loadAlwaysOnTop() {
     try {
       const settings = await invoke("get_player_settings");
       alwaysOnTop = Boolean(settings?.always_on_top);
       normalizeVolume = Boolean(settings?.normalize);
       taskbarExtras = Boolean(settings?.taskbar_extras);
+      osdEnabled = Boolean(settings?.osd);
     } catch {
       alwaysOnTop = false;
     }
@@ -473,6 +481,9 @@
       sep,
       { text: "Always on top", checked: alwaysOnTop, action: toggleAlwaysOnTop },
       { text: "Taskbar extras (title, progress, buttons)", checked: taskbarExtras, action: toggleTaskbarExtras },
+      ...(controllerMode
+        ? []
+        : [{ text: "Show the song on screen when it changes", checked: osdEnabled, action: toggleOsd }]),
       {
         text: "S&cale",
         items: [1, 1.5, 2, 3].map((z) => ({

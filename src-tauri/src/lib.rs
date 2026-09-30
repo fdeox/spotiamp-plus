@@ -17,6 +17,7 @@ mod eqf;
 mod library_window;
 mod art_window;
 mod m3u;
+mod osd;
 mod stats_window;
 mod taskbar;
 mod diagnostics;
@@ -527,6 +528,10 @@ pub fn run() {
             stats_window::set_stats_window_visible,
             m3u::m3u_open,
             m3u::m3u_save,
+            osd::osd_show,
+            osd::osd_current,
+            osd::osd_hide,
+            osd::set_osd,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,

@@ -71,7 +71,7 @@ pub fn build_frameless_window(
 /// reason, exit code — tells a crash from an out-of-memory kill), and reload the
 /// page so the window heals itself. Playback lives in Rust and isn't touched.
 #[cfg(target_os = "windows")]
-fn watch_for_renderer_crash(window: &WebviewWindow) {
+pub(crate) fn watch_for_renderer_crash(window: &WebviewWindow) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2ProcessFailedEventArgs2, COREWEBVIEW2_PROCESS_FAILED_KIND,
         COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,

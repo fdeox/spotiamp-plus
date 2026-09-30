@@ -12,7 +12,8 @@
     "art",
     "stats",
     "whatsnew",
-    "museum"
+    "museum",
+    "osd"
   ],
   "permissions": [
     "core:default",
