@@ -66,7 +66,8 @@
   ];
 
   let version = $state("");
-  const notes = $derived(NOTES[version] ?? []);
+  // a test build ("0.7.4-beta.1") shows the notes of the version it leads to
+  const notes = $derived(NOTES[version] ?? NOTES[version.split("-")[0]] ?? []);
 
   onMount(() => {
     getVersion()
