@@ -272,15 +272,16 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(shot, 0, 0);
     ctx.fillStyle = css.getPropertyValue("--fg").trim() || "#00ff41";
-    ctx.font = `${Math.round(14 * px)}px "px sans nouveaux", sans-serif`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     const p = PERIODS.find((p) => p.id === period);
-    ctx.fillText(
-      `SPOTIAMP+  ·  MY LISTENING, ${p?.label ?? ""}`,
-      canvas.width / 2,
-      shot.height + strip / 2,
-    );
+    const text = `SPOTIAMP+  ·  MY LISTENING, ${p?.label ?? ""}`;
+    // shrink the line until it fits a narrow window
+    let size = Math.round(14 * px);
+    do {
+      ctx.font = `${size}px "px sans nouveaux", sans-serif`;
+    } while (ctx.measureText(text).width > canvas.width - 12 * px && --size > 6);
+    ctx.fillText(text, canvas.width / 2, shot.height + strip / 2);
     return await new Promise((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"),
     );
@@ -582,6 +583,9 @@
     font-size: 21px;
     color: var(--hi);
     letter-spacing: 1px;
+    /* "1h 15m" on one line, even in a narrow window */
+    white-space: nowrap;
+    flex: 0 0 auto;
   }
   .st-nums {
     display: flex;
