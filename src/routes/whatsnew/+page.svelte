@@ -22,6 +22,7 @@
       "Repeat one and autoplay now work for local files too.",
       "Lighter on the CPU while music plays.",
       "Fixed: opening the right-click menu right after picking something in it (like a skin) could freeze the whole app.",
+      "When Spotify stops sending songs (it happens now and then, often right after the app opens), Spotiamp+ reconnects within seconds instead of skipping songs in silence for half a minute.",
     ],
     "0.7.3": [
       "<b>J</b> jumps to any track: type part of its name, pick with the arrows, <b>Enter</b> plays it.",

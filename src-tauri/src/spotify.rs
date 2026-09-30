@@ -366,6 +366,11 @@ impl SpotifyPlayer {
         app: &AppHandle,
     ) -> Result<PlayerEventChannel, SessionError> {
         self.player.stop();
+        // A session Spotify stopped answering is still "valid"; close it rather
+        // than leave its connection open beside the new one.
+        if !self.session.inner.is_invalid() {
+            self.session.inner.shutdown();
+        }
         let session = SpotifySession::default();
         session.login(app).await?;
         self.player = Self::build_player(

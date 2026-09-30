@@ -351,16 +351,31 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     // (os error 10054) and a librespot session can't be revived, so when it
     // drops we rebuild session + player and re-forward events — playback
     // recovers on the next play without needing an app restart.
+    // Also reconnect when songs keep failing to load (see note_unavailable):
+    // a session Spotify has stopped answering stays "valid" for ~40 s of
+    // silence before the server finally closes it.
     {
         let player = player.clone();
         let app_handle = app_handle.clone();
         tauri::async_runtime::spawn(async move {
+            let mut last_forced: Option<std::time::Instant> = None;
+            let mut ticks = 0u32;
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                if !player.lock().await.is_session_invalid() {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                ticks += 1;
+                let stuck = FORCE_RECONNECT.swap(false, std::sync::atomic::Ordering::SeqCst)
+                    && last_forced.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(60));
+                // the dropped-session check stays every 10 s, as before
+                let dropped = ticks % 5 == 0 && player.lock().await.is_session_invalid();
+                if !stuck && !dropped {
                     continue;
                 }
-                log::warn!("Spotify session dropped — reconnecting…");
+                if stuck {
+                    last_forced = Some(std::time::Instant::now());
+                    log::warn!("Songs keep failing to load (Spotify not answering) — reconnecting…");
+                } else {
+                    log::warn!("Spotify session dropped — reconnecting…");
+                }
                 let result = player.lock().await.reconnect(&app_handle).await;
                 match result {
                     Ok(channel) => {
@@ -374,6 +389,30 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     }
 
     Ok(())
+}
+
+/// Set when songs fail to load twice in a row within a short time; the
+/// connection watcher then reconnects without waiting for Spotify to drop us.
+static FORCE_RECONNECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// When the last song failed to load (ms since the Unix epoch, 0 = never).
+static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A song couldn't be loaded. Right after a launch Spotify sometimes stops
+/// answering the requests for songs' keys ("Audio key response timeout"), and
+/// librespot then skips song after song in silence. Two failures within 20 s
+/// ask the watcher for a fresh session. (Two genuinely unavailable songs in a
+/// row cost a needless reconnect of a second or two, at most once a minute.)
+fn note_unavailable() {
+    use std::sync::atomic::Ordering;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let previous = LAST_UNAVAILABLE_MS.swap(now, Ordering::SeqCst);
+    if previous != 0 && now.saturating_sub(previous) < 20_000 {
+        LAST_UNAVAILABLE_MS.store(0, Ordering::SeqCst);
+        FORCE_RECONNECT.store(true, Ordering::SeqCst);
+    }
 }
 
 /// Which event forwarder is the live one. A player being replaced (device
@@ -399,6 +438,9 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
         while let Some(player_event) = channel.recv().await {
             if FORWARDER_GENERATION.load(Ordering::SeqCst) != generation {
                 break;
+            }
+            if matches!(player_event, PlayerEvent::Unavailable { .. }) {
+                note_unavailable();
             }
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
                 let _ = player_window.emit("player", player_event);
