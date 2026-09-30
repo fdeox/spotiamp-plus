@@ -7,6 +7,7 @@
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { ask } from "@tauri-apps/plugin-dialog";
+  import { listen } from "@tauri-apps/api/event";
 
   // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
   // typing letters in the Library searches the list.
@@ -473,6 +474,42 @@
     }
   }
 
+  // --- Loved songs (♡, the F key; kept in Spotiamp+, lists.rs) ---
+  async function selectLoved() {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = "loved";
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      const uris = /** @type {string[]} */ (await invoke("get_loved"));
+      if (token !== loadToken) return;
+      trackUris = uris;
+      await loadTrackMetas(uris.map((uri) => ({ uri, added_ms: null })), token);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+  async function loadLovedIntoMain() {
+    const uris = /** @type {string[]} */ (await invoke("get_loved").catch(() => []));
+    if (uris.length) emitWindowEvent("playerWindow", { UrlsDropped: uris.map(trackUrl) });
+  }
+  // A song loved or unloved elsewhere while the list is up: show the change.
+  onMount(() => {
+    const off = listen("lovedChanged", () => {
+      if (activeNode === "loved") selectLoved();
+    });
+    return () => {
+      off.then((f) => f()).catch(() => {});
+    };
+  });
+
   // --- listening history (history.rs): Recently played / Most played ---
   /** @param {"recent" | "top"} kind */
   async function selectHistory(kind) {
@@ -604,6 +641,8 @@
       ? "Most played"
       : activeNode === "liked"
       ? "Favorite Songs"
+      : activeNode === "loved"
+      ? "Loved songs"
       : activeNode?.startsWith?.("list:")
         ? activeNode.slice(5)
         : searchMode
@@ -684,6 +723,18 @@
       >
         <span class="ml-ic ml-ic-fav"></span>Favorite Songs
       </div>
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "loved"}
+        role="button"
+        tabindex="0"
+        title="songs you loved in Spotiamp+ (press F on a song), newest first; double-click to load them"
+        onclick={selectLoved}
+        ondblclick={loadLovedIntoMain}
+        onkeydown={(e) => e.key === "Enter" && selectLoved()}
+      >
+        <span class="ml-ic ml-ic-loved"></span>Loved songs
+      </div>
 
       <div
         class="ml-node ml-root"
@@ -719,7 +770,7 @@
         onclick={() => invoke("set_stats_window_visible", { visible: true })}
         onkeydown={(e) => e.key === "Enter" && invoke("set_stats_window_visible", { visible: true })}
       >
-        <span class="ml-ic ml-ic-top"></span>Listening stats
+        <span class="ml-ic ml-ic-stats"></span>Listening stats
       </div>
 
       <div
@@ -1164,8 +1215,22 @@
   .ml-ic-fav::before {
     content: "♥";
   }
+  .ml-ic-loved {
+    background: none;
+    color: #e0455e;
+    font-size: 11px;
+    line-height: 12px;
+    text-align: center;
+  }
+  .ml-ic-loved::before {
+    content: "♡";
+  }
+  .ml-ic-stats::before {
+    content: "▤";
+  }
   .ml-ic-pin,
   .ml-ic-recent,
+  .ml-ic-stats,
   .ml-ic-top {
     background: none;
     font-size: 10px;

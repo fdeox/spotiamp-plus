@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { enterExitViewportObserver, REACTIVE_WINDOW_SIZE } from "./common.svelte";
 import { emitWindowEvent, subscribeToWindowEvent } from "./events.svelte";
 import { SpotifyTrack, SpotifyUri, durationToString } from "./spotify.svelte";
@@ -327,6 +328,15 @@ export class Playlist {
     /** Bumped when a letter with no shortcut is typed in the playlist, so the
      *  page can point at J (people expect typing to search). */
     typedHint = $state(0);
+    /** Winamp's "stop after current" (Ctrl+V): when this track ends, stop
+     *  instead of going on. One-shot: it switches itself off once it fires. */
+    stopAfterCurrent = $state(false);
+    /** Spotify track uris loved in Spotiamp+ (F, lists.rs set_loved).
+     *  @type {Set<string>} */
+    loved = $state(new Set());
+    /** Where short messages go (the page sets its toast here).
+     *  @type {(message: string) => void} */
+    notify = () => {};
     /** Resume last session, a one-shot per launch: it waits for both the saved
      *  rows to be back and the player window to be listening (they start in
      *  parallel, so either can come first). */
@@ -416,6 +426,10 @@ export class Playlist {
             } else if (ctrl && e.key.toLowerCase() == "a") {
                 e.preventDefault();
                 this.selectedRows = [...this.rows];
+            } else if (ctrl && !e.altKey && e.key.toLowerCase() == "v") {
+                // Ctrl+V: Winamp's stop after current
+                e.preventDefault();
+                this.toggleStopAfterCurrent();
             } else if (ctrl && !e.altKey && e.key.toLowerCase() == "d") {
                 // Ctrl+D: scale, handled by the main window
                 e.preventDefault();
@@ -446,6 +460,10 @@ export class Playlist {
                     // Winamp's jump-to-file
                     e.preventDefault();
                     this.openJump();
+                } else if (k == "f") {
+                    // love (or unlove) the selection
+                    e.preventDefault();
+                    this.toggleLoveSelected();
                 } else if (
                     k == "s" || k == "r" || k == "l" || k == "o" ||
                     (k == " " && t?.tagName != "BUTTON")
@@ -463,11 +481,21 @@ export class Playlist {
         }
         document.addEventListener("keydown", playlistKeyDownListener);
 
+        // Loved songs: loaded once, then kept in step with every window
+        // (the main window's F, the Library).
+        this.loadLoved();
+        listen("lovedChanged", () => this.loadLoved()).catch(() => {});
+
         const playerWindowSubscription = subscribeToWindowEvent(
             "playerWindow",
             (event) => {
                 if (event.NextPressed !== undefined) {
                     this.next(true);
+                } else if (event.TrackEnded !== undefined) {
+                    // a local file played to its end (Spotify's comes on "player")
+                    this.trackEnded();
+                } else if (event.StopAfterCurrentToggle !== undefined) {
+                    this.toggleStopAfterCurrent();
                 } else if (event.PreviousPressed !== undefined) {
                     this.previous(true);
                 } else if (event.ShuffleChanged !== undefined) {
@@ -502,19 +530,7 @@ export class Playlist {
 
         const playerSubscription = subscribeToWindowEvent("player", (event) => {
             if (event.EndOfTrack) {
-                // repeat one: replay the current track instead of advancing
-                if (this.repeat === 2 && this.loadedRow) {
-                    this.loadedRow.loadTrack();
-                    return;
-                }
-                this.next(true).then((endReached) => {
-                    if (!endReached) return;
-                    if (this.autoplay) {
-                        this.autoplayFromRadio();
-                    } else {
-                        emitWindowEvent("playlistWindow", { EndReached: null });
-                    }
-                });
+                this.trackEnded();
             } else if (event.Playing) {
                 this.positionMs = event.Playing.position_ms;
             } else if (event.PositionChanged) {
@@ -899,6 +915,64 @@ export class Playlist {
     playSelected() {
         const row = this.focusedRow ?? this.selectedRows[0];
         row?.play();
+    }
+
+    /** The playing track reached its end (Spotify or local file alike). */
+    trackEnded() {
+        if (this.stopAfterCurrent) {
+            this.stopAfterCurrent = false;
+            emitWindowEvent("playlistWindow", { StopRequested: null });
+            return;
+        }
+        // repeat one: replay the current track instead of advancing
+        if (this.repeat === 2 && this.loadedRow) {
+            this.loadedRow.loadTrack();
+            return;
+        }
+        this.next(true).then((endReached) => {
+            if (!endReached) return;
+            if (this.autoplay) {
+                this.autoplayFromRadio();
+            } else {
+                emitWindowEvent("playlistWindow", { EndReached: null });
+            }
+        });
+    }
+
+    toggleStopAfterCurrent() {
+        this.stopAfterCurrent = !this.stopAfterCurrent;
+        // the main window shows it in its ticker
+        emitWindowEvent("playlistWindow", { StopAfterCurrentChanged: this.stopAfterCurrent });
+    }
+
+    async loadLoved() {
+        try {
+            this.loved = new Set(/** @type {string[]} */ (await invoke("get_loved")));
+        } catch {
+            /* keep what we had */
+        }
+    }
+
+    /** Spotify uris of the selected rows (local files can't be loved or linked). */
+    selectedSpotifyUris() {
+        return this.selectedRows.filter((r) => !r.isLocal).map((r) => r.uri.asString);
+    }
+
+    /**
+     * F: love the selected Spotify songs, or unlove them if they all already
+     * are. Loved songs are in the Library under "Loved songs".
+     */
+    async toggleLoveSelected() {
+        const uris = this.selectedSpotifyUris();
+        if (!uris.length) {
+            this.notify(this.selectedRows.length ? "Only Spotify songs can be loved" : "Select a song to love first");
+            return;
+        }
+        const love = !uris.every((u) => this.loved.has(u));
+        await invoke("set_loved", { uris, loved: love }).catch(() => {});
+        await this.loadLoved();
+        const what = uris.length === 1 ? "" : ` ${uris.length} songs`;
+        this.notify(love ? `♡ Loved${what}: it's in the Library under Loved songs` : `Unloved${what}`);
     }
 
     /**

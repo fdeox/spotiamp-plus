@@ -632,6 +632,26 @@ pub async fn local_pick_files(app_handle: tauri::AppHandle) -> Vec<String> {
         .collect()
 }
 
+/// Open the file's folder in Explorer with the file selected (the playlist's
+/// right-click "Show in folder").
+#[tauri::command]
+pub fn local_reveal(path: String) -> Result<(), String> {
+    if !std::path::Path::new(&path).is_file() {
+        return Err("file not found".into());
+    }
+    let mut cmd = std::process::Command::new("explorer");
+    #[cfg(windows)]
+    {
+        // explorer wants `/select,"C:\a b\c.mp3"` as one raw argument; the
+        // normal quoting would wrap the whole thing and it'd open Documents.
+        use std::os::windows::process::CommandExt;
+        cmd.raw_arg(format!("/select,\"{path}\""));
+    }
+    #[cfg(not(windows))]
+    cmd.arg(&path);
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 /// Pick a folder and return every audio file inside it (walks subfolders, since
 /// real music libraries are nested), sorted for a stable play order.
 #[tauri::command]

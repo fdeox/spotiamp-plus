@@ -2,10 +2,10 @@ import { emitWindowEvent } from "./events.svelte.js";
 
 // The main window's keys, from any window: pressed here, they're handed to the
 // main window, which does exactly what it does for its own keys (Z X C V B,
-// Space, S, R, J, Q, L, O / Shift+O, the arrows, Ctrl+D). One set of shortcuts
+// Space, S, R, J, Q, F, L, O / Shift+O, the arrows, Ctrl+D). One set of shortcuts
 // for the whole app instead of each window knowing a different few.
 const MAIN_WINDOW_KEYS = new Set([
-  "z", "x", "c", "v", "b", " ", "s", "r", "j", "q", "l", "o",
+  "z", "x", "c", "v", "b", " ", "s", "r", "j", "q", "l", "o", "f",
   "arrowup", "arrowdown", "arrowleft", "arrowright",
 ]);
 

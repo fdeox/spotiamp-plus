@@ -169,8 +169,40 @@
     stoppedOrUnavailable || (playerState == "paused" && numberDisplayHidden),
   );
   const volumeSpriteRow = $derived(Math.floor((volume / 100) * 27));
+  // A short message in the ticker for a moment ("STOP AFTER CURRENT: ON").
+  let tickerFlash = $state("");
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let tickerFlashTimer;
+  /** @param {string} text */
+  function flashTicker(text) {
+    tickerFlash = text;
+    clearTimeout(tickerFlashTimer);
+    tickerFlashTimer = setTimeout(() => (tickerFlash = ""), 1800);
+  }
+
+  // F: love (or unlove) the playing song; it's kept in the Library's Loved songs.
+  async function toggleLoveCurrent() {
+    if (controllerMode || !loadedTrack) return;
+    if (loadedTrack.isLocal) {
+      flashTicker("ONLY SPOTIFY SONGS CAN BE LOVED");
+      return;
+    }
+    const uri = loadedTrack.uri?.asString;
+    if (!uri) return;
+    try {
+      const loved = /** @type {string[]} */ (await invoke("get_loved"));
+      const love = !loved.includes(uri);
+      await invoke("set_loved", { uris: [uri], loved: love });
+      flashTicker(love ? "LOVED - SEE LIBRARY: LOVED SONGS" : "UNLOVED");
+    } catch {
+      /* nothing to do */
+    }
+  }
+
   const tickerOverrideText = $derived.by(() => {
-    if (uiInputState == "seeking") {
+    if (tickerFlash) {
+      return tickerFlash;
+    } else if (uiInputState == "seeking") {
       return loadedTrack
         ? `SEEK TO: ${durationToString(sliderSeekPosition)}/${loadedTrack.displayDuration} (${Math.ceil((sliderSeekPosition / loadedTrack.durationInMs) * 100)}%)`
         : "NO TRACK LOADED";
@@ -495,7 +527,9 @@
       // struct variants as an object ({ Failed: { path, reason } }).
       for (const ev of events) {
         if (ev === "EndOfTrack") {
-          emitNextPressed();
+          // the playlist decides what's next (repeat one, stop after current,
+          // autoplay) the same way it does when a Spotify track ends
+          emitWindowEvent("playerWindow", { TrackEnded: null });
         } else if (ev && ev.Failed) {
           // A file that couldn't be opened/decoded used to stop silently with
           // no clue why. Stop cleanly, log it, and tell the user the reason so a
@@ -806,6 +840,8 @@
           stop();
         } else if (event.EndReached !== undefined) {
           stop();
+        } else if (event.StopAfterCurrentChanged !== undefined) {
+          flashTicker(`STOP AFTER CURRENT: ${event.StopAfterCurrentChanged ? "ON" : "OFF"}`);
         } else if (event.LocalTrackLoaded) {
           // A local row in the playlist was played — run it locally.
           const l = event.LocalTrackLoaded;
@@ -931,6 +967,12 @@
         );
         return;
       }
+      // Ctrl+V: Winamp's stop after current (the playlist keeps the switch)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        if (!controllerMode) emitWindowEvent("playerWindow", { StopAfterCurrentToggle: null });
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const acted = () => e.preventDefault();
@@ -947,6 +989,7 @@
         case "j": acted(); emitWindowEvent("playerWindow", { JumpRequested: null }); break;
         // Q: queue the playlist's selection to play next, from here too
         case "q": acted(); emitWindowEvent("playerWindow", { QueueRequested: null }); break;
+        case "f": acted(); toggleLoveCurrent(); break;
         case "arrowup": acted(); volume = Math.min(100, volume + 5); break;
         case "arrowdown": acted(); volume = Math.max(0, volume - 5); break;
         case "arrowright":

@@ -280,6 +280,15 @@
   /** @param {MouseEvent} e */
   function openMenu(e) {
     e.preventDefault();
+    // Right-clicking a song selects it first (unless it's already in the
+    // selection), so the song commands at the top act on what was clicked.
+    const target = /** @type {Node | null} */ (e.target);
+    const row = target ? playlist.rows.find((r) => r.element?.contains(target)) : undefined;
+    if (row && !playlist.selectedRows.includes(row)) {
+      playlist.selectedRows = [row];
+      playlist.focusedRow = row;
+      playlist.selectionAnchor = row;
+    }
     showMenu(null);
   }
   /** @type {Menu | null} */
@@ -290,7 +299,7 @@
     if (menuBusy) return;
     menuBusy = true;
     try {
-      await Promise.all([loadAudioDevices(), loadAlwaysOnTop()]);
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists()]);
       const menu = await Menu.new({ items: menuItems() });
       openedMenu?.close().catch(() => {});
       openedMenu = menu;
@@ -319,6 +328,69 @@
     }
   }
 
+  // The app's saved lists, for the song menu's "Add to list".
+  /** @type {string[]} */
+  let menuLists = [];
+  async function loadMenuLists() {
+    try {
+      menuLists = (/** @type {{name: string}[]} */ (await invoke("get_saved_lists"))).map((l) => l.name);
+    } catch {
+      menuLists = [];
+    }
+  }
+
+  /** @param {string[]} uris */
+  async function copySpotifyLinks(uris) {
+    const text = uris.map((u) => `https://open.spotify.com/track/${u.split(":").pop()}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(uris.length === 1 ? "Link copied" : `${uris.length} links copied`);
+    } catch {
+      showToast("Couldn't copy the link");
+    }
+  }
+
+  /** @param {string} name @param {string[]} uris */
+  async function addSelectionToList(name, uris) {
+    for (const uri of uris) await invoke("add_to_list", { name, uri }).catch(() => {});
+    showToast(`Added to "${name}"`);
+  }
+
+  /** The commands for the selected songs, shown at the top of the menu. */
+  function songItems() {
+    const sep = { item: /** @type {const} */ ("Separator") };
+    const rows = playlist.selectedRows;
+    if (!rows.length || controllerMode) return [];
+    const uris = playlist.selectedSpotifyUris();
+    const allLoved = uris.length > 0 && uris.every((u) => playlist.loved.has(u));
+    const local = rows.length === 1 && rows[0].isLocal ? /** @type {{path: string}} */ (/** @type {any} */ (rows[0])) : null;
+    /** @type {any[]} */
+    const items = [
+      { text: "Play", accelerator: "Enter", action: () => playlist.playSelected() },
+      { text: "Play next", accelerator: "Q", action: () => playlist.toggleQueue() },
+    ];
+    if (uris.length) {
+      items.push(
+        { text: allLoved ? "Unlove" : "♡ Love", accelerator: "F", action: () => playlist.toggleLoveSelected() },
+        {
+          text: "Add to list",
+          items: menuLists.length
+            ? menuLists.map((name) => ({ text: menuText(name), action: () => addSelectionToList(name, uris) }))
+            : [{ text: "No lists yet (Playlist ▸ Save as a list…)", enabled: false }],
+        },
+        { text: uris.length === 1 ? "Copy Spotify link" : `Copy ${uris.length} Spotify links`, action: () => copySpotifyLinks(uris) },
+      );
+    }
+    if (local) {
+      items.push({
+        text: "Show in folder",
+        action: () => invoke("local_reveal", { path: local.path }).catch(() => showToast("That file isn't there any more")),
+      });
+    }
+    items.push({ text: rows.length === 1 ? "Remove from playlist" : `Remove ${rows.length} songs`, accelerator: "Del", action: () => playlist.removeSelected() }, sep);
+    return items;
+  }
+
   /** A literal "&" in a Windows menu needs doubling (a single one marks the Alt key). */
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
@@ -333,6 +405,14 @@
       { text: "Previous", accelerator: "Z", action: () => playlist.previous(true) },
       { text: "Next", accelerator: "B", action: () => playlist.next(true) },
     ];
+    if (!controllerMode) {
+      playItems.push({
+        text: "Stop after current",
+        accelerator: "Ctrl+V",
+        checked: playlist.stopAfterCurrent,
+        action: () => playlist.toggleStopAfterCurrent(),
+      });
+    }
     if (!controllerMode) {
       playItems.push(sep, {
         text: "Autoplay similar songs when the list ends",
@@ -422,6 +502,7 @@
       { text: "Join our Discord", action: openDiscord },
     ];
     return [
+      ...songItems(),
       { text: "&Play", items: playItems },
       { text: "P&laylist", items: listItems },
       { text: "&Skins", items: skinItems },
@@ -532,6 +613,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (toast = ""), 2600);
   }
+  playlist.notify = showToast;
   // Typed a letter that isn't a shortcut: people expect that to search, so
   // say where searching is. Again on the next such key once the last hint has
   // faded (a 20 s wait read as "it stopped working").

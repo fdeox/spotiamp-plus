@@ -63,3 +63,34 @@ pub fn add_to_list(name: String, uri: String) {
         });
     }
 }
+
+/// Loved songs (♡), newest first.
+#[tauri::command]
+pub fn get_loved() -> Vec<String> {
+    Settings::current().loved.iter().rev().cloned().collect()
+}
+
+/// Love (or unlove) these tracks. Only Spotify tracks can be loved. Tells
+/// every window, so an open Library or player follows along.
+#[tauri::command]
+pub fn set_loved(uris: Vec<String>, loved: bool, app: tauri::AppHandle) -> usize {
+    use tauri::Emitter;
+    let mut changed = 0;
+    {
+        let mut settings = Settings::current_mut();
+        for uri in uris.iter().filter(|u| u.starts_with("spotify:track:")) {
+            let has = settings.loved.contains(uri);
+            if loved && !has {
+                settings.loved.push(uri.clone());
+                changed += 1;
+            } else if !loved && has {
+                settings.loved.retain(|u| u != uri);
+                changed += 1;
+            }
+        }
+    }
+    if changed > 0 {
+        let _ = app.emit("lovedChanged", ());
+    }
+    changed
+}

@@ -211,6 +211,10 @@ pub struct Settings {
     /// Spotify playlists pinned to the top of the Library (uris, in order).
     #[serde(default)]
     pub pinned_playlists: Vec<String>,
+    /// Songs loved in Spotiamp+ (♡, the F key): Spotify track uris, oldest
+    /// first. Kept in the app; Spotify's own Liked Songs can't be written to.
+    #[serde(default)]
+    pub loved: Vec<String>,
     /// Controller ("free") mode: instead of streaming through librespot —
     /// which a non-Premium account can't do — Spotiamp+ mirrors and drives
     /// the official Spotify app through the Windows media session. Persisted

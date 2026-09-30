@@ -14,6 +14,10 @@
   const NOTES = {
     "0.7.4": [
       "<b>Listening stats</b>: time listened, top songs and artists, your streak and when you listen, for the last 7 days, 30 days, year or all time (Library, or right-click the playlist, <i>Windows</i>). Kept on this computer only.",
+      "<b>F</b> loves a song ♡: the playing one in the main window, the selected ones in the playlist. They're in the Library under <i>Loved songs</i>.",
+      "<b>Ctrl+V</b>: stop after the current song, like Winamp.",
+      "Right-click a song in the playlist for its own commands: play next, love, add to a list, copy its Spotify link, show a local file in its folder, remove.",
+      "Repeat one and autoplay now work for local files too.",
       "Lighter on the CPU while music plays.",
     ],
     "0.7.3": [
@@ -46,7 +50,9 @@
   const KEYS = [
     ["J", "Jump to a track"],
     ["Q", "Play the selected track next"],
+    ["F", "Love a song ♡"],
     ["Z X C V B", "Previous, play, pause, stop, next"],
+    ["Ctrl+V", "Stop after the current song"],
     ["← →", "Seek 5 seconds"],
     ["↑ ↓ / wheel", "Volume"],
     ["S / R", "Shuffle, repeat"],
