@@ -114,7 +114,7 @@ pub async fn osd_show(
         let latest = current().lock().ok().and_then(|c| c.as_ref().map(|c| c.seq));
         if latest == Some(seq) {
             if let Some(w) = app.get_webview_window("osd") {
-                let _ = w.hide();
+                hide_window(&w);
             }
         }
     });
@@ -131,8 +131,29 @@ pub fn osd_current() -> Option<Card> {
 #[tauri::command]
 pub async fn osd_hide(app: AppHandle) {
     if let Some(w) = app.get_webview_window("osd") {
-        let _ = w.hide();
+        hide_window(&w);
     }
+}
+
+/// Hide it the same way it was shown: straight through Win32. Shown behind
+/// the window library's back (to avoid taking focus), the library still
+/// thinks the window is hidden, so its own hide() did nothing and the card
+/// stayed up for good.
+fn hide_window(window: &WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindow};
+        let window = window.clone();
+        let _ = window.clone().run_on_main_thread(move || {
+            if let Ok(hwnd) = window.hwnd() {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = window.hide();
 }
 
 /// Switch the OSD on or off (persisted). Off hides one that's up.
