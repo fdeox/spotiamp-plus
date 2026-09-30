@@ -300,8 +300,17 @@
     menuBusy = true;
     try {
       await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists()]);
+      // Order matters here. Tauri's popup holds this page's resource table
+      // locked on a worker until the menu closes, while it waits for the main
+      // thread to show it; closing or creating a menu runs ON the main thread
+      // and needs that same lock. Fired at the same time (the old close wasn't
+      // awaited) the two could wait on each other forever: a blank white menu
+      // and every window frozen. So: finish closing the old menu, then create
+      // the new one, and only then pop it up.
+      const old = openedMenu;
+      openedMenu = null;
+      if (old) await old.close().catch(() => {});
       const menu = await Menu.new({ items: menuItems() });
-      openedMenu?.close().catch(() => {});
       openedMenu = menu;
       const target = windowLabel ? await Window.getByLabel(windowLabel) : null;
       await menu.popup(undefined, target ?? undefined);

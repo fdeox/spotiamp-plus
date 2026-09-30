@@ -583,15 +583,26 @@
   // --- right-click menus (Windows' own, like the main menu) ---
   /** @type {Menu | null} */
   let openedMenu = null;
+  let menuBusy = false;
   /** @param {any[]} items */
   async function popMenu(items) {
+    // One menu at a time, and the old one fully closed before the next is
+    // made: a popup keeps this page's resource table locked until it closes,
+    // and creating or closing a menu needs that lock on the main thread (see
+    // the playlist's showMenu), so overlapping them froze the whole app.
+    if (menuBusy) return;
+    menuBusy = true;
     try {
+      const old = openedMenu;
+      openedMenu = null;
+      if (old) await old.close().catch(() => {});
       const menu = await Menu.new({ items });
-      openedMenu?.close().catch(() => {});
       openedMenu = menu;
       await menu.popup();
     } catch {
       /* no menu then */
+    } finally {
+      menuBusy = false;
     }
   }
   /** @param {MouseEvent} e @param {any} pl */
