@@ -22,7 +22,7 @@
       "Open and save <b>.m3u</b> playlist files (right-click the playlist, <i>Playlist</i>): local files and Spotify songs, in order.",
       "Optional on-screen display: the new song, with its cover, in the corner of the screen for a few seconds (right-click the playlist, <i>Windows</i>).",
       "Repeat one and autoplay now work for local files too.",
-      "Lighter on the CPU while music plays.",
+      "Lighter on the CPU while music plays, and closing the stats, album art, lyrics or visualizer window gives its memory back.",
       "Fixed: opening the right-click menu right after picking something in it (like a skin) could freeze the whole app.",
       "When Spotify stops sending songs (it happens now and then, often right after the app opens), Spotiamp+ reconnects within seconds instead of skipping songs in silence for half a minute.",
     ],
