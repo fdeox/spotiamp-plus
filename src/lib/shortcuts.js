@@ -23,8 +23,10 @@ export function forwardShortcuts({ keys = MAIN_WINDOW_KEYS } = {}) {
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     if (e.altKey || e.metaKey || e.defaultPrevented) return;
     const k = e.key.toLowerCase();
-    const scaleKey = e.ctrlKey && k === "d";
-    if (!scaleKey && (e.ctrlKey || !keys.has(k))) return;
+    // Ctrl+D (scale) and Ctrl+V (stop after current) work from every window,
+    // even the Library, whose plain letters search instead
+    const ctrlKey = e.ctrlKey && (k === "d" || k === "v");
+    if (!ctrlKey && (e.ctrlKey || !keys.has(k))) return;
     e.preventDefault();
     emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: e.ctrlKey });
   };
