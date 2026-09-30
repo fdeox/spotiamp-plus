@@ -73,8 +73,12 @@ export class Visualizer {
         }
         if (this.running) {
             const now = Date.now();
-            if (now - this.lastTick < 1000 / MAX_READS_PER_SECOND) {
-                requestAnimationFrame(() => this.runVisualizerUpdate(id));
+            const wait = 1000 / MAX_READS_PER_SECOND - (now - this.lastTick);
+            if (wait > 0) {
+                // Sleep until the next read is due. Spinning on
+                // requestAnimationFrame woke the window at the display rate
+                // (165 a second on a 165 Hz screen) just to check the clock.
+                setTimeout(() => this.runVisualizerUpdate(id), wait);
                 return;
             }
             const deltaTime = now - this.lastTick;
