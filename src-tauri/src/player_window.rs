@@ -94,7 +94,7 @@ pub struct AudioDevices {
     current: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_audio_devices() -> AudioDevices {
     AudioDevices {
         devices: crate::spotify::list_output_devices(),

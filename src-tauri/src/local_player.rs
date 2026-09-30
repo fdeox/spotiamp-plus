@@ -634,7 +634,7 @@ pub async fn local_pick_files(app_handle: tauri::AppHandle) -> Vec<String> {
 
 /// Open the file's folder in Explorer with the file selected (the playlist's
 /// right-click "Show in folder").
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_reveal(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).is_file() {
         return Err("file not found".into());
@@ -707,7 +707,7 @@ pub struct LocalMeta {
 
 /// Probe a single file for its tags + duration. Separate from the playback
 /// path (no stream is built), so it's cheap to call the moment a file loads.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn local_metadata(path: String) -> LocalMeta {
     read_local_meta(&PathBuf::from(path)).unwrap_or_default()
 }

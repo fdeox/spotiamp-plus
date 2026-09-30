@@ -134,7 +134,7 @@ pub struct Stats {
 }
 
 /// Listening stats for plays at or after `since` (epoch ms; 0 = all time).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_stats(since: u64, limit: usize) -> Stats {
     let all = read_plays_full();
     let first_at = all.first().map(|p| p.at).unwrap_or(0);
@@ -195,7 +195,7 @@ pub fn history_stats(since: u64, limit: usize) -> Stats {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_add(entry: Play) -> Result<(), String> {
     if entry.uri.is_empty() {
         return Ok(());
@@ -203,13 +203,13 @@ pub fn history_add(entry: Play) -> Result<(), String> {
     append(&serde_json::to_string(&entry).map_err(|e| e.to_string())?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_extend(at: u64, ms: u64) -> Result<(), String> {
     append(&serde_json::to_string(&Extend { id: at, ms }).map_err(|e| e.to_string())?)
 }
 
 /// The most recently played tracks, newest first, each once.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_recent(limit: usize) -> Vec<HistoryItem> {
     let plays = read_plays();
     let mut counts: HashMap<&str, u32> = HashMap::new();
@@ -234,7 +234,7 @@ pub fn history_recent(limit: usize) -> Vec<HistoryItem> {
 }
 
 /// The most played tracks, most first (ties: the more recent first).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_top(limit: usize) -> Vec<HistoryItem> {
     let mut by_uri: HashMap<String, (u32, u64)> = HashMap::new();
     for p in read_plays() {
@@ -251,7 +251,7 @@ pub fn history_top(limit: usize) -> Vec<HistoryItem> {
     items
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_clear() -> Result<(), String> {
     if let Some(path) = path() {
         if path.exists() {

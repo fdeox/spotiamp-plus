@@ -244,7 +244,7 @@ pub fn list_bundled_skins() -> Vec<String> {
 }
 
 /// Activate one of the embedded skins by display name (from list_bundled_skins).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_bundled_skin(name: String) -> Result<(), String> {
     let Some((_, bytes)) = BUNDLED_SKINS.iter().find(|(n, _)| *n == name) else {
         return Err(format!("bundled skin '{name}' not found"));
@@ -257,7 +257,7 @@ pub fn load_bundled_skin(name: String) -> Result<(), String> {
 /// The extracted custom skin as data-URLs keyed by CSS variable suffix
 /// ("main" → `--skin-main`). Sheets a skin doesn't ship are simply absent —
 /// the frontend keeps the base art for those.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     let dir = custom_skin_dir().ok_or("no config dir")?;
     let mut sprites = HashMap::new();
