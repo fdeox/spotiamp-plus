@@ -159,6 +159,11 @@ player, equalizer, playlist and library — reskins live.
 From then on, right-click → *Help → Check for updates* keeps you current — no
 need to revisit this page. Windows 10/11 (x64) only for now.
 
+**Code signing:** the Windows builds are moving to signing through the SignPath
+Foundation. Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org). See the
+[code signing policy](CODE_SIGNING.md) and the [privacy policy](PRIVACY.md).
+
 ## Keyboard shortcuts
 
 These work in the main window **and every other window** (equalizer,
@@ -224,4 +229,4 @@ npm run tauri build    # produce a release installer (src-tauri/target/release/b
 
 ---
 
-<sub>[MIT License](LICENSE) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
+<sub>[MIT License](LICENSE) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
