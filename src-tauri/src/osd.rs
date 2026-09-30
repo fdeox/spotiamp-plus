@@ -16,7 +16,7 @@ const HEIGHT: f64 = 72.0;
 /// Gap to the screen edge (logical px).
 const MARGIN: f64 = 16.0;
 /// How long a card stays up.
-const SHOW_FOR: std::time::Duration = std::time::Duration::from_secs(6);
+const SHOW_FOR: std::time::Duration = std::time::Duration::from_secs(4);
 
 #[derive(Serialize, Clone)]
 pub struct Card {

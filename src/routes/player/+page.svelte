@@ -300,12 +300,36 @@
       } else {
         // Start at the resume spot as part of the load: a seek sent while the
         // track is still loading makes librespot load it all over again.
-        await invoke("load_track", {
-          uri: loadedTrack?.uri.asString,
-          positionMs: startMs,
-        }).catch(handleError);
+        await requestSpotifyLoad(loadedTrack?.uri.asString, startMs);
       }
     }
+  }
+
+  // Skipping fast (B B B B): load only the song you stop on. Every load asks
+  // Spotify for that song's key, and a burst of them gets refused for a while
+  // ("audio key error"), leaving later songs silent. A single press still
+  // loads at once; presses in quick succession wait until they stop.
+  let lastLoadAt = 0;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let pendingLoad;
+  /** @param {string} uri @param {number} positionMs */
+  async function requestSpotifyLoad(uri, positionMs) {
+    clearTimeout(pendingLoad);
+    const now = performance.now();
+    const burst = now - lastLoadAt < 600;
+    lastLoadAt = now;
+    if (!burst) {
+      await invoke("load_track", { uri, positionMs }).catch(handleError);
+      return;
+    }
+    pendingLoad = setTimeout(() => {
+      // a newer choice (or a local file / stop) took over meanwhile
+      if (loadedTrack?.isLocal || loadedTrack?.uri?.asString !== uri) return;
+      if (playerState != "playing" && playerState != "paused") return;
+      lastLoadAt = performance.now();
+      // paused while it waited: load it paused, so play resumes this song
+      invoke("load_track", { uri, positionMs, play: playerState == "playing" }).catch(handleError);
+    }, 450);
   }
 
   // Listening history (history.rs → Library ▸ Recently played / Most played).
