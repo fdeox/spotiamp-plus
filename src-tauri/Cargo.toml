@@ -69,6 +69,8 @@ windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    # .m3u files from older players are in the system code page, not UTF-8.
+    "Win32_Globalization",
     # Controller ("free") mode reads and drives the system media session.
     "Media_Control",
     # Publishing our own session: the headset buttons and the Windows media
