@@ -1359,6 +1359,10 @@
               {#if playlist.queuePosition(row)}
                 <span class="playlist-track-queue">[{playlist.queuePosition(row)}]&nbsp;</span>
               {/if}
+              {#if !row.isLocal && playlist.loved.has(row.uri.asString)}
+                <!-- loved (F); in the row's own colour so it suits every skin -->
+                <span class="playlist-track-loved" title="loved">♡&nbsp;</span>
+              {/if}
               <span class="playlist-track-name">{row.displayName}</span>
             </td>
             <td class="playlist-track-duration">{row.displayDuration}</td>

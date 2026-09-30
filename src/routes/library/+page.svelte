@@ -500,9 +500,16 @@
     const uris = /** @type {string[]} */ (await invoke("get_loved").catch(() => []));
     if (uris.length) emitWindowEvent("playerWindow", { UrlsDropped: uris.map(trackUrl) });
   }
+  // Which songs are loved, for the ♡ next to their title.
+  let lovedSet = $state(/** @type {Set<string>} */ (new Set()));
+  async function refreshLoved() {
+    lovedSet = new Set(/** @type {string[]} */ (await invoke("get_loved").catch(() => [])));
+  }
   // A song loved or unloved elsewhere while the list is up: show the change.
   onMount(() => {
+    refreshLoved();
     const off = listen("lovedChanged", () => {
+      refreshLoved();
       if (activeNode === "loved") selectLoved();
     });
     return () => {
@@ -599,6 +606,34 @@
       },
       { item: "Separator" },
       { text: isPinned ? "Unpin" : "Pin to the top", action: () => setPinned(pl.uri, !isPinned) },
+    ]);
+  }
+  /** Right-click a song: select it, then its commands. @param {MouseEvent} e @param {number} i */
+  async function trackMenu(e, i) {
+    e.preventDefault();
+    selectedTrack = i;
+    const uri = displayTracks[i]?.uri;
+    if (!uri) return;
+    const loved = lovedSet.has(uri);
+    const lists = /** @type {{name: string}[]} */ (await invoke("get_saved_lists").catch(() => []));
+    popMenu([
+      { text: "Play", action: () => loadTrackIntoMain(i) },
+      { text: "Add to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] }) },
+      { item: "Separator" },
+      {
+        text: loved ? "Unlove" : "♡ Love",
+        action: () => invoke("set_loved", { uris: [uri], loved: !loved }).catch(() => {}),
+      },
+      {
+        text: "Add to list",
+        items: lists.length
+          ? lists.map((l) => ({
+              text: l.name.replaceAll("&", "&&"),
+              action: () => invoke("add_to_list", { name: l.name, uri }).catch(() => {}),
+            }))
+          : [{ text: "No lists yet (the + LIST button below)", enabled: false }],
+      },
+      { text: "Copy Spotify link", action: () => navigator.clipboard.writeText(trackUrl(uri)).catch(() => {}) },
     ]);
   }
   /** @param {MouseEvent} e @param {"recent" | "top"} kind */
@@ -935,12 +970,15 @@
                 dragLinks(e, [trackUrl(t.uri)]);
               }}
               onclick={() => (selectedTrack = i)}
+              oncontextmenu={(e) => trackMenu(e, i)}
               ondblclick={() => loadTrackIntoMain(i)}
               onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
             >
               <div class="ml-col ml-c-artist">{t.artist}</div>
               <div class="ml-col ml-c-album">{t.album}</div>
-              <div class="ml-col ml-c-title">{t.name}</div>
+              <div class="ml-col ml-c-title">
+                {#if lovedSet.has(t.uri)}<span class="ml-heart" title="loved">♡</span>{/if}{t.name}
+              </div>
               <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
               <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
             </div>
@@ -1224,6 +1262,10 @@
   }
   .ml-ic-loved::before {
     content: "♡";
+  }
+  .ml-heart {
+    color: #e0455e;
+    margin-right: 3px;
   }
   .ml-ic-stats::before {
     content: "▤";
