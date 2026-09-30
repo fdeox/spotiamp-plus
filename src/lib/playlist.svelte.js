@@ -465,7 +465,7 @@ export class Playlist {
                     e.preventDefault();
                     this.toggleLoveSelected();
                 } else if (
-                    k == "s" || k == "r" || k == "l" || k == "o" ||
+                    k == "s" || k == "r" || k == "l" || k == "o" || k == "f1" ||
                     (k == " " && t?.tagName != "BUTTON")
                 ) {
                     // The main window's other keys (shuffle, repeat, library,

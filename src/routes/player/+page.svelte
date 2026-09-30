@@ -1029,6 +1029,8 @@
         // Q: queue the playlist's selection to play next, from here too
         case "q": acted(); emitWindowEvent("playerWindow", { QueueRequested: null }); break;
         case "f": acted(); toggleLoveCurrent(); break;
+        // F1: every key, in a little guide window
+        case "f1": acted(); invoke("show_whats_new", { keysOnly: true }).catch(() => {}); break;
         case "arrowup": acted(); volume = Math.min(100, volume + 5); break;
         case "arrowdown": acted(); volume = Math.max(0, volume - 5); break;
         case "arrowright":

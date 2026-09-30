@@ -63,16 +63,65 @@
     ["Ctrl+D", "Everything 2× bigger"],
     ["O / Shift+O", "Add music files / a folder"],
     ["L", "Open the Library"],
+    ["F1", "All the keys"],
+  ];
+
+  // F1: every key, by where it works.
+  const ALL_KEYS = [
+    {
+      title: "Playing",
+      keys: [
+        ["Z X C V B", "Previous, play, pause, stop, next"],
+        ["Space", "Play / pause"],
+        ["← →", "Seek 5 seconds"],
+        ["↑ ↓ / wheel", "Volume"],
+        ["Ctrl+V", "Stop after the current song"],
+        ["S / R", "Shuffle, repeat"],
+        ["F", "Love the song ♡ (in the playlist: the selected ones)"],
+      ],
+    },
+    {
+      title: "Playlist",
+      keys: [
+        ["J", "Jump to a track by name"],
+        ["Q", "Play the selected track next"],
+        ["Enter", "Play the selected track"],
+        ["Del", "Remove the selected tracks"],
+        ["Alt+↑ ↓", "Move the selected tracks"],
+        ["Ctrl+A", "Select everything"],
+        ["O / Shift+O", "Add music files / a folder"],
+      ],
+    },
+    {
+      title: "Windows",
+      keys: [
+        ["L", "Open the Library (type there to find a song)"],
+        ["Ctrl+D", "Everything 2× bigger"],
+        ["Double-click", "The spectrum opens the visualizer; the visualizer goes fullscreen"],
+        ["F11 / Esc", "Visualizer fullscreen on / off"],
+        ["F1", "This list"],
+      ],
+    },
   ];
 
   let version = $state("");
   // a test build ("0.7.4-beta.1") shows the notes of the version it leads to
   const notes = $derived(NOTES[version] ?? NOTES[version.split("-")[0]] ?? []);
+  /** Opened with F1: just the keys. */
+  let keysOnly = $state(false);
 
   onMount(() => {
     getVersion()
       .then((v) => (version = v))
       .catch(() => {});
+    invoke("whats_new_keys_only")
+      .then((k) => (keysOnly = Boolean(k)))
+      .catch(() => {});
+    // already open when F1 (or the menu) asked for the other view
+    const off = getCurrentWindow().listen("whatsNewMode", (e) => (keysOnly = Boolean(e.payload)));
+    return () => {
+      off.then((f) => f()).catch(() => {});
+    };
   });
 
   const close = () => invoke("close_whats_new").catch(() => {});
@@ -97,11 +146,30 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="wn-titlebar" onmousedown={drag}>
     <div class="wn-tl"></div>
-    <span class="wn-title">WHAT'S NEW</span>
+    <span class="wn-title">{keysOnly ? "KEYBOARD SHORTCUTS" : "WHAT'S NEW"}</span>
     <button class="wn-close" data-no-drag onclick={close} aria-label="Close"></button>
   </div>
 
   <div class="wn-body">
+    {#if keysOnly}
+      {#each ALL_KEYS as group}
+        <h2>{group.title}</h2>
+        <table>
+          <tbody>
+            {#each group.keys as [key, what]}
+              <tr>
+                <td class="wn-key"><kbd>{key}</kbd></td>
+                <td>{what}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/each}
+      <p class="wn-hint">
+        The keys work in every window, except that letters in the Library search.
+        Everything is also in the right-click menu.
+      </p>
+    {:else}
     <h1>Spotiamp+ {version}</h1>
     {#if notes.length}
       <h2>New in this version</h2>
@@ -128,10 +196,13 @@
       Everything else is in the right-click menu, with each key shown next to
       what it does. You can open this again from its <b>Help</b> menu.
     </p>
+    {/if}
   </div>
 
   <div class="wn-footer">
-    <button class="wn-btn" onclick={releaseNotes}>Release notes</button>
+    {#if !keysOnly}
+      <button class="wn-btn" onclick={releaseNotes}>Release notes</button>
+    {/if}
     <button class="wn-btn wn-ok" onclick={close}>OK</button>
   </div>
 </div>

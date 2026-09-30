@@ -510,7 +510,12 @@
       },
     ];
     const helpItems = [
-      { text: "What's new and keyboard keys", action: openWhatsNew },
+      {
+        text: "Keyboard shortcuts",
+        accelerator: "F1",
+        action: () => invoke("show_whats_new", { keysOnly: true }).catch(() => {}),
+      },
+      { text: "What's new in this version", action: openWhatsNew },
       { text: "Copy diagnostic info", action: copyDiagnosticInfo },
       {
         text: updateBusy

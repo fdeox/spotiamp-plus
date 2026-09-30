@@ -12,10 +12,28 @@ const SIZE: InnerWindowSize = InnerWindowSize {
     height: 380,
 };
 
+/// Whether the window was last asked for as the key guide (F1), read by the
+/// page when it loads.
+static KEYS_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[tauri::command]
-pub async fn show_whats_new(app_handle: AppHandle) -> Result<(), ()> {
+pub fn whats_new_keys_only() -> bool {
+    KEYS_ONLY.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// `keys_only`: F1's keyboard shortcut guide, the same window without the
+/// version notes.
+#[tauri::command]
+pub async fn show_whats_new(app_handle: AppHandle, keys_only: Option<bool>) -> Result<(), ()> {
+    let keys_only = keys_only.unwrap_or(false);
+    KEYS_ONLY.store(keys_only, std::sync::atomic::Ordering::SeqCst);
     let window = match app_handle.get_webview_window("whatsnew") {
-        Some(window) => window,
+        Some(window) => {
+            // already open: switch it to what was asked for
+            use tauri::Emitter;
+            let _ = app_handle.emit_to("whatsnew", "whatsNewMode", keys_only);
+            window
+        }
         None => {
             let window = app_window::build_frameless_window(
                 &app_handle,
@@ -50,6 +68,6 @@ pub async fn check_whats_new(app_handle: AppHandle) -> Result<bool, ()> {
         return Ok(false);
     }
     Settings::current_mut().last_seen_version = Some(version.to_string());
-    show_whats_new(app_handle).await?;
+    show_whats_new(app_handle, None).await?;
     Ok(true)
 }

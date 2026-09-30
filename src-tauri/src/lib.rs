@@ -502,6 +502,7 @@ pub fn run() {
             whatsnew_window::show_whats_new,
             whatsnew_window::close_whats_new,
             whatsnew_window::check_whats_new,
+            whatsnew_window::whats_new_keys_only,
             museum::museum_skins,
             museum::museum_apply,
             museum::show_museum,
