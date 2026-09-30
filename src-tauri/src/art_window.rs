@@ -23,6 +23,15 @@ pub fn build_window(
 //NOTE: async so Windows can create the window inside the command.
 #[tauri::command]
 pub async fn set_art_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // Closing gives the window's memory back: it's destroyed, and built again
+    // (at its saved spot and size) when next opened. See close_dock_window.
+    if !visible {
+        if let Some(window) = app_handle.get_webview_window("art") {
+            app_window::close_dock_window(&window);
+        }
+        crate::settings::Settings::current_mut().set_window_visible("art", false);
+        return Ok(());
+    }
     // The cover comes from the librespot metadata the player fetches; controller
     // mode has no such session, so the window stays closed whatever asked for it.
     if visible && crate::settings::Settings::current().controller_mode {

@@ -23,6 +23,15 @@ pub fn build_window(
 //NOTE: async so Windows can create the window inside the command.
 #[tauri::command]
 pub async fn set_stats_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // Closing gives the window's memory back: it's destroyed, and built again
+    // (at its saved spot and size) when next opened. See close_dock_window.
+    if !visible {
+        if let Some(window) = app_handle.get_webview_window("stats") {
+            app_window::close_dock_window(&window);
+        }
+        crate::settings::Settings::current_mut().set_window_visible("stats", false);
+        return Ok(());
+    }
     // The listening history is only kept for what Spotiamp+ plays itself, so
     // in controller mode (the Spotify app plays) there's nothing to show.
     if visible && crate::settings::Settings::current().controller_mode {

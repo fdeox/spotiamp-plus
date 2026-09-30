@@ -285,6 +285,9 @@ struct Dock {
     hwnds: HashMap<String, isize>,
     #[cfg(target_os = "windows")]
     owned_by_player: HashSet<String>,
+    /// Each window's `<label>Window` drag listener, so a window that's closed
+    /// for good (and built again later) doesn't leave one behind each time.
+    listeners: HashMap<String, tauri::EventId>,
 }
 
 fn dock() -> &'static Mutex<Dock> {
@@ -512,7 +515,7 @@ pub fn register_dock_window(window: &WebviewWindow) {
     let event_name = format!("{label}Window");
     let app_handle = window.app_handle().clone();
     let window = window.clone();
-    app_handle.listen(event_name, move |event| {
+    let listener = app_handle.listen(event_name, move |event| {
         let Ok(parsed) = serde_json::from_str::<DockingWindowEvent>(event.payload()) else {
             return;
         };
@@ -531,6 +534,45 @@ pub fn register_dock_window(window: &WebviewWindow) {
                 DockingWindowEvent::VisibilityChanged { .. } => {}
             }
         });
+    });
+    let old = dock().lock().expect("docking state lock").listeners.insert(label, listener);
+    if let Some(old) = old {
+        app_handle.unlisten(old);
+    }
+}
+
+/// Close an on-demand window for good, so its page and the memory it holds
+/// (each window is its own WebView) are given back, rather than just hiding
+/// it. It's built again when next opened, at its saved spot and size, and
+/// re-docks where it was. For windows that are quick to rebuild (stats, album
+/// art, lyrics, visualizer); not the Library, which would re-fetch every
+/// playlist from Spotify each time.
+pub fn close_dock_window(window: &WebviewWindow) {
+    let _ = window.hide();
+    // First the usual hide bookkeeping (it remembers the docked offset while
+    // the window still exists), then, in the next main-thread task, forget it
+    // and destroy it.
+    set_dock_visible(window, false);
+    let window = window.clone();
+    let label = window.label().to_string();
+    let app = window.app_handle().clone();
+    let _ = window.clone().run_on_main_thread(move || {
+        let listener = {
+            let mut dock = dock().lock().expect("docking state lock");
+            dock.windows.remove(&label);
+            dock.rects.remove(&label);
+            dock.visible.remove(&label);
+            #[cfg(target_os = "windows")]
+            {
+                dock.hwnds.remove(&label);
+                dock.owned_by_player.remove(&label);
+            }
+            dock.listeners.remove(&label)
+        };
+        if let Some(listener) = listener {
+            app.unlisten(listener);
+        }
+        let _ = window.destroy();
     });
 }
 

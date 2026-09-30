@@ -30,6 +30,18 @@ pub async fn set_visualizer_window_visible(
     visible: bool,
     app_handle: AppHandle,
 ) -> Result<(), ()> {
+    // Closing gives the window's memory back: it's destroyed, and built again
+    // (at its saved spot and size) when next opened. See close_dock_window.
+    if !visible {
+        if let Some(window) = app_handle.get_webview_window("visualizer") {
+            if window.is_fullscreen().unwrap_or(false) {
+                let _ = window.set_fullscreen(false);
+            }
+            app_window::close_dock_window(&window);
+        }
+        crate::settings::Settings::current_mut().set_window_visible("visualizer", false);
+        return Ok(());
+    }
     // Controller mode CAN show the visualizer: it's fed from a system-audio
     // loopback (see loopback.rs) rather than our own pipeline.
     let window = match app_handle.get_webview_window("visualizer") {
