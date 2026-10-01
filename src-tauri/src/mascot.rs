@@ -50,11 +50,18 @@ fn current() -> MascotSettings {
     }
 }
 
-/// Window size in logical px: the frame scaled to the chosen height, times the
-/// UI scale like every other window.
+/// Extra room to its left for a speech bubble, in the art's own px (0 = none).
+fn bubble() -> &'static Mutex<f64> {
+    static BUBBLE: Mutex<f64> = Mutex::new(0.0);
+    &BUBBLE
+}
+
+/// Window size in logical px: the frame (plus any speech bubble) scaled to
+/// the chosen height, times the UI scale like every other window.
 fn logical_size(size: u16) -> (f64, f64) {
     let k = size as f64 / 64.0 * crate::app_window::ui_scale();
-    ((FRAME_W * k).round(), (FRAME_H * k).round())
+    let extra = bubble().lock().map(|b| *b).unwrap_or(0.0);
+    (((FRAME_W + extra) * k).round(), (FRAME_H * k).round())
 }
 
 fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
@@ -96,8 +103,10 @@ fn place(app: &AppHandle, mascot: &WebviewWindow) {
     };
     let ui = crate::app_window::ui_scale();
     let k = current().size as f64 / 64.0 * ui * sf;
-    // along the top edge, never past either end
-    let max_inset = ((psize.width as f64 - msize.width as f64) / (ui * sf)).max(0.0);
+    // along the top edge, never past either end (the llama itself; a speech
+    // bubble may hang past the player's left end)
+    let llama_w = FRAME_W * current().size as f64 / 64.0 * ui * sf;
+    let max_inset = ((psize.width as f64 - llama_w) / (ui * sf)).max(0.0);
     let x = pos.x + psize.width as i32 - msize.width as i32 - (inset().clamp(0.0, max_inset) * ui * sf).round() as i32;
     let mut y = pos.y - msize.height as i32 + (FEET_GAP * k).round() as i32;
     // No room above (the player is at the top of the screen): keep it on
@@ -224,4 +233,15 @@ pub fn mascot_drag(app: AppHandle, dx: f64, done: bool) {
     }
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || follow_player(&app2));
+}
+
+/// Make room for a speech bubble to its left (`width` in the art's px), or
+/// give it back (0). The llama keeps its spot: the window grows leftwards.
+#[tauri::command]
+pub fn mascot_bubble(app: AppHandle, width: f64) {
+    if let Ok(mut b) = bubble().lock() {
+        *b = width.clamp(0.0, 400.0);
+    }
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || refresh(&app2));
 }

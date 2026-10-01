@@ -109,6 +109,29 @@
     }
   }
 
+  // Speech bubble: a short line in Winamp's display colours to its left, for
+  // a few seconds (a new badge, hello, Rewind). The window widens for it.
+  let bubbleText = "";
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let bubbleTimer;
+  const FONT = `7px "px sans nouveaux", monospace`;
+  /** @param {string} text @param {number} [ms] */
+  async function say(text, ms = 5000) {
+    await document.fonts.load(FONT).catch(() => {});
+    const c = /** @type {CanvasRenderingContext2D} */ (document.createElement("canvas").getContext("2d"));
+    c.font = FONT;
+    bubbleText = text;
+    // text, padding, the tail, a margin (art px)
+    await invoke("mascot_bubble", { width: Math.ceil(c.measureText(text).width) + 18 }).catch(() => {});
+    fit();
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => {
+      bubbleText = "";
+      invoke("mascot_bubble", { width: 0 }).catch(() => {});
+      fit();
+    }, ms);
+  }
+
   /** @param {string} name @param {number} [ms] how long, for a still mood */
   function react(name, ms = 2500) {
     const once = name === "celebrate";
@@ -153,6 +176,36 @@
     const h = Math.min(H, Math.round((W * FRAME_H) / FRAME_W));
     const w = Math.round((h * FRAME_W) / FRAME_H);
     ctx.drawImage(big, W - w, H - h, w, h);
+    if (bubbleText) drawBubble(ctx, W - w, H - h, h / FRAME_H);
+  }
+
+  /**
+   * The bubble left of the frame at `x0`, about head height, its tail
+   * reaching into the frame's empty margin towards the llama.
+   * @param {CanvasRenderingContext2D} ctx @param {number} x0 @param {number} y0 @param {number} k px per art px
+   */
+  function drawBubble(ctx, x0, y0, k) {
+    const px = (/** @type {number} */ v) => Math.round(v * k);
+    const top = y0 + px(17);
+    const height = px(13);
+    const left = px(1);
+    const right = x0 + px(4);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#5a5f74";
+    ctx.fillRect(left, top, right - left, height);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(left + px(1), top + px(1), right - left - px(2), height - px(2));
+    // the tail
+    ctx.fillStyle = "#5a5f74";
+    ctx.beginPath();
+    ctx.moveTo(right - 1, top + px(4));
+    ctx.lineTo(x0 + px(12), top + px(7));
+    ctx.lineTo(right - 1, top + px(9));
+    ctx.fill();
+    ctx.fillStyle = "#00e000";
+    ctx.font = `${px(7)}px "px sans nouveaux", monospace`;
+    ctx.textBaseline = "middle";
+    ctx.fillText(bubbleText, left + px(5), top + height / 2 + px(0.5));
   }
 
   /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -198,16 +251,20 @@
   }
 
   // A new badge since the last look: hop. The first look only sets the count.
-  let badgesDone = /** @type {number | null} */ (null);
+  let badgesDone = /** @type {string[] | null} */ (null);
   async function checkBadges() {
     try {
       const [all, loved] = await Promise.all([
         invoke("history_stats", { since: 0, until: null, limit: 1 }),
         invoke("get_loved").catch(() => []),
       ]);
-      const done = badgeList(/** @type {any} */ (all), /** @type {string[]} */ (loved).length).filter((b) => b.done).length;
-      if (badgesDone !== null && done > badgesDone) react("celebrate");
-      badgesDone = done;
+      const done = badgeList(/** @type {any} */ (all), /** @type {string[]} */ (loved).length).filter((b) => b.done);
+      if (badgesDone !== null && done.length > badgesDone.length) {
+        const fresh = done.find((b) => !badgesDone?.includes(b.name));
+        react("celebrate");
+        if (fresh) say(`New badge: ${fresh.name}!`, 6000);
+      }
+      badgesDone = done.map((b) => b.name);
     } catch {}
   }
 
@@ -303,11 +360,33 @@
       if (e.payload === true) react("love");
     }).then((u) => offs.push(u));
     const firstLook = setTimeout(checkBadges, 10_000);
+    // things it says once: hello the first time, Rewind once a December
+    /** @param {string} key */
+    const once = (key) => {
+      try {
+        if (localStorage.getItem(key)) return false;
+        localStorage.setItem(key, "1");
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const now = new Date();
+    const rewindYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const greet = setTimeout(() => {
+      if (once("llama-hello")) say("Hi! Right-click me for options", 7000);
+      else if ((now.getMonth() === 11 || now.getMonth() === 0) && once(`llama-rewind-${rewindYear}`)) {
+        react("happy", 3000);
+        say(`Your Rewind ${rewindYear} is ready! (Stats)`, 8000);
+      }
+    }, 4000);
     const badgeTimer = setInterval(checkBadges, BADGE_CHECK_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
       clearTimeout(firstLook);
+      clearTimeout(greet);
+      clearTimeout(bubbleTimer);
       clearInterval(badgeTimer);
       window.removeEventListener("resize", fit);
       for (const off of offs) off();
@@ -328,6 +407,15 @@
 ></canvas>
 
 <style>
+  @font-face {
+    font-family: px sans nouveaux;
+    font-style: normal;
+    font-weight: 400;
+    src:
+      local("px sans nouveaux"),
+      url(/src/static/assets/px_sans_nouveaux.woff) format("woff");
+  }
+
   :global(html),
   :global(body) {
     margin: 0;
