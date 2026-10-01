@@ -306,7 +306,11 @@
   }
   .mu-skin img {
     width: 100%;
-    aspect-ratio: 275 / 116;
+    /* the museum's screenshots are the whole Winamp (main window, EQ and
+       playlist), 275 x 348; boxed at the main window's 275 x 116 they came out
+       squashed (reported by kaool). Any odd size keeps its own shape too. */
+    aspect-ratio: 275 / 348;
+    object-fit: contain;
     display: block;
     /* screenshots are shown a little smaller than 1:1: smooth, not blocky */
     image-rendering: auto;
