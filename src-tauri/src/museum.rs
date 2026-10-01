@@ -17,9 +17,11 @@ use tauri::{AppHandle, Manager};
 
 use crate::{app_window, settings::InnerWindowSize, settings::Settings};
 
+// Two columns of previews at about the skins' own size (275 px wide), so
+// they're crisp rather than shrunk.
 const WINDOW_SIZE: InnerWindowSize = InnerWindowSize {
-    width: 480,
-    height: 470,
+    width: 600,
+    height: 620,
 };
 
 /// Open the museum window (centred; it's a browser you visit, not part of

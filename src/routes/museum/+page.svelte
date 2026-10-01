@@ -6,7 +6,7 @@
   import { emitWindowEvent } from "$lib/events.svelte.js";
 
   // Set before the first paint so the window opens at this size.
-  REACTIVE_WINDOW_SIZE.setSize(480, 470);
+  REACTIVE_WINDOW_SIZE.setSize(600, 620);
 
   /** @typedef {{name: string, md5: string, screenshot: string, download: string, page: string | null}} MuseumSkin */
 
@@ -323,11 +323,14 @@
   }
   .mu-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0, 1fr), not 1fr: a plain 1fr column grows to fit a bigger
+       screenshot (some skins have them at 2x), squeezing its neighbour */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
   .mu-cell {
     position: relative;
+    min-width: 0;
   }
   .mu-cell .mu-skin {
     width: 100%;
