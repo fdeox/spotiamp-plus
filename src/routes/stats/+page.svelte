@@ -59,6 +59,7 @@
 
   /** The start of the period, in epoch ms: whole days, counting today. */
   function sinceFor(id) {
+    if (id === "rewind") return new Date(new Date().getFullYear(), 0, 1).getTime();
     const p = PERIODS.find((p) => p.id === id);
     if (!p || !p.days) return 0;
     return dayStart(Date.now()) - (p.days - 1) * DAY;
@@ -376,6 +377,106 @@
     return `${v}/${x.goal}${x.unit}`;
   }
 
+  // REWIND: this calendar year as a few big slides, one fact each, from the
+  // same history. Click or the arrow keys step through; COPY takes the slide.
+  const YEAR = new Date().getFullYear();
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  /** @param {number} h the hour most listening happens around */
+  function persona(h) {
+    if (h >= 5 && h < 11) return { name: "EARLY BIRD", line: "the music comes on in the morning" };
+    if (h >= 11 && h < 17) return { name: "DAY SHIFT", line: "the music keeps you going through the day" };
+    if (h >= 17 && h < 22) return { name: "EVENING SPINNER", line: "evenings are when the music comes on" };
+    return { name: "NIGHT OWL", line: "the music really starts after dark" };
+  }
+
+  /** @param {Stats | null} s the year's stats */
+  function rewindFacts(s) {
+    if (!s?.plays) return null;
+    /** @type {Map<number, number>} listening time per day */
+    const perDay = new Map();
+    const weekday = new Array(7).fill(0);
+    const months = new Array(12).fill(0);
+    for (const [at, ms] of s.timeline) {
+      const d = dayStart(at);
+      perDay.set(d, (perDay.get(d) ?? 0) + ms);
+      const dt = new Date(at);
+      weekday[dt.getDay()] += ms;
+      months[dt.getMonth()] += ms;
+    }
+    let bigDay = 0;
+    let bigMs = 0;
+    for (const [d, ms] of perDay) {
+      if (ms > bigMs) {
+        bigDay = d;
+        bigMs = ms;
+      }
+    }
+    // the longest run of days in a row with some listening
+    let longest = 0;
+    let run = 0;
+    let prev = 0;
+    for (const d of [...perDay.keys()].sort((a, b) => a - b)) {
+      run = prev && dayStart(prev + DAY * 1.5) === d ? run + 1 : 1;
+      longest = Math.max(longest, run);
+      prev = d;
+    }
+    const byHour = hours(s);
+    const peak = byHour.indexOf(Math.max(...byHour));
+    return {
+      minutes: Math.round(s.ms / 60000),
+      activeDays: perDay.size,
+      bigDay,
+      bigMs,
+      longest,
+      peak,
+      persona: persona(peak),
+      weekday: weekday.indexOf(Math.max(...weekday)),
+      months: months.slice(0, new Date().getMonth() + 1),
+      topMonth: months.indexOf(Math.max(...months)),
+    };
+  }
+  const rewind = $derived(period === "rewind" ? rewindFacts(stats) : null);
+  const slides = $derived(
+    rewind && stats
+      ? [
+          "intro",
+          "time",
+          ...(stats.top_artists.length ? ["artist"] : []),
+          ...(stats.top_tracks.length ? ["song"] : []),
+          "clock",
+          "days",
+          "months",
+          "summary",
+        ]
+      : [],
+  );
+  const monthMax = $derived(Math.max(1, ...(rewind?.months ?? [])));
+  let slide = $state(0);
+  /** @param {number} d */
+  function step(d) {
+    slide = Math.min(Math.max(slide + d, 0), Math.max(slides.length - 1, 0));
+  }
+  function openRewind() {
+    slide = 0;
+    period = "rewind";
+  }
+  onMount(() => {
+    // Arrow keys step the slides. On the document, so it runs before the
+    // shortcut forwarding on the window, which then leaves the key alone.
+    /** @param {KeyboardEvent} e */
+    const onKey = (e) => {
+      if (!rewind || e.ctrlKey || e.altKey) return;
+      if (e.key === "ArrowRight") step(1);
+      else if (e.key === "ArrowLeft") step(-1);
+      else return;
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
   // re-measure the scroll handle's range when the list or the window changes
   $effect(() => {
     listTab;
@@ -451,7 +552,7 @@
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     const p = PERIODS.find((p) => p.id === period);
-    const text = `SPOTIAMP+  ·  MY LISTENING, ${p?.label ?? ""}`;
+    const text = rewind ? `SPOTIAMP+  ·  REWIND ${YEAR}` : `SPOTIAMP+  ·  MY LISTENING, ${p?.label ?? ""}`;
     // shrink the line until it fits a narrow window
     let size = Math.round(14 * px);
     do {
@@ -511,6 +612,14 @@
           {p.label}
         </button>
       {/each}
+      <button
+        class="st-tab"
+        class:on={period === "rewind"}
+        onclick={openRewind}
+        title="your {YEAR} so far, one big fact at a time"
+      >
+        REWIND
+      </button>
       {#if stats?.plays}
         <button
           class="st-play"
@@ -533,6 +642,98 @@
           No listening history yet.<br />
           A song counts after 30 seconds of playing.
         {/if}
+      </div>
+    {:else if rewind}
+      {@const a0 = stats.top_artists[0]}
+      {@const t0 = stats.top_tracks[0]}
+      {@const hh = String(rewind.peak).padStart(2, "0")}
+      <div class="rw" role="button" tabindex="-1" onclick={() => step(1)} onkeydown={() => {}}>
+        {#if slides[slide] === "intro"}
+          <div class="rw-k">YOUR YEAR IN SPOTIAMP+</div>
+          <div class="rw-big">REWIND {YEAR}</div>
+          <div class="rw-sub">
+            {stats.plays.toLocaleString("en-US")} plays since {fmtDate(stats.first_at)}<br />
+            click, or use the arrow keys
+          </div>
+        {:else if slides[slide] === "time"}
+          <div class="rw-k">YOU LISTENED FOR</div>
+          <div class="rw-big">{rewind.minutes.toLocaleString("en-US")}</div>
+          <div class="rw-k">MINUTES</div>
+          <div class="rw-sub">
+            that's {fmtDuration(stats.ms)} over {rewind.activeDays} days<br />
+            {stats.tracks} songs · {stats.artists} artists
+          </div>
+        {:else if slides[slide] === "artist"}
+          <div class="rw-k">YOUR #1 ARTIST</div>
+          <div class="rw-name" title={a0.name}>{a0.name}</div>
+          <div class="rw-sub">{a0.plays} plays · {fmtDuration(a0.ms)}</div>
+          <ol class="rw-list">
+            {#each stats.top_artists.slice(1, 5) as a, i}
+              <li><span>{i + 2}. {a.name}</span><span>{a.plays}×</span></li>
+            {/each}
+          </ol>
+        {:else if slides[slide] === "song"}
+          <div class="rw-k">YOUR #1 SONG</div>
+          <div class="rw-name" title={t0.title}>{t0.title || "Unknown"}</div>
+          <div class="rw-sub">{t0.artist ? `${t0.artist} · ` : ""}{t0.plays} plays</div>
+          <ol class="rw-list">
+            {#each stats.top_tracks.slice(1, 5) as t, i}
+              <li><span>{i + 2}. {t.title || "Unknown"}</span><span>{t.plays}×</span></li>
+            {/each}
+          </ol>
+        {:else if slides[slide] === "clock"}
+          <div class="rw-k">YOU ARE A</div>
+          <div class="rw-name">{rewind.persona.name}</div>
+          <div class="rw-sub">
+            {rewind.persona.line}, mostly around {hh}:00<br />
+            your day of the week: {DAY_NAMES[rewind.weekday]}
+          </div>
+          <div class="st-hours rw-wide">
+            {#each hourly as ms, h}
+              <div
+                class="st-hbar"
+                class:peak={h === rewind.peak}
+                style:height="{Math.max(ms ? 8 : 0, (ms / hourMax) * 100)}%"
+              ></div>
+            {/each}
+          </div>
+        {:else if slides[slide] === "days"}
+          <div class="rw-k">YOUR BIGGEST DAY</div>
+          <div class="rw-name">{fmtDate(rewind.bigDay)}</div>
+          <div class="rw-sub">{fmtDuration(rewind.bigMs)} of music in one day</div>
+          <div class="rw-gap"></div>
+          <div class="rw-k">LONGEST STREAK</div>
+          <div class="rw-big">{rewind.longest}</div>
+          <div class="rw-k">{rewind.longest === 1 ? "DAY" : "DAYS IN A ROW"}</div>
+        {:else if slides[slide] === "months"}
+          <div class="rw-k">YOUR TOP MONTH</div>
+          <div class="rw-name">{MONTH_NAMES[rewind.topMonth]}</div>
+          <div class="rw-sub">{fmtDuration(rewind.months[rewind.topMonth])} that month</div>
+          <div class="st-chart rw-wide" style:--n={rewind.months.length}>
+            {#each rewind.months as ms, m}
+              <div class="st-col">
+                <div class="st-bar" style:height="{(ms / monthMax) * 100}%"></div>
+                <div class="st-lbl">{MONTHS[m]}</div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="rw-k">REWIND {YEAR}</div>
+          <dl class="rw-sum">
+            <dt>MINUTES</dt><dd>{rewind.minutes.toLocaleString("en-US")}</dd>
+            {#if a0}<dt>TOP ARTIST</dt><dd>{a0.name}</dd>{/if}
+            {#if t0}<dt>TOP SONG</dt><dd>{t0.artist ? `${t0.artist} - ` : ""}{t0.title || "Unknown"}</dd>{/if}
+            <dt>YOU ARE A</dt><dd>{rewind.persona.name}</dd>
+            <dt>BIGGEST DAY</dt><dd>{fmtDate(rewind.bigDay)}</dd>
+            <dt>STREAK</dt><dd>{rewind.longest} {rewind.longest === 1 ? "day" : "days"}</dd>
+            <dt>BADGES</dt><dd>{badgesDone}/{badges.length}</dd>
+          </dl>
+        {/if}
+      </div>
+      <div class="rw-nav" style:visibility={capturing ? "hidden" : "visible"}>
+        <button class="st-tab" onclick={() => step(-1)} disabled={slide === 0}>&lt; BACK</button>
+        <span class="rw-dots">{slide + 1}/{slides.length}</span>
+        <button class="st-tab" onclick={() => step(1)} disabled={slide >= slides.length - 1}>NEXT &gt;</button>
       </div>
     {:else}
       <div class="st-totals">
@@ -1004,5 +1205,103 @@
       color-mix(in srgb, var(--fg) 45%, transparent) 11px 12px,
       transparent 12px
     );
+  }
+
+  /* REWIND slides: one big fact, centred, in sizes the pixel font stays crisp at */
+  .rw {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    text-align: center;
+    overflow: hidden;
+    cursor: pointer;
+    outline: none;
+  }
+  .rw-k {
+    letter-spacing: 1px;
+    color: color-mix(in srgb, var(--fg) 70%, transparent);
+  }
+  .rw-big {
+    font-size: 28px;
+    line-height: 1;
+    color: var(--hi);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .rw-name {
+    font-size: 14px;
+    color: var(--hi);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rw-sub {
+    line-height: 1.7;
+    letter-spacing: 0.4px;
+  }
+  .rw-gap {
+    height: 8px;
+  }
+  .rw-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    width: 100%;
+    max-width: 280px;
+  }
+  .rw-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 0;
+    border-top: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+  }
+  .rw-list li span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rw-wide {
+    width: 100%;
+    max-width: 280px;
+    margin: 6px 0 12px;
+  }
+  .rw-sum {
+    width: 100%;
+    max-width: 280px;
+    margin: 4px 0 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 5px 10px;
+    text-align: left;
+  }
+  .rw-sum dt {
+    color: color-mix(in srgb, var(--fg) 60%, transparent);
+    letter-spacing: 0.6px;
+  }
+  .rw-sum dd {
+    margin: 0;
+    color: var(--hi);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rw-nav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .rw-nav .st-tab:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .rw-dots {
+    letter-spacing: 1px;
   }
 </style>
