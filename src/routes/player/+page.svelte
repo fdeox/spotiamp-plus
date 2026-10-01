@@ -951,6 +951,13 @@
           setPosition(position_ms);
         } else if (event.Stopped) {
           playerState = "stopped";
+        } else if (event.Unavailable) {
+          // The song failed to load. The playlist moves on to the next one
+          // (state stays "playing" so it plays), or stops after a few in a
+          // row; here the ticker just says what happened.
+          if (!loadedTrack?.isLocal && event.Unavailable.uri === loadedTrack?.uri?.asString) {
+            flashTicker("SONG FAILED TO LOAD");
+          }
         } else if (event.PositionCorrection) {
           const { position_ms } = event.PositionCorrection;
           setPosition(position_ms);

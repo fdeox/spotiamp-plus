@@ -531,7 +531,10 @@ export class Playlist {
         const playerSubscription = subscribeToWindowEvent("player", (event) => {
             if (event.EndOfTrack) {
                 this.trackEnded();
+            } else if (event.Unavailable) {
+                this.loadFailed(event.Unavailable.uri);
             } else if (event.Playing) {
+                this.loadFailures = 0;
                 this.positionMs = event.Playing.position_ms;
             } else if (event.PositionChanged) {
                 this.positionMs = event.PositionChanged.position_ms;
@@ -968,6 +971,31 @@ export class Playlist {
             } else {
                 emitWindowEvent("playlistWindow", { EndReached: null });
             }
+        });
+    }
+
+    /** Songs that failed to load in a row (reset when one plays). */
+    loadFailures = 0;
+
+    /**
+     * The playing song couldn't be loaded. Move on like Spotify's own apps
+     * do, but not forever: when Spotify isn't sending songs at all (it refuses
+     * them for a minute or two now and then), skipping through the whole list
+     * only makes it worse, so after three in a row stop and say so.
+     * @param {string} uri
+     */
+    loadFailed(uri) {
+        // a late failure of a song that's no longer the one loaded
+        if (uri !== this.loadedRow?.uri?.asString) return;
+        this.loadFailures += 1;
+        if (this.loadFailures > 3) {
+            this.loadFailures = 0;
+            emitWindowEvent("playlistWindow", { StopRequested: null });
+            this.notify("Spotify isn't sending songs right now. Try again in a minute.");
+            return;
+        }
+        this.next(true).then((endReached) => {
+            if (endReached) emitWindowEvent("playlistWindow", { EndReached: null });
         });
     }
 

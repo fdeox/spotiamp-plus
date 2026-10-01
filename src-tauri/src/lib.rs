@@ -63,6 +63,10 @@ enum SpotiampPlayerEvent {
     PositionChanged { uri: String, position_ms: u32 },
     Seeked { uri: String, position_ms: u32 },
     Playing { uri: String, position_ms: u32 },
+    /// The song couldn't be loaded (librespot waits for us to move on, the
+    /// way Spotify's own apps do; unforwarded, the window kept saying
+    /// "playing" over silence).
+    Unavailable { uri: String },
 }
 
 impl SpotiampPlayerEvent {
@@ -114,6 +118,10 @@ impl SpotiampPlayerEvent {
                 uri: track_id.to_uri().expect("a valid uri"),
                 position_ms,
             }),
+            PlayerEvent::Unavailable { track_id, .. } => track_id
+                .to_uri()
+                .ok()
+                .map(|uri| Self::Unavailable { uri }),
             _ => None,
         }
     }
