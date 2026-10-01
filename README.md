@@ -45,7 +45,7 @@ docking windows that snap together like classic Winamp.
   own computer by Spotiamp+ (nothing is sent anywhere).
 - 📊 **Listening stats** — time listened, top songs and artists, your streak and
   when you listen, for the last 7 days, 30 days, year or all time, plus
-  **47 badges** to unlock (night owl, marathon, 30 days in a row, Winamp's
+  **48 badges** to unlock (night owl, marathon, 30 days in a row, Winamp's
   birthday…). **Copy** them as a picture to share (Library → *Listening stats*).
 - ♡ **Loved songs** — press **F** to love the playing song (or the selected ones
   in the playlist); they're in the Library under *Loved songs*, with a ♡ next to
