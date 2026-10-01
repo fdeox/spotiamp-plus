@@ -62,7 +62,7 @@ const MAX_WSZ_BYTES: usize = 8 * 1024 * 1024;
 /// Where skins may come from. download_url points at the museum's CDN.
 const SKIN_HOSTS: &[&str] = &["r2.webampskins.org", "cdn.webampskins.org", "skins.webamp.org"];
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, serde::Deserialize, Clone, Hash)]
 pub struct MuseumSkin {
     name: String,
     md5: String,
@@ -171,6 +171,41 @@ pub async fn museum_skins(
         }
         other => Err(format!("unknown list: {other}")),
     }
+}
+
+/// Skins starred (★) in the museum, newest first.
+#[tauri::command(async)]
+pub fn museum_favorites() -> Vec<MuseumSkin> {
+    crate::settings::Settings::current()
+        .favorite_skins
+        .iter()
+        .rev()
+        .cloned()
+        .collect()
+}
+
+/// Star or unstar a skin (kaool's idea). Only real museum skins: the same
+/// id and host checks as putting one on, since these are saved and used later.
+#[tauri::command(async)]
+pub fn museum_set_favorite(skin: MuseumSkin, favorite: bool) -> Result<(), String> {
+    if skin.md5.len() != 32 || !skin.md5.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("That skin's id looks wrong.".into());
+    }
+    for link in [&skin.download, &skin.screenshot] {
+        let url = url::Url::parse(link).map_err(|_| "That skin's link looks wrong.".to_string())?;
+        if url.scheme() != "https" || !SKIN_HOSTS.contains(&url.host_str().unwrap_or("")) {
+            return Err("Only Skin Museum skins can be favorites.".into());
+        }
+    }
+    let mut settings = crate::settings::Settings::current_mut();
+    settings.favorite_skins.retain(|s| s.md5 != skin.md5);
+    if favorite {
+        settings.favorite_skins.push(skin);
+        // plenty, and keeps the settings file small
+        let extra = settings.favorite_skins.len().saturating_sub(300);
+        settings.favorite_skins.drain(..extra);
+    }
+    Ok(())
 }
 
 /// Download a museum skin and put it on (like "load .wsz…" from disk).

@@ -21,6 +21,8 @@
       "Right-click a song, in the playlist or the Library, for its own commands: play next, love, add to a list, copy its Spotify link, show a local file in its folder.",
       "Open and save <b>.m3u</b> playlist files (right-click the playlist, <i>Playlist</i>): local files and Spotify songs, in order.",
       "Optional on-screen display: the new song, with its cover, in the corner of the screen for a few seconds (right-click the playlist, <i>Windows</i>).",
+      "Skin Museum: star (☆) the skins you like and find them again under <i>★ Favorites</i>. Thanks for the idea, kaool!",
+      "Fixed: Skin Museum previews were squashed (reported by kaool).",
       "Repeat one and autoplay now work for local files too.",
       "Lighter on the CPU while music plays, and closing the stats, album art, lyrics or visualizer window gives its memory back.",
       "Fixed: opening the right-click menu right after picking something in it (like a skin) could freeze the whole app.",

@@ -220,6 +220,10 @@ pub struct Settings {
     /// first. Kept in the app; Spotify's own Liked Songs can't be written to.
     #[serde(default)]
     pub loved: Vec<String>,
+    /// Skins starred (★) in the Skin Museum, oldest first, kept whole so the
+    /// Favorites tab shows them without asking the museum again.
+    #[serde(default)]
+    pub favorite_skins: Vec<crate::museum::MuseumSkin>,
     /// Controller ("free") mode: instead of streaming through librespot —
     /// which a non-Premium account can't do — Spotiamp+ mirrors and drives
     /// the official Spotify app through the Windows media session. Persisted

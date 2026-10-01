@@ -23,10 +23,43 @@
   let applied = $state("");
   let status = $state("");
 
+  // Favorites (★), kept in the settings (kaool's idea).
+  /** md5s of the starred skins @type {Set<string>} */
+  let favs = $state(new Set());
+  async function loadFavs() {
+    const list = /** @type {MuseumSkin[]} */ (await invoke("museum_favorites").catch(() => []));
+    favs = new Set(list.map((s) => s.md5));
+    return list;
+  }
+  /** @param {MuseumSkin} skin */
+  async function toggleFav(skin) {
+    const on = !favs.has(skin.md5);
+    try {
+      await invoke("museum_set_favorite", { skin, favorite: on });
+    } catch (e) {
+      status = String(e);
+      return;
+    }
+    const next = new Set(favs);
+    if (on) next.add(skin.md5);
+    else next.delete(skin.md5);
+    favs = next;
+    status = on ? `★ ${skin.name} is in your favorites.` : `${skin.name} left your favorites.`;
+    if (kind === "favorites" && !on) skins = skins.filter((s) => s.md5 !== skin.md5);
+  }
+
   /** @param {string} nextKind @param {boolean} [more] */
   async function load(nextKind, more = false) {
     if (loading) return;
     if (nextKind === "search" && !query.trim()) return;
+    if (nextKind === "favorites") {
+      kind = "favorites";
+      error = "";
+      skins = await loadFavs();
+      if (listEl) listEl.scrollTop = 0;
+      if (!skins.length) error = "No favorites yet. Click the ☆ on a skin to keep it here.";
+      return;
+    }
     kind = nextKind;
     offset = more ? offset + 24 : 0;
     loading = true;
@@ -66,6 +99,7 @@
   let listEl = $state();
 
   onMount(() => {
+    loadFavs();
     load("classics");
   });
 
@@ -105,6 +139,7 @@
     <button class="mu-btn" onclick={() => load("search")}>Search</button>
     <button class="mu-btn" class:on={kind === "classics"} onclick={() => load("classics")}>Classics</button>
     <button class="mu-btn" class:on={kind === "random"} onclick={() => load("random")}>Random</button>
+    <button class="mu-btn" class:on={kind === "favorites"} onclick={() => load("favorites")}>★ Favorites</button>
   </div>
 
   <div class="mu-list" bind:this={listEl}>
@@ -113,21 +148,31 @@
     {/if}
     <div class="mu-grid">
       {#each skins as skin (skin.md5)}
-        <button
-          class="mu-skin"
-          class:applied={applied === skin.md5}
-          class:busy={applying === skin.md5}
-          title="Put on {skin.name}"
-          onclick={() => wear(skin)}
-        >
-          <img src={skin.screenshot} alt={skin.name} loading="lazy" draggable="false" />
-          <span class="mu-name">{skin.name}</span>
-        </button>
+        <div class="mu-cell">
+          <button
+            class="mu-skin"
+            class:applied={applied === skin.md5}
+            class:busy={applying === skin.md5}
+            title="Put on {skin.name}"
+            onclick={() => wear(skin)}
+          >
+            <img src={skin.screenshot} alt={skin.name} loading="lazy" draggable="false" />
+            <span class="mu-name">{skin.name}</span>
+          </button>
+          <!-- beside the card, not in it: a button can't hold another button -->
+          <button
+            class="mu-star"
+            class:on={favs.has(skin.md5)}
+            title={favs.has(skin.md5) ? "Remove from favorites" : "Add to favorites"}
+            aria-label={favs.has(skin.md5) ? "Remove from favorites" : "Add to favorites"}
+            onclick={() => toggleFav(skin)}
+          >{favs.has(skin.md5) ? "★" : "☆"}</button>
+        </div>
       {/each}
     </div>
     {#if loading}
       <div class="mu-msg">Loading…</div>
-    {:else if skins.length && kind !== "search"}
+    {:else if skins.length && kind !== "search" && kind !== "favorites"}
       <button class="mu-btn mu-more" onclick={() => load(kind, true)}>
         {kind === "random" ? "More random skins" : "More"}
       </button>
@@ -280,6 +325,38 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+  }
+  .mu-cell {
+    position: relative;
+  }
+  .mu-cell .mu-skin {
+    width: 100%;
+  }
+  /* the favorite star, in the card's top-right corner */
+  .mu-star {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--fg) 35%, transparent);
+    background: color-mix(in srgb, #000 60%, transparent);
+    color: color-mix(in srgb, var(--fg) 75%, transparent);
+    font-size: 14px;
+    line-height: 20px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .mu-cell:hover .mu-star,
+  .mu-star:focus-visible,
+  .mu-star.on {
+    opacity: 1;
+  }
+  .mu-star.on {
+    color: #f5c542;
+    border-color: #f5c542;
   }
   .mu-skin {
     display: flex;

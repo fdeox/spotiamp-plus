@@ -505,6 +505,8 @@ pub fn run() {
             whatsnew_window::whats_new_keys_only,
             museum::museum_skins,
             museum::museum_apply,
+            museum::museum_favorites,
+            museum::museum_set_favorite,
             museum::show_museum,
             museum::close_museum,
             history::history_add,
