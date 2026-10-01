@@ -17,7 +17,7 @@
       "<b>F</b> loves a song ♡: the playing one in the main window, the selected ones in the playlist. They're in the Library under <i>Loved songs</i>, with a ♡ next to them everywhere.",
       "<b>Ctrl+V</b>: stop after the current song, like Winamp.",
       "<b>F1</b> shows every keyboard shortcut, from any window.",
-      "<b>Badges</b> in Listening stats: night owl, marathon, a week in a row and more, with how close you are to each.",
+      "<b>47 badges</b> in Listening stats, from your first song to 1000 hours: night owl, marathon, 30 days in a row, Winamp's birthday and more, with how close you are to each.",
       "Right-click a song, in the playlist or the Library, for its own commands: play next, love, add to a list, copy its Spotify link, show a local file in its folder.",
       "Open and save <b>.m3u</b> playlist files (right-click the playlist, <i>Playlist</i>): local files and Spotify songs, in order.",
       "Optional on-screen display: the new song, with its cover, in the corner of the screen for a few seconds (right-click the playlist, <i>Windows</i>).",

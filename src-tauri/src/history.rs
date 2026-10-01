@@ -128,6 +128,8 @@ pub struct Stats {
     first_at: u64,
     top_tracks: Vec<TopTrack>,
     top_artists: Vec<TopArtist>,
+    /// plays of your own music files (not Spotify), for a badge
+    local_plays: u32,
     /// `[at, ms]` of every play in the period, for the day / hour charts
     /// (bucketed in the window, which knows the local time zone).
     timeline: Vec<(u64, u64)>,
@@ -191,6 +193,7 @@ pub fn history_stats(since: u64, limit: usize) -> Stats {
         first_at,
         top_tracks,
         top_artists,
+        local_plays: plays.iter().filter(|p| p.uri.starts_with("local:")).count() as u32,
         timeline: plays.iter().map(|p| (p.at, p.ms)).collect(),
     }
 }
