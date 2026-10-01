@@ -215,7 +215,8 @@
   });
 
   function emitPreviousPressed() {
-    if (controllerMode) {
+    // a local file walks the playlist even in controller mode
+    if (controllerMode && !loadedTrack?.isLocal) {
       invoke("smtc_previous").catch(() => {});
       return;
     }
@@ -224,7 +225,7 @@
   }
 
   function emitNextPressed() {
-    if (controllerMode) {
+    if (controllerMode && !loadedTrack?.isLocal) {
       invoke("smtc_next").catch(() => {});
       return;
     }
@@ -752,6 +753,15 @@
     if (!controllerMode) return;
     const poll = async () => {
       const np = await invoke("smtc_now_playing").catch(() => null);
+      // A local file has the player: leave it alone until it's stopped, or
+      // until the Spotify app starts playing over a paused file.
+      if (loadedTrack?.isLocal) {
+        if (playerState === "playing" || (playerState === "paused" && !np?.playing)) return;
+        if (playerState === "paused") {
+          stopLocalPoll();
+          await invoke("local_stop").catch(() => {});
+        }
+      }
       if (!np?.available || !np.title) {
         playerState = "stopped";
         loadedTrack = undefined;

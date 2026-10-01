@@ -257,6 +257,14 @@ fn start_controller_mode(app_handle: &AppHandle) -> Result<(), StartError> {
     // The visualizer's only audio source in this mode is the system output,
     // captured via loopback — start it up front so it's ready when opened.
     loopback::start_loopback();
+    // Local files play through their own engine, Spotify or not, so a free
+    // account can still play its own MP3s and FLACs. Without this every
+    // local_* command failed and the file silently never played. Nothing
+    // shares its EQ or spectrum here (the visualizer listens to the loopback).
+    app_handle.manage(std::sync::Mutex::new(local_player::LocalPlayer::new(
+        Arc::new(std::sync::Mutex::new(eq::EqState::default())),
+        Arc::new(std::sync::Mutex::new(visualizer::Visualizer::new())),
+    )));
     player_window::build_window(app_handle).map_err(|e| StartError::WindowCreationFailed {
         window_name: "Player".to_string(),
         e,

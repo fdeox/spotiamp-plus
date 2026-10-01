@@ -438,7 +438,12 @@
       });
     }
     const listItems = controllerMode
-      ? [{ text: "Clear playlist", action: () => playlist.clear() }]
+      ? [
+          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
+          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          sep,
+          { text: "Clear playlist", action: () => playlist.clear() },
+        ]
       : [
           { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
           { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
