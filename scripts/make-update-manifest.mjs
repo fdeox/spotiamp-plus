@@ -21,7 +21,9 @@ if (!existsSync(bundleDir)) {
   process.exit(1);
 }
 
-const sigName = readdirSync(bundleDir).find((f) => f.includes(version) && f.endsWith(".exe.sig"));
+// The exact version between underscores: "0.7.4" must not pick up a
+// leftover "0.7.4-beta.1" installer from an earlier test build.
+const sigName = readdirSync(bundleDir).find((f) => f.includes(`_${version}_`) && f.endsWith(".exe.sig"));
 if (!sigName) {
   console.error(
     `No .sig for ${version} in ${bundleDir}.\n` +

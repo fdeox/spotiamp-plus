@@ -17,7 +17,7 @@ docking windows that snap together like classic Winamp.
 > **Free Mode**, where Spotiamp+ becomes the Winamp face of the official Spotify
 > app and drives it. Login always uses Spotify's own OAuth page.
 
-![Spotiamp+](docs/screenshots/classic.jpg)
+![Spotiamp+ in action: skins, the Skin Museum, lyrics and the visualizer](docs/demo.gif)
 
 ---
 >## Project Status
@@ -43,6 +43,21 @@ docking windows that snap together like classic Winamp.
   from the Library onto the playlist.
 - 🕘 **Recently played & Most played** — two lists in the Library, kept on your
   own computer by Spotiamp+ (nothing is sent anywhere).
+- 📊 **Listening stats** — time listened, top songs and artists, your streak and
+  when you listen, for the last 7 days, 30 days, year or all time, plus
+  **47 badges** to unlock (night owl, marathon, 30 days in a row, Winamp's
+  birthday…). **Copy** them as a picture to share (Library → *Listening stats*).
+- ♡ **Loved songs** — press **F** to love the playing song (or the selected ones
+  in the playlist); they're in the Library under *Loved songs*, with a ♡ next to
+  them everywhere.
+- ⏹️ **Stop after current** — **Ctrl+V** stops when the song ends, like Winamp.
+- 🖱️ **Song menus** — right-click a song, in the playlist or the Library, to play
+  it next, love it, add it to a list, copy its Spotify link or show a local file
+  in its folder.
+- 📄 **M3U playlists** — open and save `.m3u` / `.m3u8` files (right-click →
+  *Playlist*): local files and Spotify songs, in order.
+- 💬 **On-screen display** (optional) — the new song, with its cover, in the
+  corner of the screen for a few seconds (right-click → *Windows*).
 - 🔢 **Jump to track & queue** — press **J** and type part of a song's name to
   find it in the playlist (arrows pick, **Enter** plays); press **Q** to play
   the selected song next. The number on a row is its place in the queue.
@@ -69,7 +84,8 @@ docking windows that snap together like classic Winamp.
   skins (all rights remain with their original authors). Open the
   **Skin Museum** right inside Spotiamp+ (*Skins → Skin Museum…*) to browse
   thousands of classic skins from the
-  [Winamp Skin Museum](https://skins.webamp.org/) and put one on with a click,
+  [Winamp Skin Museum](https://skins.webamp.org/) and put one on with a click
+  (star the ones you like to find them under *Favorites*),
   or **load any Winamp 2.x skin (`.wsz`)** from disk. Every window — player,
   equalizer, playlist **and the media library** — reskins live and persists
   across restarts.
@@ -118,7 +134,8 @@ docking windows that snap together like classic Winamp.
 - 🖱️ **Winamp-style right-click menu** — on the playlist and the main window,
   with each key shown next to what it does.
 - ⌨️ **Keyboard shortcuts** — classic Winamp keys that work from every window
-  (see below), plus the **mouse wheel** over the main window for volume.
+  (see below), plus the **mouse wheel** over the main window for volume. Press
+  **F1** anywhere for the full list.
 
 ## Screenshots
 
@@ -133,6 +150,10 @@ docking windows that snap together like classic Winamp.
 | Equalizer | Lyrics |
 | :-------: | :----: |
 | ![](docs/screenshots/eq.jpg) | ![](docs/screenshots/lyrics.jpg) |
+
+| Fullscreen visualizer |
+| :-------------------: |
+| ![](docs/fullscreen-visualizer.gif) |
 
 ### Load any classic Winamp skin
 
@@ -167,9 +188,9 @@ certificate by [SignPath Foundation](https://signpath.org). See the
 ## Keyboard shortcuts
 
 These work in the main window **and every other window** (equalizer,
-playlist, visualizer, lyrics, album art). In the Library, typing searches
-instead, so there only `Ctrl+D` works. The right-click menu shows each key next
-to what it does.
+playlist, visualizer, lyrics, album art, stats). In the Library, typing searches
+instead, so there only `Ctrl+D`, `Ctrl+V` and `F1` work. The right-click menu
+shows each key next to what it does, and **`F1`** opens the whole list.
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
@@ -177,8 +198,9 @@ to what it does.
 | `↑` `↓` / mouse wheel | volume | `←` `→` | seek ∓5s |
 | `S` | shuffle | `R` | repeat (off / all / one) |
 | `J` | jump to a track | `Q` | play the selected track next |
+| `F` | love the song ♡ | `Ctrl+V` | stop after the current song |
 | `L` | open Library | `O` / `Shift+O` | add local file(s) / folder |
-| `Ctrl+D` | everything 2× bigger | | |
+| `Ctrl+D` | everything 2× bigger | `F1` | all the keyboard shortcuts |
 
 The mouse wheel works over the main window. In the playlist window the arrow
 keys move the selection instead (see below).
