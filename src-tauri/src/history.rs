@@ -135,12 +135,16 @@ pub struct Stats {
     timeline: Vec<(u64, u64)>,
 }
 
-/// Listening stats for plays at or after `since` (epoch ms; 0 = all time).
+/// Listening stats for plays at or after `since` (epoch ms; 0 = all time) and,
+/// when given, before `until` (Rewind's calendar year, looked at in January).
 #[tauri::command(async)]
-pub fn history_stats(since: u64, limit: usize) -> Stats {
+pub fn history_stats(since: u64, until: Option<u64>, limit: usize) -> Stats {
     let all = read_plays_full();
     let first_at = all.first().map(|p| p.at).unwrap_or(0);
-    let plays: Vec<&Play> = all.iter().filter(|p| p.at >= since).collect();
+    let plays: Vec<&Play> = all
+        .iter()
+        .filter(|p| p.at >= since && until.is_none_or(|u| p.at < u))
+        .collect();
 
     let mut tracks: HashMap<&str, TopTrack> = HashMap::new();
     let mut artists: HashMap<String, TopArtist> = HashMap::new();

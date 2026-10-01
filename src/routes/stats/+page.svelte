@@ -21,6 +21,12 @@
     { id: "all", label: "ALL TIME", days: 0 },
   ];
 
+  // Rewind opens on December 1 and stays through January (still the year just
+  // gone); before that its tab only counts down, so it's a surprise.
+  const NOW = new Date();
+  const REWIND_OPEN = NOW.getMonth() === 11 || NOW.getMonth() === 0;
+  const YEAR = NOW.getMonth() === 0 ? NOW.getFullYear() - 1 : NOW.getFullYear();
+
   /**
    * @typedef {{uri: string, title: string, artist: string, plays: number, ms: number}} TopTrack
    * @typedef {{name: string, plays: number, ms: number}} TopArtist
@@ -59,7 +65,7 @@
 
   /** The start of the period, in epoch ms: whole days, counting today. */
   function sinceFor(id) {
-    if (id === "rewind") return new Date(new Date().getFullYear(), 0, 1).getTime();
+    if (id === "rewind") return new Date(YEAR, 0, 1).getTime();
     const p = PERIODS.find((p) => p.id === id);
     if (!p || !p.days) return 0;
     return dayStart(Date.now()) - (p.days - 1) * DAY;
@@ -70,9 +76,13 @@
     const my = ++token;
     try {
       const [s, all, loved] = await Promise.all([
-        invoke("history_stats", { since: sinceFor(period), limit: 50 }),
+        invoke("history_stats", {
+          since: sinceFor(period),
+          until: period === "rewind" ? new Date(YEAR + 1, 0, 1).getTime() : null,
+          limit: 50,
+        }),
         // all time, with the single top song and artist, for the badges
-        invoke("history_stats", { since: 0, limit: 1 }),
+        invoke("history_stats", { since: 0, until: null, limit: 1 }),
         invoke("get_loved").catch(() => []),
       ]);
       if (my !== token) return;
@@ -379,7 +389,6 @@
 
   // REWIND: this calendar year as a few big slides, one fact each, from the
   // same history. Click or the arrow keys step through; COPY takes the slide.
-  const YEAR = new Date().getFullYear();
   const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -398,7 +407,9 @@
     const perDay = new Map();
     const weekday = new Array(7).fill(0);
     const months = new Array(12).fill(0);
+    let firstAt = Infinity;
     for (const [at, ms] of s.timeline) {
+      firstAt = Math.min(firstAt, at);
       const d = dayStart(at);
       perDay.set(d, (perDay.get(d) ?? 0) + ms);
       const dt = new Date(at);
@@ -425,6 +436,7 @@
     const byHour = hours(s);
     const peak = byHour.indexOf(Math.max(...byHour));
     return {
+      firstAt,
       minutes: Math.round(s.ms / 60000),
       activeDays: perDay.size,
       bigDay,
@@ -433,11 +445,12 @@
       peak,
       persona: persona(peak),
       weekday: weekday.indexOf(Math.max(...weekday)),
-      months: months.slice(0, new Date().getMonth() + 1),
+      // up to this month, or all twelve once the year is over
+      months: YEAR < new Date().getFullYear() ? months : months.slice(0, new Date().getMonth() + 1),
       topMonth: months.indexOf(Math.max(...months)),
     };
   }
-  const rewind = $derived(period === "rewind" ? rewindFacts(stats) : null);
+  const rewind = $derived(period === "rewind" && REWIND_OPEN ? rewindFacts(stats) : null);
   const slides = $derived(
     rewind && stats
       ? [
@@ -620,7 +633,7 @@
       >
         REWIND
       </button>
-      {#if stats?.plays}
+      {#if stats?.plays && !(period === "rewind" && !rewind)}
         <button
           class="st-play"
           style:visibility={capturing ? "hidden" : "visible"}
@@ -632,7 +645,17 @@
       {/if}
     </div>
 
-    {#if loading && !stats}
+    {#if period === "rewind" && !REWIND_OPEN}
+      {@const daysLeft = Math.round((new Date(YEAR, 11, 1).getTime() - dayStart(Date.now())) / DAY)}
+      <div class="rw still">
+        <div class="rw-k">YOUR YEAR IN SPOTIAMP+</div>
+        <div class="rw-big">REWIND {YEAR}</div>
+        <div class="rw-sub">opens on December 1<br />keep listening, it's made from your plays</div>
+        <div class="rw-gap"></div>
+        <div class="rw-big">{daysLeft}</div>
+        <div class="rw-k">{daysLeft === 1 ? "DAY TO GO" : "DAYS TO GO"}</div>
+      </div>
+    {:else if loading && !stats}
       <div class="st-msg">Loading…</div>
     {:else if !stats || !stats.plays}
       <div class="st-msg">
@@ -652,7 +675,7 @@
           <div class="rw-k">YOUR YEAR IN SPOTIAMP+</div>
           <div class="rw-big">REWIND {YEAR}</div>
           <div class="rw-sub">
-            {stats.plays.toLocaleString("en-US")} plays since {fmtDate(stats.first_at)}<br />
+            {stats.plays.toLocaleString("en-US")} plays since {fmtDate(rewind.firstAt)}<br />
             click, or use the arrow keys
           </div>
         {:else if slides[slide] === "time"}
@@ -1220,6 +1243,9 @@
     overflow: hidden;
     cursor: pointer;
     outline: none;
+  }
+  .rw.still {
+    cursor: default;
   }
   .rw-k {
     letter-spacing: 1px;
