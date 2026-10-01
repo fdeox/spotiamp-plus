@@ -171,6 +171,10 @@ pub struct PlayerSettings {
     /// The llama's height in px at 1x (48, 56 or 64); None = 56.
     #[serde(default)]
     pub mascot_size: Option<u16>,
+    /// Where on the player's top edge it sits: px (at 1x) from the right end,
+    /// set by dragging it; None = the default spot.
+    #[serde(default)]
+    pub mascot_inset: Option<u16>,
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -201,6 +205,7 @@ impl Default for PlayerSettings {
             osd: false,
             mascot: None,
             mascot_size: None,
+            mascot_inset: None,
         }
     }
 }

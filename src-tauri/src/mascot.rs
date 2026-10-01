@@ -6,6 +6,8 @@
 //! follows the player around. On by default; the Windows menu switches it off
 //! and picks its size.
 
+use std::sync::Mutex;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
 
@@ -16,8 +18,22 @@ const FRAME_W: f64 = 80.0;
 const FRAME_H: f64 = 84.0;
 /// Empty rows under its feet in a frame, so it sits right on the player.
 const FEET_GAP: f64 = 5.0;
-/// How far in from the player's right edge it sits (1x px).
+/// How far in from the player's right edge it sits by default (1x px).
 const RIGHT_INSET: f64 = 22.0;
+
+/// Its spot while it's being dragged (1x px from the player's right end);
+/// saved to settings only when the drag ends, not on every step.
+fn dragged_inset() -> &'static Mutex<Option<f64>> {
+    static INSET: Mutex<Option<f64>> = Mutex::new(None);
+    &INSET
+}
+
+fn inset() -> f64 {
+    if let Some(i) = dragged_inset().lock().ok().and_then(|i| *i) {
+        return i;
+    }
+    Settings::current().player.mascot_inset.map(f64::from).unwrap_or(RIGHT_INSET)
+}
 const SIZES: [u16; 3] = [48, 56, 64];
 
 #[derive(Serialize, Clone)]
@@ -80,7 +96,9 @@ fn place(app: &AppHandle, mascot: &WebviewWindow) {
     };
     let ui = crate::app_window::ui_scale();
     let k = current().size as f64 / 64.0 * ui * sf;
-    let x = pos.x + psize.width as i32 - msize.width as i32 - (RIGHT_INSET * ui * sf).round() as i32;
+    // along the top edge, never past either end
+    let max_inset = ((psize.width as f64 - msize.width as f64) / (ui * sf)).max(0.0);
+    let x = pos.x + psize.width as i32 - msize.width as i32 - (inset().clamp(0.0, max_inset) * ui * sf).round() as i32;
     let mut y = pos.y - msize.height as i32 + (FEET_GAP * k).round() as i32;
     // No room above (the player is at the top of the screen): keep it on
     // screen, over the player's corner, rather than lost off the top.
@@ -175,4 +193,35 @@ pub fn mascot_set(app: AppHandle, enabled: Option<bool>, size: Option<u16>) -> R
         let _ = app.run_on_main_thread(move || refresh(&app2));
     }
     show(&app)
+}
+
+/// Where it was when the drag started (1x px from the right end).
+fn drag_start() -> &'static Mutex<Option<f64>> {
+    static START: Mutex<Option<f64>> = Mutex::new(None);
+    &START
+}
+
+/// Dragging it along the player's top edge: `dx` is how far the pointer has
+/// moved since it was pressed (logical px, + to the right). `done` ends the
+/// drag and remembers the spot.
+#[tauri::command]
+pub fn mascot_drag(app: AppHandle, dx: f64, done: bool) {
+    let ui = crate::app_window::ui_scale();
+    let start = {
+        let Ok(mut s) = drag_start().lock() else { return };
+        let start = *s.get_or_insert_with(inset);
+        if done {
+            *s = None;
+        }
+        start
+    };
+    let next = (start - dx / ui).max(0.0);
+    if let Ok(mut d) = dragged_inset().lock() {
+        *d = if done { None } else { Some(next) };
+    }
+    if done {
+        Settings::current_mut().player.mascot_inset = Some(next.round() as u16);
+    }
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || follow_player(&app2));
 }
