@@ -18,6 +18,7 @@ mod library_window;
 mod art_window;
 mod m3u;
 mod osd;
+mod mascot;
 mod stats_window;
 mod taskbar;
 mod diagnostics;
@@ -593,6 +594,9 @@ pub fn run() {
             osd::osd_current,
             osd::osd_hide,
             osd::set_osd,
+            mascot::mascot_show,
+            mascot::mascot_settings,
+            mascot::mascot_set,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,

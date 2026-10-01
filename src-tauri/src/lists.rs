@@ -90,7 +90,8 @@ pub fn set_loved(uris: Vec<String>, loved: bool, app: tauri::AppHandle) -> usize
         }
     }
     if changed > 0 {
-        let _ = app.emit("lovedChanged", ());
+        // true when songs were loved (the llama shows a heart), false unloved
+        let _ = app.emit("lovedChanged", loved);
     }
     changed
 }

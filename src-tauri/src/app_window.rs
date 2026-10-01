@@ -389,7 +389,7 @@ fn on_drag_ended(dock: &mut Dock) {
 }
 
 #[cfg(target_os = "windows")]
-fn set_owner(follower_hwnd: isize, owner_hwnd: isize) {
+pub(crate) fn set_owner(follower_hwnd: isize, owner_hwnd: isize) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SetWindowLongPtrW};
     unsafe {
@@ -502,10 +502,14 @@ pub fn register_dock_window(window: &WebviewWindow) {
     // The player drags the whole group: whenever it moves, reposition every
     // frozen group member to follow. (Non-player windows move only themselves.)
     if label == MASTER {
-        window.clone().on_window_event(move |event| {
-            if let tauri::WindowEvent::Moved(position) = event {
+        let app = window.app_handle().clone();
+        window.clone().on_window_event(move |event| match event {
+            tauri::WindowEvent::Moved(position) => {
                 move_group_with_master(*position);
+                crate::mascot::follow_player(&app);
             }
+            tauri::WindowEvent::Resized(_) => crate::mascot::follow_player(&app),
+            _ => {}
         });
     }
 
@@ -681,9 +685,13 @@ pub fn set_ui_scale(pct: u16, app_handle: AppHandle) {
     let app = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        let _ = app.run_on_main_thread(|| {
-            let mut dock = dock().lock().expect("docking state lock");
-            on_drag_ended(&mut dock);
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            {
+                let mut dock = dock().lock().expect("docking state lock");
+                on_drag_ended(&mut dock);
+            }
+            crate::mascot::refresh(&app2);
         });
     });
 }

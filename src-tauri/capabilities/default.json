@@ -13,7 +13,8 @@
     "stats",
     "whatsnew",
     "museum",
-    "osd"
+    "osd",
+    "mascot"
   ],
   "permissions": [
     "core:default",

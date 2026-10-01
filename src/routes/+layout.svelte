@@ -13,7 +13,10 @@
   // here before first paint from the value the window was created with) and
   // follows live changes from the Scale menu / Ctrl+D. The login page (Spotify's
   // own OAuth) isn't ours to scale.
-  if (getCurrentWindow().label !== "login") {
+  // The login page and the llama (sized by mascot.rs, drawn to fit) keep
+  // their own size and no zoom.
+  const OWN_SIZE = ["login", "mascot"].includes(getCurrentWindow().label);
+  if (!OWN_SIZE) {
     REACTIVE_WINDOW_SIZE.setZoom(REACTIVE_WINDOW_SIZE.zoom);
   }
   // The on-demand resizable windows whose size we remember across restarts
@@ -24,7 +27,7 @@
     const win = getCurrentWindow();
     // the login window is sized by Rust (600x800) and then redirects to
     // Spotify — don't shrink it to the player's dimensions
-    if (win.label === "login") return;
+    if (OWN_SIZE) return;
     const w = REACTIVE_WINDOW_SIZE.width;
     const h = REACTIVE_WINDOW_SIZE.height;
     win.setSize(new LogicalSize(w * REACTIVE_WINDOW_SIZE.zoom, h * REACTIVE_WINDOW_SIZE.zoom));
@@ -118,18 +121,20 @@
     );
     // Live UI-scale changes; the size effect above then resizes this window.
     let unsubScale;
-    subscribeToWindowEvent("uiScale", (e) => REACTIVE_WINDOW_SIZE.setZoom(e.scale)).then(
-      (u) => (unsubScale = u),
-    );
-    // A page that reloaded after the scale changed still has the old number
-    // from its startup script; catch up with the real one.
-    invoke("get_ui_scale")
-      .then((s) => {
-        if (typeof s === "number" && s !== REACTIVE_WINDOW_SIZE.zoom) {
-          REACTIVE_WINDOW_SIZE.setZoom(s);
-        }
-      })
-      .catch(() => {});
+    if (!OWN_SIZE) {
+      subscribeToWindowEvent("uiScale", (e) => REACTIVE_WINDOW_SIZE.setZoom(e.scale)).then(
+        (u) => (unsubScale = u),
+      );
+      // A page that reloaded after the scale changed still has the old number
+      // from its startup script; catch up with the real one.
+      invoke("get_ui_scale")
+        .then((s) => {
+          if (typeof s === "number" && s !== REACTIVE_WINDOW_SIZE.zoom) {
+            REACTIVE_WINDOW_SIZE.setZoom(s);
+          }
+        })
+        .catch(() => {});
+    }
     return () => {
       document.removeEventListener("contextmenu", suppressContextMenu);
       window.removeEventListener("error", onError);

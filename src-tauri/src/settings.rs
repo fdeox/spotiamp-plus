@@ -164,6 +164,13 @@ pub struct PlayerSettings {
     /// screen's corner when it changes (osd.rs). Opt-in.
     #[serde(default)]
     pub osd: bool,
+    /// The llama sitting on the player (mascot.rs). None = never switched,
+    /// which counts as on.
+    #[serde(default)]
+    pub mascot: Option<bool>,
+    /// The llama's height in px at 1x (48, 56 or 64); None = 56.
+    #[serde(default)]
+    pub mascot_size: Option<u16>,
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -192,6 +199,8 @@ impl Default for PlayerSettings {
             normalize: false,
             taskbar_extras: false,
             osd: false,
+            mascot: None,
+            mascot_size: None,
         }
     }
 }

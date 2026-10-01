@@ -18,7 +18,7 @@
   import TextTicker from "../../TextTicker.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
   import { onMount, untrack } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
+  import { emit, listen } from "@tauri-apps/api/event";
   import { Visualizer } from "$lib/visualizer.svelte";
   import {
     currentMonitor,
@@ -815,6 +815,8 @@
       stats: "set_stats_window_visible",
     });
     const reopenTimer = setTimeout(() => {
+      // the llama, unless it's been switched off
+      invoke("mascot_show").catch(() => {});
       invoke("windows_to_reopen")
         .then((labels) => {
           for (const label of /** @type {string[]} */ (labels) ?? []) {
@@ -967,6 +969,7 @@
           // row; here the ticker just says what happened.
           if (!loadedTrack?.isLocal && event.Unavailable.uri === loadedTrack?.uri?.asString) {
             flashTicker("SONG FAILED TO LOAD");
+            emit("mascotReact", "sad").catch(() => {});
           }
         } else if (event.PositionCorrection) {
           const { position_ms } = event.PositionCorrection;

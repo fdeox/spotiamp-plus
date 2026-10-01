@@ -265,6 +265,13 @@
     await invoke("set_osd", { enabled: osdEnabled }).catch(() => {});
     if (osdEnabled) showToast("The next song will show in the corner of the screen");
   }
+  // The llama on the player (mascot.rs): on unless switched off, three sizes.
+  let mascotOn = $state(true);
+  let mascotSize = $state(56);
+  /** @param {{enabled?: boolean, size?: number}} change */
+  function setMascot(change) {
+    invoke("mascot_set", change).catch(() => {});
+  }
   async function loadAlwaysOnTop() {
     try {
       const settings = await invoke("get_player_settings");
@@ -272,6 +279,8 @@
       normalizeVolume = Boolean(settings?.normalize);
       taskbarExtras = Boolean(settings?.taskbar_extras);
       osdEnabled = Boolean(settings?.osd);
+      mascotOn = settings?.mascot !== false;
+      mascotSize = settings?.mascot_size ?? 56;
     } catch {
       alwaysOnTop = false;
     }
@@ -489,6 +498,18 @@
       ...(controllerMode
         ? []
         : [{ text: "Show the song on screen when it changes", checked: osdEnabled, action: toggleOsd }]),
+      {
+        text: "&Llama",
+        items: [
+          { text: "Show the llama", checked: mascotOn, action: () => setMascot({ enabled: !mascotOn }) },
+          sep,
+          ...[[48, "Small"], [56, "Normal"], [64, "Large"]].map(([px, label]) => ({
+            text: /** @type {string} */ (label),
+            checked: mascotOn && mascotSize === px,
+            action: () => setMascot({ enabled: true, size: /** @type {number} */ (px) }),
+          })),
+        ],
+      },
       {
         text: "S&cale",
         items: [1, 1.5, 2, 3].map((z) => ({
