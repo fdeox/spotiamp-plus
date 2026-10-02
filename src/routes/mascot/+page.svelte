@@ -18,7 +18,7 @@
   import idle_party from "$lib/mascot/idle_party.png";
   import dance_party from "$lib/mascot/dance_party.png";
 
-  // The llama (mascot.rs owns the window). It dances while music plays,
+  // Lala, the llama (mascot.rs owns the window). It dances while music plays,
   // falls asleep a minute after it stops, and reacts: a new badge (a hop), a
   // loved song (a heart), a song that won't load (sad), a click (happy).
   // Everything comes from events the other windows already send.
@@ -211,19 +211,23 @@
     const height = px(13);
     const left = px(1);
     const right = x0 + px(4);
+    // in the skin's own colours (its list window), like Winamp's plugins
+    const css = getComputedStyle(document.body);
+    const skin = (/** @type {string} */ name, /** @type {string} */ fallback) => css.getPropertyValue(name).trim() || fallback;
+    const edge = skin("--skin-genexdivider", "#5a5f74");
     ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#5a5f74";
+    ctx.fillStyle = edge;
     ctx.fillRect(left, top, right - left, height);
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = skin("--skin-genexitembg", "#000");
     ctx.fillRect(left + px(1), top + px(1), right - left - px(2), height - px(2));
     // the tail
-    ctx.fillStyle = "#5a5f74";
+    ctx.fillStyle = edge;
     ctx.beginPath();
     ctx.moveTo(right - 1, top + px(4));
     ctx.lineTo(x0 + px(12), top + px(7));
     ctx.lineTo(right - 1, top + px(9));
     ctx.fill();
-    ctx.fillStyle = "#00e000";
+    ctx.fillStyle = skin("--skin-genexitemfg", "#00e000");
     ctx.font = `${px(7)}px "px sans nouveaux", monospace`;
     ctx.textBaseline = "middle";
     ctx.fillText(bubbleText, left + px(5), top + height / 2 + px(0.5));
@@ -366,7 +370,7 @@
         items: [
           { text: "Size", items: [size(48, "Small"), size(56, "Normal"), size(64, "Large")] },
           { item: "Separator" },
-          { text: "Hide the llama", action: () => invoke("mascot_set", { enabled: false }).catch(() => {}) },
+          { text: "Hide Lala", action: () => invoke("mascot_set", { enabled: false }).catch(() => {}) },
         ],
       });
       openedMenu = menu;
@@ -422,7 +426,7 @@
     const y = now.getFullYear();
     const day = `${now.getMonth() + 1}-${now.getDate()}`;
     const greet = setTimeout(() => {
-      if (once("llama-hello")) say("Hi! Right-click me for options", 7000);
+      if (once("llama-hello")) say("Hi, I'm Lala! Right-click me for options", 8000);
       else if (PARTY && once(`llama-birthday-${y}`)) {
         react("celebrate");
         say("Happy birthday, Winamp!", 7000);

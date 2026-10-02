@@ -265,7 +265,7 @@
     await invoke("set_osd", { enabled: osdEnabled }).catch(() => {});
     if (osdEnabled) showToast("The next song will show in the corner of the screen");
   }
-  // The llama on the player (mascot.rs): on unless switched off, three sizes.
+  // Lala, the llama on the player (mascot.rs): on unless switched off, three sizes.
   let mascotOn = $state(true);
   let mascotSize = $state(56);
   /** @param {{enabled?: boolean, size?: number}} change */
@@ -499,9 +499,9 @@
         ? []
         : [{ text: "Show the song on screen when it changes", checked: osdEnabled, action: toggleOsd }]),
       {
-        text: "&Llama",
+        text: "&Lala the llama",
         items: [
-          { text: "Show the llama", checked: mascotOn, action: () => setMascot({ enabled: !mascotOn }) },
+          { text: "Show Lala", checked: mascotOn, action: () => setMascot({ enabled: !mascotOn }) },
           sep,
           ...[[48, "Small"], [56, "Normal"], [64, "Large"]].map(([px, label]) => ({
             text: /** @type {string} */ (label),

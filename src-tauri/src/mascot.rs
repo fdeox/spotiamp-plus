@@ -1,4 +1,4 @@
-//! The llama: Spotiamp+'s mascot, sitting on the player's top edge. It
+//! Lala the llama: Spotiamp+'s mascot, sitting on the player's top edge. It
 //! dances while music plays, falls asleep when it stops and reacts to a few
 //! things (a new badge, a loved song, a song that won't load); the mascot page
 //! does all of that. This side owns its window: a small transparent one that
@@ -67,7 +67,7 @@ fn logical_size(size: u16) -> (f64, f64) {
 fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
     let (w, h) = logical_size(size);
     tauri::WebviewWindowBuilder::new(app, "mascot", tauri::WebviewUrl::App("mascot".into()))
-        .title("Spotiamp+ llama")
+        .title("Spotiamp+ Lala")
         .inner_size(w, h)
         // Windows otherwise keeps a window at least ~136 px wide
         .min_inner_size(w, h)
