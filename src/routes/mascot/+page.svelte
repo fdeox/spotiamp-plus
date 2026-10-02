@@ -17,13 +17,16 @@
   import yawn from "$lib/mascot/yawn.png";
   import idle_party from "$lib/mascot/idle_party.png";
   import dance_party from "$lib/mascot/dance_party.png";
+  import walkStrip from "$lib/mascot/walk.png";
+  import stand from "$lib/mascot/stand.png";
+  import heldStrip from "$lib/mascot/held.png";
 
   // Lala, the llama (mascot.rs owns the window). It dances while music plays,
   // falls asleep a minute after it stops, and reacts: a new badge (a hop), a
   // loved song (a heart), a song that won't load (sad), a click (happy).
   // Everything comes from events the other windows already send.
 
-  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party };
+  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party, walk: walkStrip, stand, held: heldStrip };
   /** reactions that play through once rather than for a while */
   const ONCE = ["celebrate", "yawn"];
   // April 21, Winamp's birthday: a party hat all day
@@ -60,6 +63,30 @@
   let held = false;
   /** the player is being dragged with her on it: she holds on */
   let ridingUntil = 0;
+
+  // A stroll: now and then, awake with no music on, she gets up, walks a few
+  // steps along the player's edge (facing the way she goes), stands a moment
+  // and sits down again where she ended up.
+  let walk = /** @type {{dir: number, steps: number, step: number, total: number, standUntil: number} | null} */ (null);
+  /** @param {boolean} [asked] a double-click: go now, even mid-smile */
+  async function stroll(asked = false) {
+    if (walk || playing || held) return;
+    if (asked) reaction = null;
+    else if (reaction || current !== (PARTY ? "idle_party" : "idle")) return;
+    const room = /** @type {[number, number]} */ (await invoke("mascot_room").catch(() => [0, 0]));
+    const px = window.innerHeight / FRAME_H; // screen px per art px
+    const dir = room[0] > room[1] ? -1 : room[1] > room[0] ? 1 : Math.random() < 0.5 ? -1 : 1;
+    const dist = Math.min((20 + Math.random() * 40) * px, (dir < 0 ? room[0] : room[1]) - 2);
+    if (dist < 8 * px) return;
+    const step = 3 * px;
+    walk = { dir, steps: Math.ceil(dist / step), step, total: 0, standUntil: 0 };
+  }
+  /** stop strolling (music, a drag) and stay where she got to */
+  function endWalk() {
+    if (!walk) return;
+    if (walk.total) invoke("mascot_drag", { dx: walk.total, done: true }).catch(() => {});
+    walk = null;
+  }
 
   // The beat: the bass in the spectrum jumping up. The spectrum is smoothed
   // and coarse (19 points), so only some beats show, but the gaps between
@@ -157,7 +184,13 @@
       return reaction.name;
     }
     reaction = null;
-    if (held || now < ridingUntil) return "surprised";
+    if (held) return "held";
+    if (now < ridingUntil) return "surprised";
+    if (walk) {
+      if (walk.steps > 0) return "walk";
+      if (now < walk.standUntil) return "stand";
+      walk = null;
+    }
     if (playing) return PARTY ? "dance_party" : "dance";
     return now - lastPlayingAt > SLEEP_AFTER_MS ? "sleep" : PARTY ? "idle_party" : "idle";
   }
@@ -189,7 +222,15 @@
     const h = Math.min(H, Math.round((W * FRAME_H) / FRAME_W));
     const w = Math.round((h * FRAME_W) / FRAME_H);
     const spin = spinUntil - Date.now();
-    if (spin > 0) {
+    if (walk && walk.dir < 0 && (name === "walk" || name === "stand")) {
+      // facing left: mirrored about her middle (x 31 of the frame), so she
+      // turns round on the spot
+      ctx.save();
+      ctx.translate(W - w + (62 * w) / FRAME_W, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(big, 0, H - h, w, h);
+      ctx.restore();
+    } else if (spin > 0) {
       // a full turn on the spot (the start of being dizzy)
       ctx.save();
       ctx.translate(W - w / 2, H - h * 0.45);
@@ -286,6 +327,20 @@
       timer = setTimeout(tick, nod.length ? step : Math.max(15, Math.min(step, nextNodAt - Date.now())));
       return;
     }
+    if (current === "walk" && walk) {
+      const f = frame % ANIMS.walk.frames;
+      draw("walk", f);
+      walk.total += walk.dir * walk.step;
+      walk.steps -= 1;
+      invoke("mascot_drag", { dx: walk.total, done: walk.steps <= 0 }).catch(() => {});
+      if (walk.steps <= 0) {
+        walk.total = 0; // saved: nothing left to put down
+        walk.standUntil = Date.now() + 900;
+      }
+      frame = f + 1;
+      timer = setTimeout(tick, ANIMS.walk.ms[f]);
+      return;
+    }
     const anim = ANIMS[current];
     const shown = Math.min(frame, anim.frames - 1);
     draw(current, shown);
@@ -326,6 +381,7 @@
   /** @param {PointerEvent} e */
   function onPointerDown(e) {
     if (e.button !== 0 || !canvas) return;
+    endWalk();
     down = { x: e.screenX, dx: 0, moved: false };
     canvas.setPointerCapture(e.pointerId);
   }
@@ -397,6 +453,7 @@
       const was = playing;
       playing = !!p?.playing;
       if (playing) lastPlayingAt = Date.now();
+      if (playing && walk) endWalk();
       // asleep and the music starts: wake up with a start
       if (playing && !was && current === "sleep") react("surprised", 1200);
     }).then((u) => offs.push(u));
@@ -460,6 +517,9 @@
     // hours of music in one go, it suggests a stretch (once)
     let playingSince = 0;
     let stretched = false;
+    const strolls = setInterval(() => {
+      if (Math.random() < 0.4) stroll();
+    }, 30_000);
     const nightly = setInterval(() => {
       const t = new Date();
       if (playing) {
@@ -481,6 +541,7 @@
       clearTimeout(firstLook);
       clearTimeout(greet);
       clearInterval(nightly);
+      clearInterval(strolls);
       clearTimeout(bubbleTimer);
       clearInterval(badgeTimer);
       window.removeEventListener("resize", fit);
@@ -495,6 +556,7 @@
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
+  ondblclick={() => stroll(true)}
   oncontextmenu={(e) => {
     e.preventDefault();
     showMenu();

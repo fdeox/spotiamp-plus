@@ -254,3 +254,21 @@ pub fn mascot_bubble(app: AppHandle, width: f64) {
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || refresh(&app2));
 }
+
+/// How far she can stroll from where she sits, in logical px: (to the left,
+/// to the right) along the player's top edge.
+#[tauri::command]
+pub fn mascot_room(app: AppHandle) -> (f64, f64) {
+    let (Some(player), Some(_)) = (app.get_webview_window("player"), app.get_webview_window("mascot")) else {
+        return (0.0, 0.0);
+    };
+    let (Ok(psize), Ok(sf)) = (player.outer_size(), player.scale_factor()) else {
+        return (0.0, 0.0);
+    };
+    let ui = crate::app_window::ui_scale();
+    let llama_w = FRAME_W * current().size as f64 / 64.0 * ui * sf;
+    let max_inset = ((psize.width as f64 - llama_w) / (ui * sf)).max(0.0);
+    let now = inset().clamp(0.0, max_inset);
+    // inset counts from the right end: walking left raises it
+    ((max_inset - now) * ui, now * ui)
+}

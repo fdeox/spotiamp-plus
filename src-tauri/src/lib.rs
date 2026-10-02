@@ -599,6 +599,7 @@ pub fn run() {
             mascot::mascot_set,
             mascot::mascot_drag,
             mascot::mascot_bubble,
+            mascot::mascot_room,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,
