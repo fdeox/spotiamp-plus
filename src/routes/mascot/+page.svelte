@@ -13,13 +13,24 @@
   import surprised from "$lib/mascot/surprised.png";
   import sad from "$lib/mascot/sad.png";
   import love from "$lib/mascot/love.png";
+  import dizzy from "$lib/mascot/dizzy.png";
+  import yawn from "$lib/mascot/yawn.png";
+  import idle_party from "$lib/mascot/idle_party.png";
+  import dance_party from "$lib/mascot/dance_party.png";
 
   // The llama (mascot.rs owns the window). It dances while music plays,
   // falls asleep a minute after it stops, and reacts: a new badge (a hop), a
   // loved song (a heart), a song that won't load (sad), a click (happy).
   // Everything comes from events the other windows already send.
 
-  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love };
+  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party };
+  /** reactions that play through once rather than for a while */
+  const ONCE = ["celebrate", "yawn"];
+  // April 21, Winamp's birthday: a party hat all day
+  const PARTY = (() => {
+    const d = new Date();
+    return d.getMonth() === 3 && d.getDate() === 21;
+  })();
   const FRAME_W = ANIMS_JSON._frame.width;
   const FRAME_H = ANIMS_JSON._frame.height;
   /** each animation: its frame count and how long each frame shows */
@@ -74,7 +85,7 @@
     lastBeatAt = now;
     if (!period) return;
     nextNodAt = now; // in line with the beat
-    if (current === "dance" && !nod.length) {
+    if (current.startsWith("dance") && !nod.length) {
       clearTimeout(timer);
       tick();
     }
@@ -134,7 +145,7 @@
 
   /** @param {string} name @param {number} [ms] how long, for a still mood */
   function react(name, ms = 2500) {
-    const once = name === "celebrate";
+    const once = ONCE.includes(name);
     reaction = { name, once, until: Date.now() + ms };
   }
 
@@ -145,8 +156,8 @@
     }
     reaction = null;
     if (held) return "surprised";
-    if (playing) return "dance";
-    return now - lastPlayingAt > SLEEP_AFTER_MS ? "sleep" : "idle";
+    if (playing) return PARTY ? "dance_party" : "dance";
+    return now - lastPlayingAt > SLEEP_AFTER_MS ? "sleep" : PARTY ? "idle_party" : "idle";
   }
 
   // Pixel art drawn at any size without going blurry: blow the frame up by a
@@ -175,7 +186,17 @@
     // has a minimum width): fit the height, sit at the right, feet down
     const h = Math.min(H, Math.round((W * FRAME_H) / FRAME_W));
     const w = Math.round((h * FRAME_W) / FRAME_H);
-    ctx.drawImage(big, W - w, H - h, w, h);
+    const spin = spinUntil - Date.now();
+    if (spin > 0) {
+      // a full turn on the spot (the start of being dizzy)
+      ctx.save();
+      ctx.translate(W - w / 2, H - h * 0.45);
+      ctx.rotate(((SPIN_MS - spin) / SPIN_MS) * Math.PI * 2);
+      ctx.drawImage(big, -w / 2, -h * 0.55, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(big, W - w, H - h, w, h);
+    }
     if (bubbleText) drawBubble(ctx, W - w, H - h, h / FRAME_H);
   }
 
@@ -208,6 +229,31 @@
     ctx.fillText(bubbleText, left + px(5), top + height / 2 + px(0.5));
   }
 
+  // Pats: one makes it smile; ten in a row and it spins round and goes dizzy.
+  const SPIN_MS = 700;
+  let spinUntil = 0;
+  /** @type {number[]} */
+  let pats = [];
+  function pat() {
+    const now = Date.now();
+    pats = [...pats.filter((t) => now - t < 4000), now];
+    if (pats.length >= 10) {
+      pats = [];
+      spinUntil = now + SPIN_MS;
+      react("dizzy", 3200);
+      say("Whoa... the room is spinning", 3500);
+      spinFrames();
+    } else {
+      react("happy", 1800);
+    }
+  }
+  // redraw smoothly while spinning (the frames themselves change slower)
+  function spinFrames() {
+    if (Date.now() >= spinUntil || !current) return;
+    draw(current, Math.min(frame, ANIMS[current].frames - 1));
+    setTimeout(spinFrames, 30);
+  }
+
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   function tick() {
@@ -219,7 +265,7 @@
       if (canvas) canvas.dataset.mood = name;
     }
     if (canvas) canvas.dataset.tempo = String(period);
-    if (current === "dance" && onTempo()) {
+    if (current.startsWith("dance") && onTempo()) {
       // one nod per beat, right then left (frames 1-3, 5-7; 0 and 4 rest),
       // each frame a quarter of the beat
       const now = Date.now();
@@ -229,7 +275,7 @@
         nextNodAt = Math.max(nextNodAt + period, now + period / 2);
       }
       const f = nod.length ? /** @type {number} */ (nod.shift()) : nodRight ? 4 : 0;
-      draw("dance", f);
+      draw(current, f);
       const step = Math.min(200, Math.max(50, period / 4));
       timer = setTimeout(tick, nod.length ? step : Math.max(15, Math.min(step, nextNodAt - Date.now())));
       return;
@@ -294,7 +340,7 @@
     down = null;
     held = false;
     if (moved) invoke("mascot_drag", { dx, done: true }).catch(() => {});
-    else react("happy", 1800);
+    else pat();
   }
 
   // Right-click: hide it, or pick its size. The old menu is closed before a
@@ -373,19 +419,49 @@
     };
     const now = new Date();
     const rewindYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const y = now.getFullYear();
+    const day = `${now.getMonth() + 1}-${now.getDate()}`;
     const greet = setTimeout(() => {
       if (once("llama-hello")) say("Hi! Right-click me for options", 7000);
-      else if ((now.getMonth() === 11 || now.getMonth() === 0) && once(`llama-rewind-${rewindYear}`)) {
+      else if (PARTY && once(`llama-birthday-${y}`)) {
+        react("celebrate");
+        say("Happy birthday, Winamp!", 7000);
+      } else if (day === "1-1" && once(`llama-newyear-${y}`)) {
+        react("celebrate");
+        say(`Happy new year! Hello ${y}`, 7000);
+      } else if (day === "10-31" && once(`llama-halloween-${y}`)) {
+        react("surprised", 2500);
+        say("Boo! Happy Halloween", 6000);
+      } else if ((now.getMonth() === 11 || now.getMonth() === 0) && once(`llama-rewind-${rewindYear}`)) {
         react("happy", 3000);
         say(`Your Rewind ${rewindYear} is ready! (Stats)`, 8000);
       }
     }, 4000);
+    // after midnight it gets sleepy: a yawn now and then; and after two
+    // hours of music in one go, it suggests a stretch (once)
+    let playingSince = 0;
+    let stretched = false;
+    const nightly = setInterval(() => {
+      const t = new Date();
+      if (playing) {
+        playingSince ||= Date.now();
+        if (!stretched && Date.now() - playingSince > 2 * 3600_000) {
+          stretched = true;
+          react("happy", 3000);
+          say("Two hours of music! Time to stretch?", 7000);
+        }
+      } else if (Date.now() - lastPlayingAt > 10 * 60_000) {
+        playingSince = 0;
+      }
+      if (t.getHours() < 5 && !reaction && !held && current !== "sleep" && Math.random() < 0.25) react("yawn");
+    }, 60_000);
     const badgeTimer = setInterval(checkBadges, BADGE_CHECK_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
       clearTimeout(firstLook);
       clearTimeout(greet);
+      clearInterval(nightly);
       clearTimeout(bubbleTimer);
       clearInterval(badgeTimer);
       window.removeEventListener("resize", fit);
