@@ -125,6 +125,15 @@ pub fn follow_player(app: &AppHandle) {
     }
 }
 
+/// The player is being dragged: bring her along, and let her page know so
+/// she holds on (a startled face) while it moves.
+pub fn player_moved(app: &AppHandle) {
+    if let Some(mascot) = app.get_webview_window("mascot") {
+        place(app, &mascot);
+        let _ = mascot.emit_to("mascot", "mascotRide", ());
+    }
+}
+
 /// Size and spot again (the UI scale changed).
 pub fn refresh(app: &AppHandle) {
     if let Some(mascot) = app.get_webview_window("mascot") {

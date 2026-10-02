@@ -506,7 +506,7 @@ pub fn register_dock_window(window: &WebviewWindow) {
         window.clone().on_window_event(move |event| match event {
             tauri::WindowEvent::Moved(position) => {
                 move_group_with_master(*position);
-                crate::mascot::follow_player(&app);
+                crate::mascot::player_moved(&app);
             }
             tauri::WindowEvent::Resized(_) => crate::mascot::follow_player(&app),
             _ => {}

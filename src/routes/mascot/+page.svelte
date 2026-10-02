@@ -58,6 +58,8 @@
   let frame = 0;
   /** being dragged along the player's edge */
   let held = false;
+  /** the player is being dragged with her on it: she holds on */
+  let ridingUntil = 0;
 
   // The beat: the bass in the spectrum jumping up. The spectrum is smoothed
   // and coarse (19 points), so only some beats show, but the gaps between
@@ -155,7 +157,7 @@
       return reaction.name;
     }
     reaction = null;
-    if (held) return "surprised";
+    if (held || now < ridingUntil) return "surprised";
     if (playing) return PARTY ? "dance_party" : "dance";
     return now - lastPlayingAt > SLEEP_AFTER_MS ? "sleep" : PARTY ? "idle_party" : "idle";
   }
@@ -405,6 +407,19 @@
       .catch(() => {});
     listenForBeats();
     listen("mascotReact", (e) => react(String(e.payload))).then((u) => offs.push(u));
+    listen("mascotRide", () => {
+      ridingUntil = Date.now() + 350;
+    }).then((u) => offs.push(u));
+    // a new skin: she notices
+    listen("skinChanged", () => {
+      react("happy", 2500);
+      say("Ooh, new look!", 3500);
+    }).then((u) => offs.push(u));
+    // the playlist ran out
+    listen("playlistWindow", (e) => {
+      const ev = /** @type {Record<string, unknown>} */ (e.payload ?? {});
+      if (ev && "EndReached" in ev) say("That was the last song!", 4000);
+    }).then((u) => offs.push(u));
     // a song loved anywhere (F, a song menu, the Library)
     listen("lovedChanged", (e) => {
       if (e.payload === true) react("love");
