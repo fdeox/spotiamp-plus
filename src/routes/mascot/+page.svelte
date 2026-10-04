@@ -59,6 +59,7 @@
   let reaction = /** @type {{name: string, once: boolean, until: number} | null} */ (null);
   let current = "";
   let frame = 0;
+  let yawnedForSleep = false;
   /** being dragged along the player's edge */
   let held = false;
   /** the player is being dragged with her on it: she holds on */
@@ -192,7 +193,17 @@
       walk = null;
     }
     if (playing) return PARTY ? "dance_party" : "dance";
-    return now - lastPlayingAt > SLEEP_AFTER_MS ? "sleep" : PARTY ? "idle_party" : "idle";
+    if (now - lastPlayingAt > SLEEP_AFTER_MS) {
+      // a yawn first, then she lies down
+      if (current !== "sleep" && !yawnedForSleep) {
+        yawnedForSleep = true;
+        react("yawn");
+        return "yawn";
+      }
+      return "sleep";
+    }
+    yawnedForSleep = false;
+    return PARTY ? "idle_party" : "idle";
   }
 
   // Pixel art drawn at any size without going blurry: blow the frame up by a
@@ -354,6 +365,8 @@
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(window.innerWidth * dpr);
     canvas.height = Math.round(window.innerHeight * dpr);
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
     if (current) draw(current, Math.min(frame, ANIMS[current].frames - 1));
   }
 
@@ -469,6 +482,7 @@
     }).then((u) => offs.push(u));
     // a new skin: she notices
     listen("skinChanged", () => {
+      if (current === "sleep") return; // let her sleep
       react("happy", 2500);
       say("Ooh, new look!", 3500);
     }).then((u) => offs.push(u));
@@ -582,8 +596,11 @@
   }
   canvas {
     display: block;
-    width: 100vw;
-    height: 100vh;
+    /* pinned to the bottom-right with a fixed size (see fit): while the window
+       grows or shrinks for a speech bubble she stays exactly where she is */
+    position: fixed;
+    right: 0;
+    bottom: 0;
     cursor: grab;
   }
 </style>
