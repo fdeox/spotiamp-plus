@@ -599,6 +599,7 @@ pub fn run() {
             smtc::smtc_previous,
             smtc::smtc_seek,
             player_window::get_track_metadata,
+            player_window::song_facts,
             player_window::get_tracks_metadata,
             player_window::load_track,
             player_window::get_track_ids,

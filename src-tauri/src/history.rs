@@ -240,11 +240,19 @@ pub fn history_recent(limit: usize) -> Vec<HistoryItem> {
     out
 }
 
-/// How many times a song has been played (a play counts after 30 s, or half a
-/// short song). Lala mentions the round numbers.
+/// A song's plays so far (a play counts after 30 s, or half a short song) and
+/// when it was first played (epoch ms, 0 = never): Lala mentions round
+/// numbers, and when you first heard it.
+#[derive(Serialize)]
+pub struct SongHistory {
+    plays: u32,
+    first_at: u64,
+}
+
 #[tauri::command(async)]
-pub fn history_song_plays(uri: String) -> u32 {
-    read_plays().into_iter().filter(|p| p.uri == uri).count() as u32
+pub fn history_song_plays(uri: String) -> SongHistory {
+    let ats: Vec<u64> = read_plays().into_iter().filter(|p| p.uri == uri).map(|p| p.at).collect();
+    SongHistory { plays: ats.len() as u32, first_at: ats.iter().copied().min().unwrap_or(0) }
 }
 
 /// The most played tracks, most first (ties: the more recent first).

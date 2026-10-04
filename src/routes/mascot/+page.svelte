@@ -65,6 +65,9 @@
   let frame = 0;
   let yawnedForSleep = false;
   let awakeUntil = 0;
+  // anything played since the app opened? (if not, she asks for some once)
+  let playedYet = false;
+  let askedForMusic = false;
   /** being dragged along the player's edge */
   let held = false;
   /** the player is being dragged with her on it: she holds on */
@@ -251,14 +254,52 @@
       return;
     }
     if (!uri) return;
-    const before = /** @type {number} */ (await invoke("history_song_plays", { uri }).catch(() => -1));
-    if (before < 0) return;
-    const nth = before + 1;
+    const history = /** @type {{plays: number, first_at: number} | null} */ (
+      await invoke("history_song_plays", { uri }).catch(() => null)
+    );
+    if (!history) return;
+    const nth = history.plays + 1;
     if ([10, 25, 50, 100, 250, 500, 1000].includes(nth)) {
       chat(`Play number ${nth} of this one!`, { gap: 30_000, mood: "love" });
-    } else if (before === 0 && Math.random() < 0.25) {
+    } else if (history.plays === 0 && Math.random() < 0.25) {
       chat("Ooh, a new one!", { mood: "surprised" });
+    } else if (uri.startsWith("spotify:track:") && Math.random() < 0.3 && canChat(5 * 60_000)) {
+      const line = await songFact(uri, history);
+      if (line) chat(line, { gap: 5 * 60_000, ms: 7000 });
     }
+  }
+
+  // Something about the song playing: when it came out (or that it came out
+  // on this very day), how popular it is on Spotify, its place on its album,
+  // when you first heard it. One of them, at random.
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  /** @param {string} text @param {number} max */
+  const short = (text, max) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+  /**
+   * @param {string} uri
+   * @param {{plays: number, first_at: number}} history
+   */
+  async function songFact(uri, history) {
+    const f = /** @type {any} */ (await invoke("song_facts", { uri }).catch(() => null));
+    const now = new Date();
+    /** @type {string[]} */
+    const lines = [];
+    if (f && f.year > 1900) {
+      // a date of 1 January is often just the year
+      const exact = !(f.month === 1 && f.day === 1);
+      if (exact && f.month === now.getMonth() + 1 && f.day === now.getDate() && f.year < now.getFullYear()) {
+        return `Out on this very day in ${f.year}!`;
+      }
+      lines.push(now.getFullYear() - f.year >= 20 ? `A classic from ${f.year}` : `This one's from ${f.year}`);
+    }
+    if (f && f.popularity >= 75) lines.push(`A big one: ${f.popularity}/100 on Spotify`);
+    if (f && f.popularity > 0 && f.popularity <= 25) lines.push(`A hidden gem: ${f.popularity}/100 on Spotify`);
+    if (f && f.album_type === "album" && f.track > 0 && f.album) lines.push(`Track ${f.track} of ${short(f.album, 22)}`);
+    if (history.plays >= 3 && history.first_at) {
+      const d = new Date(history.first_at);
+      lines.push(`You first heard it on ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`);
+    }
+    return lines.length ? lines[Math.floor(Math.random() * lines.length)] : null;
   }
 
   // Things the app can do that are easy to miss; each said once, in a long
@@ -317,6 +358,11 @@
       if (current !== "sleep" && !yawnedForSleep) {
         yawnedForSleep = true;
         react("yawn");
+        // nothing played since the app opened: she asks, once
+        if (!playedYet && !askedForMusic) {
+          askedForMusic = true;
+          setTimeout(() => chat("A little music before my nap?", { gap: 0, mood: "" }), 300);
+        }
         return "yawn";
       }
       return "sleep";
@@ -616,6 +662,7 @@
       const p = /** @type {{playing?: boolean, uri?: string | null, title?: string}} */ (e.payload);
       const was = playing;
       playing = !!p?.playing;
+      if (playing) playedYet = true;
       const song = p?.uri ?? p?.title ?? null;
       if (playing && song && song !== songKey) {
         songKey = song;
@@ -655,6 +702,30 @@
       react("love");
       chat("Saved to your Loved songs", { gap: 2 * 60_000, mood: "" });
     }).then((u) => offs.push(u));
+    // the sleep timer (playlist menu): she goes to sleep with the music
+    /** @type {ReturnType<typeof setTimeout>[]} */
+    let bedtime = [];
+    listen("sleepTimer", (e) => {
+      const was = bedtime.length > 0;
+      bedtime.forEach(clearTimeout);
+      bedtime = [];
+      const minutes = Number(/** @type {any} */ (e.payload)?.minutes) || 0;
+      if (!minutes) {
+        if (was) chat("Sleep timer off. More music!", { gap: 0 });
+        return;
+      }
+      chat(`Sleep timer: ${minutes} min. Cosy!`, { gap: 0 });
+      bedtime.push(
+        setTimeout(() => chat("Almost bedtime...", { gap: 0, mood: "yawn" }), (minutes - 1) * 60_000),
+        setTimeout(() => {
+          // the music's paused: straight to bed, a yawn first
+          bedtime = [];
+          awakeUntil = 0;
+          lastPlayingAt = 0;
+        }, minutes * 60_000 + 1500),
+      );
+    }).then((u) => offs.push(u));
+    offs.push(() => bedtime.forEach(clearTimeout));
     // Spotify dropped the connection and the song carried on after it
     listen("spotifyReconnected", () => {
       chat("Spotify hiccuped. We're back!", { gap: 60_000, mood: "surprised" });

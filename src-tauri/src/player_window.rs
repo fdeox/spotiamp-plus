@@ -236,6 +236,37 @@ pub async fn get_track_metadata(
     ))
 }
 
+/// A few facts about a song, for Lala to mention now and then: when it came
+/// out, its album and place on it, and how popular it is on Spotify. One
+/// metadata fetch, made only when she's about to say something.
+#[derive(Serialize)]
+pub struct SongFacts {
+    year: i32,
+    month: u8,
+    day: u8,
+    album: String,
+    album_type: String,
+    track: i32,
+    popularity: i32,
+}
+
+#[tauri::command]
+pub async fn song_facts(uri: &str, player: State<'_, SharedPlayer>) -> Result<SongFacts, String> {
+    let session = player.lock().await.session_handle();
+    let uri = SpotifyUri::from_uri(uri).map_err(|e| format!("{e:?}"))?;
+    let track = crate::spotify::fetch_track(&session, uri).await.map_err(|e| e.to_string())?;
+    let date = &track.album.date;
+    Ok(SongFacts {
+        year: date.year(),
+        month: date.month() as u8,
+        day: date.day(),
+        album: track.album.name.clone(),
+        album_type: format!("{:?}", track.album.album_type).to_lowercase(),
+        track: track.number,
+        popularity: track.popularity,
+    })
+}
+
 /// Track info for up to a few dozen tracks in one request (see
 /// `spotify::fetch_tracks`), in `uris` order; `None` where Spotify sent nothing.
 #[tauri::command]

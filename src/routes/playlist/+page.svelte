@@ -948,6 +948,8 @@
   function setSleep(next) {
     clearTimeout(sleepTimer);
     sleepMinutes = next;
+    // Lala goes to sleep with you
+    emit("sleepTimer", { minutes: next }).catch(() => {});
     if (next > 0) {
       sleepTimer = setTimeout(
         () => {
