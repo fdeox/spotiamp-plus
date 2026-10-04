@@ -311,8 +311,11 @@
   /** @type {Menu | null} */
   let openedMenu = null;
   let menuBusy = false;
-  /** @param {string | null} windowLabel where to show it (null = here) */
-  async function showMenu(windowLabel) {
+  /**
+   * @param {string | null} windowLabel where to show it (null = here)
+   * @param {() => any[]} [items] what's in it (the whole right-click menu by default)
+   */
+  async function showMenu(windowLabel, items = menuItems) {
     if (menuBusy) return;
     menuBusy = true;
     try {
@@ -327,7 +330,7 @@
       const old = openedMenu;
       openedMenu = null;
       if (old) await old.close().catch(() => {});
-      const menu = await Menu.new({ items: menuItems() });
+      const menu = await Menu.new({ items: items() });
       openedMenu = menu;
       const target = windowLabel ? await Window.getByLabel(windowLabel) : null;
       await menu.popup(undefined, target ?? undefined);
@@ -420,6 +423,35 @@
   /** A literal "&" in a Windows menu needs doubling (a single one marks the Alt key). */
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
+  // The list commands: the right-click menu's Playlist submenu, and what the
+  // LIST OPTS button (bottom right, like Winamp's) opens, with the Library first.
+  function listMenuItems() {
+    const sep = { item: /** @type {const} */ ("Separator") };
+    return controllerMode
+      ? [
+          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
+          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          sep,
+          { text: "Clear playlist", action: () => playlist.clear() },
+        ]
+      : [
+          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
+          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          sep,
+          { text: "Open playlist file (.m3u)…", action: openM3u },
+          { text: "Save as playlist file (.m3u)…", action: saveM3u },
+          sep,
+          { text: "Save as a list…", action: openSaveList },
+          { text: "Clear playlist", action: () => playlist.clear() },
+        ];
+  }
+  function listOptsItems() {
+    const sep = { item: /** @type {const} */ ("Separator") };
+    // Free Mode has no library to browse
+    const library = controllerMode ? [] : [{ text: "Library…", action: openLibraryWindow }, sep];
+    return [...library, ...listMenuItems()];
+  }
+
   function menuItems() {
     const sep = { item: /** @type {const} */ ("Separator") };
     const isWorn = (/** @type {string} */ custom) => currentSkin === "custom" && wornCustom === custom;
@@ -446,23 +478,7 @@
         action: () => (playlist.autoplay = !playlist.autoplay),
       });
     }
-    const listItems = controllerMode
-      ? [
-          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
-          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
-          sep,
-          { text: "Clear playlist", action: () => playlist.clear() },
-        ]
-      : [
-          { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
-          { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
-          sep,
-          { text: "Open playlist file (.m3u)…", action: openM3u },
-          { text: "Save as playlist file (.m3u)…", action: saveM3u },
-          sep,
-          { text: "Save as a list…", action: openSaveList },
-          { text: "Clear playlist", action: () => playlist.clear() },
-        ];
+    const listItems = listMenuItems();
     const skinItems = [
       { text: "Classic", checked: currentSkin === "classic", action: () => chooseSkin("classic") },
       ...bundledSkins.map((name) => ({
@@ -1364,8 +1380,6 @@
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
   oncontextmenu={openMenu}
 >
-  <!-- our "my playlists" browser (opens a list of the user's Spotify playlists) -->
-  <button class="my-playlists-btn" onclick={openLibraryWindow}>♪ library</button>
   {#if updateAvailable}
     <button
       class="update-pill"
@@ -1587,6 +1601,14 @@
     onclick={() => playlist.clear()}
     aria-label="Clear playlist"
     title="clear playlist"
+  ></button>
+
+  <!-- LIST OPTS, bottom right: the Library and the list commands, as in Winamp -->
+  <button
+    class="pl-listopts"
+    onclick={() => showMenu(null, listOptsItems)}
+    aria-label="List options"
+    title="library and list options"
   ></button>
 
   <!-- bottom-right LCD readouts over the two black areas:
@@ -1966,6 +1988,19 @@
   }
 
   /* bottom-right LCD time readouts (green seven-seg-ish) */
+  .pl-listopts {
+    position: absolute;
+    right: calc(22px * var(--zoom));
+    bottom: calc(8px * var(--zoom));
+    width: calc(22px * var(--zoom));
+    height: calc(18px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    z-index: 60;
+  }
+
   .pl-time {
     position: absolute;
     text-align: right;
@@ -1993,35 +2028,13 @@
 
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
-  .my-playlists-btn {
-    position: absolute;
-    top: calc(21px * var(--zoom));
-    left: calc(11px * var(--zoom));
-    z-index: 40;
-    padding: 0 6px;
-    font-family: monospace;
-    font-size: 9px;
-    line-height: 12px;
-    /* follows the active skin (PLEDIT text colour), green on the base skin */
-    color: var(--skin-plnormal, #00ff41);
-    background: linear-gradient(
-      color-mix(in srgb, var(--skin-plbg, #12151c) 55%, #6a6a6a),
-      var(--skin-plbg, #12151c)
-    );
-    border: 1px solid #000;
-    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.15);
-    cursor: pointer;
-  }
-  .my-playlists-btn:active {
-    box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.15);
-  }
   /* "update available" pill — only rendered when a launch check found a newer
-     version. Sits next to the library button, softly pulsing so it's noticed
+     version. Sits at the top left of the list, softly pulsing so it's noticed
      without nagging; clicking it runs the normal download/install flow. */
   .update-pill {
     position: absolute;
     top: calc(21px * var(--zoom));
-    left: calc(74px * var(--zoom));
+    left: calc(11px * var(--zoom));
     z-index: 41;
     padding: 0 6px;
     font-family: monospace;

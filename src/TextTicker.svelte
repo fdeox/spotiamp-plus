@@ -101,10 +101,21 @@
       : tickerActive
         ? `${text}${SEPARATOR}${text}`
         : text;
-    return [...realText].map((char) => {
-      return letterLUT[char.toLowerCase()] || letterLUT[" "];
-    });
+    return [...realText].map(glyph);
   });
+
+  // Letters the bitmap font doesn't have show as their plain cousin (ç → c,
+  // ş → s, ğ → g, ı → i, é → e…) instead of a gap: Turkish titles lost
+  // letters ("SERDAR ORTA - PO ET").
+  /** @type {Record<string, string>} */
+  const PLAIN = { ı: "i", ø: "o", æ: "a", œ: "o", ß: "s", đ: "d", ł: "l", "’": "'", "‘": "'", "“": '"', "”": '"', "–": "-", "—": "-" };
+  /** @param {string} char */
+  function glyph(char) {
+    const lower = char.toLowerCase();
+    if (letterLUT[lower]) return letterLUT[lower];
+    const plain = PLAIN[lower] ?? lower.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return letterLUT[plain] || letterLUT[" "];
+  }
 
   // Reset xShift on new text
   $effect(() => {

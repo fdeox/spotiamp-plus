@@ -831,6 +831,37 @@ pub async fn fetch_user_playlists(session: &Session) -> Result<Vec<UserPlaylist>
     Ok(playlists)
 }
 
+/// The query part of a `spotify:search:` URI: words joined by '+', each one
+/// percent-encoded. Put in raw, "serdar ortaç" made an invalid request URL
+/// and the search failed, while "ortac" worked.
+fn search_uri_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|word| {
+            word.bytes()
+                .map(|b| {
+                    if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                        (b as char).to_string()
+                    } else {
+                        format!("%{b:02X}")
+                    }
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+#[cfg(test)]
+mod search_tests {
+    #[test]
+    fn non_ascii_and_symbols_are_encoded() {
+        assert_eq!(super::search_uri_query("serdar  ortaç"), "serdar+orta%C3%A7");
+        assert_eq!(super::search_uri_query("AC/DC #1?"), "AC%2FDC+%231%3F");
+        assert_eq!(super::search_uri_query("  "), "");
+    }
+}
+
 /// Search the Spotify catalogue. Uses the internal context-resolve endpoint
 /// (the same one the desktop client uses for `spotify:search:<query>`),
 /// which returns JSON we scan for track URIs — no extra protobuf deps.
@@ -840,9 +871,7 @@ pub async fn fetch_search(session: &Session, query: &str) -> Result<Vec<String>,
     if query.is_empty() {
         return Ok(Vec::new());
     }
-    // spotify:search:<query> expects '+' between words
-    let encoded = query.split_whitespace().collect::<Vec<_>>().join("+");
-    let endpoint = format!("/context-resolve/v1/spotify:search:{encoded}");
+    let endpoint = format!("/context-resolve/v1/spotify:search:{}", search_uri_query(query));
 
     let bytes = session
         .spclient()
