@@ -16,6 +16,7 @@
       "The <b>Library</b> opens on <i>Recently played</i>, shows when each song was added or last played (a <i>Date</i> column, where there's a date to show), puts Title before Album, and its columns can be sized by dragging the lines between them.",
       "A skin of our own: <b>Spotiamp+</b>, the classic look in the logo's orange and amber, with its own titles and media library frame. Pick it under <i>Skins</i>; Winamp Classic stays the default.",
       "The playlist's time display takes the skin's own text colour, as in Winamp.",
+      "Local <b>.wav</b> files play: they could be picked but wouldn't open. Apple Lossless .m4a files play too.",
     ],
     "0.7.5": [
       "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, wakes up when you pat her, cheers for new badges and has a few surprises of her own. Now and then she has something to say (a fact about the song, your streak, a tip), when she's bored she pops over to your other windows, and she goes to sleep with the sleep timer. Drag her along the edge, double-click her for a stroll, right-click her for her size, to quiet her or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>).",
