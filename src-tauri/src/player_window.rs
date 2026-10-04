@@ -418,28 +418,22 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(700)).await;
             let _ = window.unminimize();
-            // back onto the screen if a saved spot isn't on one any more (a
-            // smaller resolution, a monitor gone or switched off): the player
-            // and the windows open with it move as one group, so a docked
-            // stack keeps its shape
-            let mut group = vec![window.clone()];
-            group.extend(
-                window
-                    .app_handle()
-                    .webview_windows()
-                    .into_iter()
-                    .filter(|(label, w)| {
-                        !matches!(label.as_str(), "player" | "mascot" | "osd") && w.is_visible().unwrap_or(false)
-                    })
-                    .map(|(_, w)| w),
-            );
-            if app_window::bring_group_on_screen(&group) {
+            // back onto a screen if a saved spot isn't on one any more (a
+            // smaller resolution, a monitor gone or switched off), the docked
+            // stack together (see rescue_offscreen)
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let app = window.app_handle().clone();
+            let _ = window.run_on_main_thread(move || {
+                let _ = tx.send(app_window::rescue_offscreen(&app));
+            });
+            if rx.await.unwrap_or(false) {
                 // a screen with another scale resizes a window once it's
-                // there: keep each one all inside after that
+                // there: one more pass after that
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                for w in &group {
-                    app_window::keep_inside(w);
-                }
+                let app = window.app_handle().clone();
+                let _ = window.run_on_main_thread(move || {
+                    let _ = app_window::rescue_offscreen(&app);
+                });
             }
             let _ = window.show();
             let _ = window.set_focus();

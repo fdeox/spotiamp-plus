@@ -188,55 +188,74 @@ pub fn keep_on_screen(window: &WebviewWindow) -> Option<(i32, i32)> {
     Some((x - pos.x, y - pos.y))
 }
 
-/// Bring the windows whose title bars are off every screen onto the main
-/// screen as one group, so a docked stack keeps its shape (fitted one by one,
-/// the playlist ended up on top of the player). Returns whether any moved.
-pub fn bring_group_on_screen(windows: &[WebviewWindow]) -> bool {
-    let off: Vec<(&WebviewWindow, PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> = windows
-        .iter()
-        .filter(|w| !w.is_fullscreen().unwrap_or(false) && !title_on_screen(w))
-        .filter_map(|w| Some((w, w.outer_position().ok()?, w.outer_size().ok()?)))
-        .collect();
-    let Some((first, _, _)) = off.first() else {
-        return false;
+/// Windows whose title bars are off every screen get brought back, so none
+/// is ever out of reach: after a launch (a smaller resolution, a monitor gone
+/// or switched off) and after a UI scale change (3x and back could leave the
+/// docked stack above the top of the screen). The player and the windows
+/// docked to it move as one group, keeping their shape: onto the screen the
+/// player is on, or the main screen if it's on none. Other windows are
+/// fitted one by one. Returns whether anything moved. MUST run on the main
+/// thread (it reads the dock and the windows).
+pub fn rescue_offscreen(app: &AppHandle) -> bool {
+    let (group, loose): (Vec<WebviewWindow>, Vec<WebviewWindow>) = {
+        let Ok(mut dock) = dock().try_lock() else {
+            return false;
+        };
+        refresh_all_rects(&mut dock);
+        let docked = connected_group(&dock, MASTER);
+        let mut group = Vec::new();
+        let mut loose = Vec::new();
+        for (label, window) in &dock.windows {
+            if !window.is_visible().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
+                continue;
+            }
+            if docked.contains(label) {
+                group.push(window.clone());
+            } else {
+                loose.push(window.clone());
+            }
+        }
+        (group, loose)
     };
-    let Some(monitor) = first
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| first.available_monitors().ok().and_then(|m| m.into_iter().next()))
-    else {
-        return false;
-    };
-    // the group's outline, fitted as one
-    let left = off.iter().map(|(_, p, _)| p.x).min().unwrap_or(0);
-    let top = off.iter().map(|(_, p, _)| p.y).min().unwrap_or(0);
-    let right = off.iter().map(|(_, p, s)| p.x + s.width as i32).max().unwrap_or(0);
-    let bottom = off.iter().map(|(_, p, s)| p.y + s.height as i32).max().unwrap_or(0);
-    let (x, y) = fit_into(
-        monitor.work_area(),
-        PhysicalPosition::new(left, top),
-        tauri::PhysicalSize::new((right - left) as u32, (bottom - top) as u32),
-    );
-    let (dx, dy) = (x - left, y - top);
-    for (w, p, _) in &off {
-        log::info!("{} was off screen at {},{}; moved to {},{}", w.label(), p.x, p.y, p.x + dx, p.y + dy);
-        let _ = w.set_position(PhysicalPosition::new(p.x + dx, p.y + dy));
+    let mut moved = false;
+    if group.iter().any(|w| !title_on_screen(w)) {
+        let rects: Vec<(WebviewWindow, PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> = group
+            .iter()
+            .filter_map(|w| Some((w.clone(), w.outer_position().ok()?, w.outer_size().ok()?)))
+            .collect();
+        let player = app.get_webview_window(MASTER);
+        let monitor = player
+            .as_ref()
+            .filter(|p| title_on_screen(p))
+            .and_then(|p| p.current_monitor().ok().flatten())
+            .or_else(|| player.as_ref().and_then(|p| p.primary_monitor().ok().flatten()));
+        if let (Some(monitor), false) = (monitor, rects.is_empty()) {
+            let left = rects.iter().map(|(_, p, _)| p.x).min().unwrap_or(0);
+            let top = rects.iter().map(|(_, p, _)| p.y).min().unwrap_or(0);
+            let right = rects.iter().map(|(_, p, s)| p.x + s.width as i32).max().unwrap_or(0);
+            let bottom = rects.iter().map(|(_, p, s)| p.y + s.height as i32).max().unwrap_or(0);
+            let (x, y) = fit_into(
+                monitor.work_area(),
+                PhysicalPosition::new(left, top),
+                tauri::PhysicalSize::new((right - left) as u32, (bottom - top) as u32),
+            );
+            let (dx, dy) = (x - left, y - top);
+            if (dx, dy) != (0, 0) {
+                for (w, p, _) in &rects {
+                    log::info!("{} was off screen at {},{}; moved to {},{}", w.label(), p.x, p.y, p.x + dx, p.y + dy);
+                    let _ = w.set_position(PhysicalPosition::new(p.x + dx, p.y + dy));
+                }
+                moved = true;
+            }
+        }
     }
-    true
-}
-
-/// Nudge a window so all of it is inside the screen it's on (moving to a
-/// screen with another scale makes Windows resize it after it arrived).
-pub fn keep_inside(window: &WebviewWindow) {
-    let (Ok(pos), Ok(size), Ok(Some(monitor))) = (window.outer_position(), window.outer_size(), window.current_monitor())
-    else {
-        return;
-    };
-    let (x, y) = fit_into(monitor.work_area(), pos, size);
-    if (x, y) != (pos.x, pos.y) {
-        let _ = window.set_position(PhysicalPosition::new(x, y));
+    for w in &loose {
+        moved |= keep_on_screen(w).is_some();
     }
+    if moved {
+        crate::mascot::follow_player(app);
+    }
+    moved
 }
 
 fn fit_into(a: &tauri::PhysicalRect<i32, u32>, pos: PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) -> (i32, i32) {
@@ -791,6 +810,7 @@ pub fn set_ui_scale(pct: u16, app_handle: AppHandle) {
                 let mut dock = dock().lock().expect("docking state lock");
                 on_drag_ended(&mut dock);
             }
+            rescue_offscreen(&app2);
             crate::mascot::refresh(&app2);
         });
     });
