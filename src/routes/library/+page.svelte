@@ -139,28 +139,34 @@
     });
   });
 
-  // Column widths in px: Artist and Album are set by dragging the line at
-  // their edge (Album's is on its left, by Title); Title takes the rest. Kept
-  // for next time.
+  // Column widths, as a share (%) of the list's width so they keep their
+  // proportions as the window changes: Artist and Album are set by dragging
+  // the line at their edge (Album's is on its left, by Title), and Title, the
+  // one that matters, takes the rest and always keeps some. Kept for next time.
   const COLS_KEY = "ml-col-widths";
-  let colWidths = $state({ artist: 120, album: 110 });
+  let colWidths = $state({ artist: 22, album: 18 });
   try {
     const saved = JSON.parse(localStorage.getItem(COLS_KEY) || "null");
-    if (saved?.artist > 0 && saved?.album > 0) colWidths = { artist: saved.artist, album: saved.album };
+    if (saved?.artist > 0 && saved?.album > 0 && saved.artist + saved.album <= 70) {
+      colWidths = { artist: saved.artist, album: saved.album };
+    }
   } catch {}
   /** @param {PointerEvent} e @param {"artist" | "album"} col */
   function resizeColumn(e, col) {
     e.preventDefault();
     e.stopPropagation();
-    const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
+    const header = /** @type {HTMLElement} */ (e.currentTarget).parentElement;
+    const total = header?.getBoundingClientRect().width || 1;
     const startX = e.clientX;
     const start = colWidths[col];
+    const other = col === "artist" ? colWidths.album : colWidths.artist;
     // Album's line is on its left: dragging it right makes Album narrower
     const sign = col === "album" ? -1 : 1;
     /** @param {PointerEvent} ev */
     const move = (ev) => {
-      const w = Math.round(start + (sign * (ev.clientX - startX)) / zoom);
-      colWidths = { ...colWidths, [col]: Math.max(40, Math.min(400, w)) };
+      const pct = start + (sign * (ev.clientX - startX) * 100) / total;
+      const w = Math.round(Math.max(8, Math.min(70 - other, pct)) * 10) / 10;
+      colWidths = { ...colWidths, [col]: w };
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -969,8 +975,8 @@
     <!-- right: search bar + column list -->
     <div
       class="ml-content"
-      style:--w-artist={`${colWidths.artist}px`}
-      style:--w-album={`${colWidths.album}px`}
+      style:--w-artist={`${colWidths.artist}%`}
+      style:--w-album={`${colWidths.album}%`}
       style:--w-tail={`${(showDate ? 58 : 0) + 44}px`}
     >
       <div class="ml-searchbar">
