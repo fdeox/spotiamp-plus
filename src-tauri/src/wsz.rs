@@ -119,7 +119,7 @@ const BUNDLED_SKINS: &[(&str, &[u8])] = &[
 /// Extra skin files that aren't 1:1 sprite sheets: GEN.BMP is cropped into the
 /// generic-window titlebar tiles (library/visualizer), PLEDIT.TXT carries the
 /// playlist colours.
-const EXTRA_FILES: [&str; 3] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT"];
+const EXTRA_FILES: [&str; 4] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT", "SPOTIAMP.TXT"];
 
 /// The sprite sheets we can re-skin, mapped to their CSS variable suffix.
 /// (.CUR cursors keep the base skin for now.)
@@ -327,6 +327,15 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         };
         let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
         sprites.insert(var.to_string(), format!("data:image/bmp;base64,{b64}"));
+    }
+
+    // A skin made for Spotiamp+ can name the media library's window
+    // (SPOTIAMP.TXT, LibraryTitle=...); others keep "WINAMP LIBRARY"
+    if let Some(title) = files
+        .read("SPOTIAMP.TXT")
+        .and_then(|b| library_title(&String::from_utf8_lossy(&b)))
+    {
+        sprites.insert("libtitle".into(), format!("\"{title}\""));
     }
 
     // Winamp draws the playlist's time display in TEXT.BMP's letters; ours is
@@ -593,6 +602,37 @@ fn button_label_colour(frame: [u8; 3], own: Option<[u8; 3]>) -> [u8; 3] {
             let (dark, light) = ([16, 16, 20], [240, 242, 248]);
             if contrast(dark, face) >= contrast(light, face) { dark } else { light }
         }
+    }
+}
+
+/// SPOTIAMP.TXT's `LibraryTitle=`: letters, digits, spaces and a little
+/// punctuation (it ends up in CSS as a string), up to 32 of them.
+fn library_title(text: &str) -> Option<String> {
+    let value = text.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        key.trim().eq_ignore_ascii_case("LibraryTitle").then(|| value.trim())
+    })?;
+    let title: String = value
+        .chars()
+        .filter(|c| c.is_alphanumeric() || " +-&.!'".contains(*c))
+        .take(32)
+        .collect();
+    let title = title.trim().to_string();
+    (!title.is_empty()).then_some(title)
+}
+
+#[cfg(test)]
+mod library_title_tests {
+    use super::*;
+
+    #[test]
+    fn reads_it_and_keeps_it_harmless() {
+        assert_eq!(library_title("[Spotiamp+]\r\nLibraryTitle=LIBRARY\r\n").as_deref(), Some("LIBRARY"));
+        assert_eq!(library_title("libraytitle=x\nlibrarytitle = My Music ").as_deref(), Some("My Music"));
+        // nothing that could close the CSS string
+        assert_eq!(library_title("LibraryTitle=A\"; }x{\\").as_deref(), Some("A x"));
+        assert_eq!(library_title("LibraryTitle=  ").as_deref(), None);
+        assert_eq!(library_title("[Spotiamp+]").as_deref(), None);
     }
 }
 

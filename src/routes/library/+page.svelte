@@ -776,7 +776,7 @@
 <div class="ml-window">
   <div class="ml-titlebar" use:makeLibraryDraggable>
     <div class="ml-tl"></div>
-    <span class="ml-title">WINAMP LIBRARY</span>
+    <span class="ml-title"></span>
     <button class="ml-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
   </div>
@@ -1198,6 +1198,10 @@
     width: 25px;
     height: 20px;
     background: var(--skin-gentl) no-repeat;
+  }
+  /* a skin made for Spotiamp+ can give it its own name (SPOTIAMP.TXT) */
+  .ml-title::before {
+    content: var(--skin-libtitle, "WINAMP LIBRARY");
   }
   .ml-title {
     position: absolute;

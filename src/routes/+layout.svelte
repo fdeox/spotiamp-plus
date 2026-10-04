@@ -47,7 +47,7 @@
     "main", "cbuttons", "monoster", "numbers", "playpaus", "pledit",
     "posbar", "shufrep", "text", "titlebar", "volume", "balance", "eqmain",
     "gentl", "genfill", "gentr", "gentitle", "titlebarcolor", "titletext",
-    "plnormal", "plcurrent", "plbg", "plselbg", "textcolor",
+    "plnormal", "plcurrent", "plbg", "plselbg", "textcolor", "libtitle",
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
     "genexhdrtext", "genexbtn", "genexbtnp",
