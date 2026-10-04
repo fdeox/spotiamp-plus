@@ -54,6 +54,8 @@
   /** @type {HTMLCanvasElement | undefined} */
   let canvas = $state();
   let playing = false;
+  /** the song last seen starting, so each one is noticed once */
+  let songKey = /** @type {string | null} */ (null);
   let lastPlayingAt = Date.now();
   /** a reaction playing over the usual mood: once through, or until a time */
   let reaction = /** @type {{name: string, once: boolean, until: number} | null} */ (null);
@@ -171,6 +173,113 @@
       invoke("mascot_bubble", { width: 0 }).catch(() => {});
       fit();
     }, ms);
+  }
+
+  // --- Chatter: now and then she says something useful or friendly ---------
+  // A hello for the time of day, a listening streak, round play counts of the
+  // song playing, a Spotify hiccup, and tips on what the app can do (each tip
+  // once). Never while asleep or held, never over another line, and only so
+  // often, so she stays company rather than a pop-up. Right-click: off.
+  let chatty = true;
+  try {
+    chatty = localStorage.getItem("lala-chatty") !== "0";
+  } catch {}
+  let lastChat = 0;
+  /** @param {number} gap ms since the last line */
+  function canChat(gap) {
+    return chatty && !bubbleText && current !== "sleep" && !held && Date.now() - lastChat >= gap;
+  }
+  /**
+   * @param {string} text
+   * @param {{gap?: number, ms?: number, mood?: string}} [options] mood "" leaves her face alone
+   */
+  function chat(text, { gap = 3 * 60_000, ms = 6000, mood = "happy" } = {}) {
+    if (!canChat(gap)) return false;
+    lastChat = Date.now();
+    if (mood) react(mood, 2500);
+    say(text, ms);
+    return true;
+  }
+  /** true only the first time for `key`, across runs */
+  function firstTime(/** @type {string} */ key) {
+    try {
+      if (localStorage.getItem(key)) return false;
+      localStorage.setItem(key, "1");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // days in a row with music, up to yesterday (from the badge check's stats)
+  let streakDays = 0;
+  /** @param {[number, number][]} timeline */
+  function streakFrom(timeline) {
+    const days = new Set(timeline.map(([at]) => new Date(at).toDateString()));
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    let n = 0;
+    while (days.has(d.toDateString())) {
+      n++;
+      d.setDate(d.getDate() - 1);
+    }
+    return n;
+  }
+
+  /** A song started (Spotify uri or local:path). */
+  async function onSong(/** @type {string | null} */ uri) {
+    const now = new Date();
+    // the day's first song: the streak, or a hello for the time of day
+    if (firstTime(`lala-day-${now.toDateString()}`)) {
+      const h = now.getHours();
+      const streak = streakDays + 1;
+      if (streak >= 3) chat(`Day ${streak} in a row!`, { gap: 0, mood: "celebrate" });
+      else if (h >= 5 && h < 12) chat("Good morning! Music time", { gap: 0 });
+      else if (h >= 18) chat("Good evening!", { gap: 0 });
+      else if (h < 5) chat("Still up? Me too", { gap: 0, mood: "yawn" });
+      else chat("Hello again!", { gap: 0 });
+      return;
+    }
+    if (!uri) return;
+    const before = /** @type {number} */ (await invoke("history_song_plays", { uri }).catch(() => -1));
+    if (before < 0) return;
+    const nth = before + 1;
+    if ([10, 25, 50, 100, 250, 500, 1000].includes(nth)) {
+      chat(`Play number ${nth} of this one!`, { gap: 30_000, mood: "love" });
+    } else if (before === 0 && Math.random() < 0.25) {
+      chat("Ooh, a new one!", { mood: "surprised" });
+    }
+  }
+
+  // Things the app can do that are easy to miss; each said once, in a long
+  // stretch of music.
+  const TIPS = [
+    "Tip: J finds any song in the list",
+    "Tip: Ctrl+J jumps to a time",
+    "Tip: F loves the song playing",
+    "Tip: Q plays the selected song next",
+    "Tip: EQ's AUTO remembers a song's sound",
+    "Tip: F1 shows every shortcut",
+    "Tip: double-click me for a walk",
+    "Tip: Ctrl+D makes everything bigger",
+    "Tip: your top songs are in Stats",
+    "Tip: drag me along the player's edge",
+    "Tip: right-click the playlist for skins",
+  ];
+  const TIP_EVERY_MIN = 25;
+  let minutesSinceTip = 0;
+  function maybeTip() {
+    if (!playing || ++minutesSinceTip < TIP_EVERY_MIN || !canChat(10 * 60_000)) return;
+    let next = 0;
+    try {
+      next = Number(localStorage.getItem("lala-tip") || 0);
+    } catch {}
+    if (next >= TIPS.length) return;
+    try {
+      localStorage.setItem("lala-tip", String(next + 1));
+    } catch {}
+    minutesSinceTip = 0;
+    chat(TIPS[next], { gap: 0, ms: 8000 });
   }
 
   /** @param {string} name @param {number} [ms] how long, for a still mood */
@@ -379,6 +488,7 @@
         invoke("get_loved").catch(() => []),
       ]);
       const done = badgeList(/** @type {any} */ (all), /** @type {string[]} */ (loved).length).filter((b) => b.done);
+      streakDays = streakFrom(/** @type {any} */ (all).timeline ?? []);
       if (badgesDone !== null && done.length > badgesDone.length) {
         const fresh = done.find((b) => !badgesDone?.includes(b.name));
         react("celebrate");
@@ -440,6 +550,16 @@
       const menu = await Menu.new({
         items: [
           { text: "Size", items: [size(48, "Small"), size(56, "Normal"), size(64, "Large")] },
+          {
+            text: "Talk now and then",
+            checked: chatty,
+            action: () => {
+              chatty = !chatty;
+              try {
+                localStorage.setItem("lala-chatty", chatty ? "1" : "0");
+              } catch {}
+            },
+          },
           { item: "Separator" },
           { text: "Hide Lala", action: () => invoke("mascot_set", { enabled: false }).catch(() => {}) },
         ],
@@ -462,9 +582,14 @@
     const offs = [];
     // the player sends the song and whether it's playing every second
     listen("art", (e) => {
-      const p = /** @type {{playing?: boolean}} */ (e.payload);
+      const p = /** @type {{playing?: boolean, uri?: string | null, title?: string}} */ (e.payload);
       const was = playing;
       playing = !!p?.playing;
+      const song = p?.uri ?? p?.title ?? null;
+      if (playing && song && song !== songKey) {
+        songKey = song;
+        onSong(p?.uri ?? null);
+      }
       if (playing) lastPlayingAt = Date.now();
       if (playing && walk) endWalk();
       // asleep and the music starts: wake up with a start
@@ -493,7 +618,13 @@
     }).then((u) => offs.push(u));
     // a song loved anywhere (F, a song menu, the Library)
     listen("lovedChanged", (e) => {
-      if (e.payload === true) react("love");
+      if (e.payload !== true) return;
+      react("love");
+      chat("Saved to your Loved songs", { gap: 2 * 60_000, mood: "" });
+    }).then((u) => offs.push(u));
+    // Spotify dropped the connection and the song carried on after it
+    listen("spotifyReconnected", () => {
+      chat("Spotify hiccuped. We're back!", { gap: 60_000, mood: "surprised" });
     }).then((u) => offs.push(u));
     const firstLook = setTimeout(checkBadges, 10_000);
     // things it says once: hello the first time, Rewind once a December
@@ -546,6 +677,7 @@
       } else if (Date.now() - lastPlayingAt > 10 * 60_000) {
         playingSince = 0;
       }
+      maybeTip();
       if (t.getHours() < 5 && !reaction && !held && current !== "sleep" && Math.random() < 0.25) react("yawn");
     }, 60_000);
     const badgeTimer = setInterval(checkBadges, BADGE_CHECK_MS);

@@ -651,6 +651,36 @@
   let saveListOpen = $state(false);
   /** @type {HTMLInputElement | undefined} */
   let saveListInput = $state();
+  // Ctrl+J: Winamp's jump to time. Takes 1:23, 83 (seconds) or 1:02:03.
+  let timeJumpText = $state("");
+  let timeJumpInput = $state(/** @type {HTMLInputElement | undefined} */ (undefined));
+  $effect(() => {
+    if (!playlist.timeJumpOpen) return;
+    untrack(() => {
+      timeJumpText = "";
+      const win = getCurrentWindow();
+      // asked for from the main window while the playlist is hidden: no box
+      win
+        .isVisible()
+        .then((visible) => {
+          if (!visible) {
+            playlist.timeJumpOpen = false;
+            return;
+          }
+          win.setFocus().catch(() => {});
+          tick().then(() => timeJumpInput?.focus());
+        })
+        .catch(() => {});
+    });
+  });
+  function jumpToTime() {
+    const parts = timeJumpText.trim().split(":").map((p) => p.trim());
+    if (!parts[0] || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return;
+    const seconds = parts.reduce((total, p) => total * 60 + Number(p), 0);
+    playlist.timeJumpOpen = false;
+    emitWindowEvent("seekTo", { positionMs: seconds * 1000 });
+  }
+
   async function openSaveList() {
     newListName = "";
     saveListOpen = true;
@@ -1635,6 +1665,26 @@
         aria-label="List name"
       />
       <div class="jump-empty">Enter saves it, Esc cancels. Lists live in the Library under Spotiamp+.</div>
+    </div>
+  {/if}
+
+  {#if playlist.timeJumpOpen}
+    <!-- Ctrl+J: jump to a time in the song -->
+    <div class="jump-backdrop" role="presentation" onmousedown={() => (playlist.timeJumpOpen = false)}></div>
+    <div class="jump-box save-box" role="dialog" aria-label="Jump to time">
+      <input
+        class="jump-input"
+        bind:this={timeJumpInput}
+        bind:value={timeJumpText}
+        onkeydown={(e) => {
+          if (e.key === "Enter") jumpToTime();
+          else if (e.key === "Escape") playlist.timeJumpOpen = false;
+        }}
+        placeholder="jump to time, like 1:23"
+        spellcheck="false"
+        aria-label="Time to jump to"
+      />
+      <div class="jump-empty">Now at {fmtTime(playlist.positionMs)}. Enter jumps there, Esc cancels.</div>
     </div>
   {/if}
 </span>

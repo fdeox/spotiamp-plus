@@ -240,6 +240,13 @@ pub fn history_recent(limit: usize) -> Vec<HistoryItem> {
     out
 }
 
+/// How many times a song has been played (a play counts after 30 s, or half a
+/// short song). Lala mentions the round numbers.
+#[tauri::command(async)]
+pub fn history_song_plays(uri: String) -> u32 {
+    read_plays().into_iter().filter(|p| p.uri == uri).count() as u32
+}
+
 /// The most played tracks, most first (ties: the more recent first).
 #[tauri::command(async)]
 pub fn history_top(limit: usize) -> Vec<HistoryItem> {

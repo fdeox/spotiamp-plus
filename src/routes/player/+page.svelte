@@ -1063,6 +1063,12 @@
         );
         return;
       }
+      // Ctrl+J: Winamp's jump to time (the box opens in the playlist)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        if (loadedTrack) emitWindowEvent("playerWindow", { JumpToTimeRequested: null });
+        return;
+      }
       // Ctrl+V: Winamp's stop after current (the playlist keeps the switch)
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "v") {
         e.preventDefault();
@@ -1140,6 +1146,14 @@
     // spot it had reached.
     /** the song that was playing when the connection dropped */
     let resumeAfterDrop = /** @type {string | null} */ (null);
+    // Ctrl+J's jump to time: the playlist's box sends where to (never past
+    // the end of the song)
+    const seekToSubscription = listen("seekTo", (e) => {
+      const ms = Number(/** @type {any} */ (e.payload)?.positionMs);
+      if (!loadedTrack || !Number.isFinite(ms)) return;
+      const end = loadedTrack.durationInMs ? loadedTrack.durationInMs - 1000 : ms;
+      seek(Math.max(0, Math.min(ms, end)));
+    });
     const droppedSubscription = listen("spotifyDropped", () => {
       if (resumeAfterDrop || controllerMode) return; // keep the first note if reconnecting takes tries
       resumeAfterDrop = Date.now() - lastPlaying.at < 15_000 ? lastPlaying.uri : null;
@@ -1160,6 +1174,7 @@
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
       droppedSubscription.then((unlisten) => unlisten());
+      seekToSubscription.then((unlisten) => unlisten());
       reconnectedSubscription.then((unlisten) => unlisten());
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());

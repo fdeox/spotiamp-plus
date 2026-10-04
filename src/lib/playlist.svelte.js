@@ -325,6 +325,8 @@ export class Playlist {
     queue = $state([]);
     /** J: the jump-to-file box over the playlist is open. */
     jumpOpen = $state(false);
+    /** Ctrl+J: Winamp's jump to time (the box is the playlist page's) */
+    timeJumpOpen = $state(false);
     /** Bumped when a letter with no shortcut is typed in the playlist, so the
      *  page can point at J (people expect typing to search). */
     typedHint = $state(0);
@@ -434,6 +436,10 @@ export class Playlist {
                 // Ctrl+D: scale, handled by the main window
                 e.preventDefault();
                 emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: true });
+            } else if (ctrl && !e.altKey && e.key.toLowerCase() == "j") {
+                // Ctrl+J: Winamp's jump to time
+                e.preventDefault();
+                this.timeJumpOpen = true;
             } else if (!ctrl && !e.altKey) {
                 // Winamp transport keys, forwarded to the player
                 const k = e.key.toLowerCase();
@@ -518,6 +524,9 @@ export class Playlist {
                 } else if (event.JumpRequested !== undefined) {
                     // J pressed in the main window, like Winamp
                     this.openJump();
+                } else if (event.JumpToTimeRequested !== undefined) {
+                    // Ctrl+J pressed in the main window
+                    this.timeJumpOpen = true;
                 } else if (event.QueueRequested !== undefined) {
                     // Q pressed in the main window: queue the playlist's selection
                     this.toggleQueue();

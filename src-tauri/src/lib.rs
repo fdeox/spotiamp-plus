@@ -629,6 +629,7 @@ pub fn run() {
             history::history_extend,
             history::history_recent,
             history::history_top,
+            history::history_song_plays,
             history::history_clear,
             history::history_stats,
             lists::get_pinned_playlists,

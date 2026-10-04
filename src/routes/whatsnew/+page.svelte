@@ -13,7 +13,7 @@
   /** @type {Record<string, string[]>} */
   const NOTES = {
     "0.7.5": [
-      "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, cheers for new badges and has a few surprises of her own. Drag her along the edge, double-click her for a stroll, right-click her for her size or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>).",
+      "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, cheers for new badges and has a few surprises of her own. Drag her along the edge, double-click her for a stroll, right-click her for her size or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>). Now and then she has something to say, from a hello to a tip.",
       "Local files play in <b>Free Mode</b> too, follow the volume and balance sliders, show on Discord, and play again when you press Play after Stop. Thanks for the reports, Incubo!",
       "Every window now comes forward with the player and shares its one taskbar button, docked or not, like Winamp.",
       "Library buttons match every skin, and a skin no longer picks up colours left over from the one before.",
@@ -21,6 +21,12 @@
       "Fixed: going back to a smaller scale (from 3× to 1×, say) could leave the windows above the top of the screen, out of reach. Thanks, worstmood!",
       "Fixed: no sound after Bluetooth headphones dropped out and came back. Playback now follows Windows' sound output and carries on where it was. Thanks, kaool!",
       "When Spotify drops the connection (it does now and then), the song now carries on where it was once Spotiamp+ reconnects, instead of stopping. Thanks, worstmood!",
+      "The equalizer's <b>AUTO</b> works, like Winamp's: save a curve for a song or an artist (EQ <i>Presets</i>) and it comes back whenever they play. The EQ is also remembered between runs now, and works for local files in Free Mode.",
+      "<b>Ctrl+J</b> jumps to a time in the song: type 1:23 and press Enter.",
+      "The playlist's <i>List</i> button (bottom right) opens the Library and the list commands, like Winamp's.",
+      "Turkish and other accented letters show in the scrolling title, and searching with them works.",
+      "Fixed: a moment without internet could sign you out of Spotify and stop the music. Spotiamp+ now just waits for the connection.",
+      "Fixed: docked windows came apart when dragged onto a screen with another scale.",
       "Listening stats has a new <b>REWIND</b> tab. It opens on December 1.",
     ],
     "0.7.4": [
@@ -72,6 +78,7 @@
     ["F", "Love a song ♡"],
     ["Z X C V B", "Previous, play, pause, stop, next"],
     ["Ctrl+V", "Stop after the current song"],
+    ["Ctrl+J", "Jump to a time in the song"],
     ["← →", "Seek 5 seconds"],
     ["↑ ↓ / wheel", "Volume"],
     ["S / R", "Shuffle, repeat"],
@@ -89,6 +96,7 @@
         ["Z X C V B", "Previous, play, pause, stop, next"],
         ["Space", "Play / pause"],
         ["← →", "Seek 5 seconds"],
+        ["Ctrl+J", "Jump to a time in the song"],
         ["↑ ↓ / wheel", "Volume"],
         ["Ctrl+V", "Stop after the current song"],
         ["S / R", "Shuffle, repeat"],
