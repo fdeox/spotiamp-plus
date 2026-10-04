@@ -175,6 +175,37 @@ pub struct PlayerSettings {
     /// set by dragging it; None = the default spot.
     #[serde(default)]
     pub mascot_inset: Option<u16>,
+    /// The equalizer: it used to start flat on every launch.
+    #[serde(default)]
+    pub eq: EqSettings,
+}
+
+/// An EQ curve in whole dB (the sliders move in 1 dB steps), -12..+12.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Hash)]
+pub struct EqCurve {
+    pub preamp: i8,
+    pub bands: [i8; 10],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+pub struct EqSettings {
+    pub enabled: bool,
+    /// The curve set by hand: what plays when no auto-load preset applies.
+    pub curve: EqCurve,
+    /// AUTO (Winamp's): a song's own preset, else its artist's, loads when it
+    /// starts.
+    #[serde(default)]
+    pub auto: bool,
+    /// Auto-load presets, keyed "song:<uri or local path>" / "artist:<name>".
+    /// A Vec, not a map, so the settings stay `Hash`.
+    #[serde(default)]
+    pub presets: Vec<(String, EqCurve)>,
+}
+
+impl Default for EqSettings {
+    fn default() -> Self {
+        Self { enabled: true, curve: EqCurve::default(), auto: false, presets: Vec::new() }
+    }
 }
 
 /// A Spotify track and position to pick up from on the next launch.
@@ -206,6 +237,7 @@ impl Default for PlayerSettings {
             mascot: None,
             mascot_size: None,
             mascot_inset: None,
+            eq: EqSettings::default(),
         }
     }
 }

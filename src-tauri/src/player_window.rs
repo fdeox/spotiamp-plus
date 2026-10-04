@@ -61,17 +61,9 @@ pub fn set_skin(skin: String) {
 }
 
 #[tauri::command]
-pub async fn set_eq(
-    enabled: bool,
-    preamp: f32,
-    bands: Vec<f32>,
-    player: State<'_, SharedPlayer>,
-) -> Result<(), ()> {
-    let mut arr = [0.0f32; 10];
-    for (i, v) in bands.iter().take(10).enumerate() {
-        arr[i] = *v;
-    }
-    player.lock().await.set_eq(enabled, preamp, arr);
+pub async fn set_eq(enabled: bool, preamp: f32, bands: Vec<f32>) -> Result<(), ()> {
+    // the shared EQ (Spotify and local files alike), saved as it's set
+    crate::eq_window::set_from_window(enabled, preamp, &bands);
     Ok(())
 }
 

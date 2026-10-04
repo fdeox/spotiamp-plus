@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
@@ -28,6 +29,46 @@
   let bands = $state([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   let menuOpen = $state(false);
   let activeFader = $state(-99); // which fader is being dragged (-1 = preamp)
+  // AUTO (Winamp's auto-load presets): a song's or artist's own curve loads
+  // when it starts. The rest mirrors what Rust says (eq_window.rs).
+  let auto = $state(false);
+  let applied = $state(/** @type {"song" | "artist" | null} */ (null));
+  let canSong = $state(false);
+  let canArtist = $state(false);
+  let hasSongPreset = $state(false);
+  let hasArtistPreset = $state(false);
+  // the saved EQ comes in first; pushing the flat start-up values before it
+  // did would have overwritten it
+  let loaded = $state(false);
+
+  /** @param {any} v the EQ as Rust has it */
+  function applyView(v) {
+    enabled = v.enabled;
+    preamp = v.preamp;
+    bands = [...v.bands];
+    auto = v.auto;
+    applied = v.applied;
+    canSong = v.song;
+    canArtist = v.artist;
+    hasSongPreset = v.has_song_preset;
+    hasArtistPreset = v.has_artist_preset;
+    loaded = true;
+  }
+  onMount(() => {
+    invoke("get_eq").then(applyView).catch(() => (loaded = true));
+    const changed = listen("eqChanged", (e) => applyView(e.payload));
+    return () => changed.then((unlisten) => unlisten());
+  });
+  /** @param {"song" | "artist"} scope */
+  function autoSave(scope) {
+    menuOpen = false;
+    invoke("eq_auto_save", { scope }).catch(() => {});
+  }
+  /** @param {"song" | "artist"} scope */
+  function autoForget(scope) {
+    menuOpen = false;
+    invoke("eq_auto_delete", { scope }).catch(() => {});
+  }
 
   // window-space geometry (px). Band faders every 18px starting at x=78.
   const BAND_X = [78, 96, 114, 132, 150, 168, 186, 204, 222, 240];
@@ -97,7 +138,7 @@
     enabled;
     preamp;
     bands;
-    push();
+    if (loaded) push();
   });
 
   function setFromY(clientY, rect, fader) {
@@ -204,7 +245,13 @@
     onclick={() => (enabled = !enabled)}
     aria-label="Toggle EQ"
   ></button>
-  <div class="eq-auto" aria-hidden="true"></div>
+  <button
+    class="eq-auto"
+    class:on={auto}
+    onclick={() => invoke("eq_set_auto", { on: !auto }).catch(() => {})}
+    aria-label="Auto-load presets"
+    title={applied ? `AUTO: this ${applied}'s preset is on` : "AUTO: load a song's or artist's own preset (save them from Presets)"}
+  ></button>
 
   <!-- PRESETS -->
   <button
@@ -245,6 +292,29 @@
       >
         Save .EQF…
       </div>
+      {#if canSong || canArtist}
+        <div class="eq-menu-sep"></div>
+        {#if canSong}
+          <div class="eq-menu-item" class:current={applied === "song"} role="button" tabindex="0" onclick={() => autoSave("song")} onkeydown={(e) => e.key === "Enter" && autoSave("song")}>
+            Save for this song
+          </div>
+        {/if}
+        {#if canArtist}
+          <div class="eq-menu-item" class:current={applied === "artist"} role="button" tabindex="0" onclick={() => autoSave("artist")} onkeydown={(e) => e.key === "Enter" && autoSave("artist")}>
+            Save for this artist
+          </div>
+        {/if}
+        {#if hasSongPreset}
+          <div class="eq-menu-item" role="button" tabindex="0" onclick={() => autoForget("song")} onkeydown={(e) => e.key === "Enter" && autoForget("song")}>
+            Remove song preset
+          </div>
+        {/if}
+        {#if hasArtistPreset}
+          <div class="eq-menu-item" role="button" tabindex="0" onclick={() => autoForget("artist")} onkeydown={(e) => e.key === "Enter" && autoForget("artist")}>
+            Remove artist preset
+          </div>
+        {/if}
+      {/if}
     </div>
   {/if}
 
@@ -398,6 +468,12 @@
     background-image: var(--skin-eqmain);
     background-repeat: no-repeat;
     background-position: -36px -119px; /* auto, off */
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .eq-auto.on {
+    background-position: -213px -119px; /* auto, on (green) */
   }
 
   .eq-presets {
@@ -436,6 +512,10 @@
   .eq-menu-item:hover {
     background: #2b6fd6;
     color: #fff;
+  }
+  /* the song's or artist's preset that AUTO has on now */
+  .eq-menu-item.current {
+    color: #6cff6c;
   }
   .eq-menu-sep {
     height: 1px;

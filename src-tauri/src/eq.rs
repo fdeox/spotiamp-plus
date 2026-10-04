@@ -21,6 +21,23 @@ pub struct EqState {
     pub balance: f32,
 }
 
+/// The one EQ every player shares (Spotify and local files, Premium or Free
+/// Mode), set up from the saved settings so the curve plays from the first
+/// song, whether the EQ window is open or not.
+pub fn shared() -> std::sync::Arc<std::sync::Mutex<EqState>> {
+    static EQ: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<EqState>>> = std::sync::OnceLock::new();
+    EQ.get_or_init(|| {
+        let saved = crate::settings::Settings::current().player.eq.clone();
+        std::sync::Arc::new(std::sync::Mutex::new(EqState {
+            enabled: saved.enabled,
+            preamp_db: saved.curve.preamp as f32,
+            bands_db: saved.curve.bands.map(|b| b as f32),
+            ..EqState::default()
+        }))
+    })
+    .clone()
+}
+
 impl Default for EqState {
     fn default() -> Self {
         Self {

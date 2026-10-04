@@ -261,7 +261,7 @@ impl SpotifyPlayer {
     pub fn new(session: SpotifySession) -> Self {
         let volume = Arc::new(AtomicU16::new(Settings::current().player.volume));
         let visualizer = Arc::new(Mutex::new(Visualizer::new()));
-        let eq = Arc::new(Mutex::new(EqState::default()));
+        let eq = crate::eq::shared();
         let audio_device = Arc::new(Mutex::new(Settings::current().player.audio_device.clone()));
         let player = Self::build_player(
             &session.inner,
@@ -391,14 +391,6 @@ impl SpotifyPlayer {
         ));
         self.session = session;
         Ok(self.player.get_player_event_channel())
-    }
-
-    /// Update the equaliser (applied live by the sink).
-    pub fn set_eq(&self, enabled: bool, preamp_db: f32, bands_db: [f32; 10]) {
-        let mut eq = self.eq.lock().unwrap();
-        eq.enabled = enabled;
-        eq.preamp_db = preamp_db;
-        eq.bands_db = bands_db;
     }
 
     /// Set the stereo balance (-1.0 left .. 0.0 centre .. +1.0 right).

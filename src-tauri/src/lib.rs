@@ -283,7 +283,7 @@ fn start_controller_mode(app_handle: &AppHandle) -> Result<(), StartError> {
     // local_* command failed and the file silently never played. Nothing
     // shares its EQ or spectrum here (the visualizer listens to the loopback).
     app_handle.manage(std::sync::Mutex::new(local_player::LocalPlayer::new(
-        Arc::new(std::sync::Mutex::new(eq::EqState::default())),
+        eq::shared(),
         Arc::new(std::sync::Mutex::new(visualizer::Visualizer::new())),
     )));
     player_window::build_window(app_handle).map_err(|e| StartError::WindowCreationFailed {
@@ -664,6 +664,11 @@ pub fn run() {
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,
+            eq_window::get_eq,
+            eq_window::eq_track,
+            eq_window::eq_set_auto,
+            eq_window::eq_auto_save,
+            eq_window::eq_auto_delete,
             eqf::import_eqf,
             eqf::export_eqf,
             lyrics_window::set_lyrics_window_visible,

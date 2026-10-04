@@ -107,6 +107,17 @@
   let playlistPos = $state({ index: 0, length: 0 });
   /** the Spotify song last seen playing, and where (for carrying on after a dropped connection) */
   let lastPlaying = { at: 0, uri: /** @type {string | null} */ (null), positionMs: 0 };
+
+  // The EQ's AUTO: tell it what's playing, so the song's (or its artist's)
+  // own preset loads (eq_window.rs). Runs again once a local file's tags
+  // bring its artist in.
+  $effect(() => {
+    const t = loadedTrack;
+    if (!t) return;
+    const song = t.isLocal ? `local:${t.path}` : (t.uri?.asString ?? null);
+    const artist = (t.artist ?? "").split(",")[0].trim() || null;
+    invoke("eq_track", { song, artist }).catch(() => {});
+  });
   // Resume last session: the track + spot saved at the last exit. The playlist
   // cues that track at launch (see Playlist.maybeCueResume); its first play
   // continues from here.
