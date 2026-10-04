@@ -272,8 +272,18 @@
     // Spotify path. Routed here per-track via `isLocal`, so the Spotify branches
     // below are untouched.
     if (loadedTrack?.isLocal) {
+      // Stop closes the file in the engine, and play alone had nothing to
+      // resume (stop, then play did nothing): open it again from the start.
+      const reopen = playerState === "stopped";
       playerState = "playing";
-      await invoke("local_play").catch(() => {});
+      if (reopen) {
+        setPosition(0);
+        sliderSeekPosition = 0;
+        await invoke("local_load", { path: loadedTrack.path }).catch(() => {});
+        startLocalPoll();
+      } else {
+        await invoke("local_play").catch(() => {});
+      }
       return;
     }
     if (controllerMode) {
