@@ -817,3 +817,39 @@ fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
     }
     Some(meta)
 }
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+
+    /// What the picker offers has to open: WAV was offered (AUDIO_EXTS) with
+    /// no WAV reader built in, so every .wav failed to play.
+    #[test]
+    fn a_wav_opens() {
+        // 0.1 s of silence, 16-bit stereo at 44.1 kHz
+        let data = 4410u32 * 4;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + data).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        wav.extend_from_slice(&2u16.to_le_bytes());
+        wav.extend_from_slice(&44100u32.to_le_bytes());
+        wav.extend_from_slice(&(44100u32 * 4).to_le_bytes());
+        wav.extend_from_slice(&4u16.to_le_bytes());
+        wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&data.to_le_bytes());
+        wav.resize(wav.len() + data as usize, 0);
+
+        let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(wav)), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension("wav");
+        let probed = symphonia::default::get_probe()
+            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .expect("a WAV reader");
+        let track = probed.format.tracks()[0].clone();
+        assert!(symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default()).is_ok());
+    }
+}
