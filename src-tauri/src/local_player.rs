@@ -14,7 +14,7 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -58,6 +58,10 @@ pub struct LocalPlayer {
     position_ms: Arc<AtomicU64>,
     playing: Arc<AtomicBool>,
     duration_ms: Arc<AtomicU64>,
+    /// the player's volume (0-100) and balance (-100 left .. 100 right),
+    /// applied to the output like the Spotify path does
+    volume: Arc<AtomicU16>,
+    balance: Arc<AtomicI16>,
 }
 
 impl LocalPlayer {
@@ -69,6 +73,8 @@ impl LocalPlayer {
         let position_ms = Arc::new(AtomicU64::new(0));
         let playing = Arc::new(AtomicBool::new(false));
         let duration_ms = Arc::new(AtomicU64::new(0));
+        let volume = Arc::new(AtomicU16::new(100));
+        let balance = Arc::new(AtomicI16::new(0));
 
         let worker = Worker {
             eq,
@@ -77,6 +83,8 @@ impl LocalPlayer {
             position_ms: position_ms.clone(),
             playing: playing.clone(),
             duration_ms: duration_ms.clone(),
+            volume: volume.clone(),
+            balance: balance.clone(),
         };
         std::thread::Builder::new()
             .name("local-player".into())
@@ -89,7 +97,16 @@ impl LocalPlayer {
             position_ms,
             playing,
             duration_ms,
+            volume,
+            balance,
         }
+    }
+
+    pub fn set_volume(&self, volume: u16) {
+        self.volume.store(volume.min(100), Ordering::Relaxed);
+    }
+    pub fn set_balance(&self, balance: f32) {
+        self.balance.store((balance.clamp(-1.0, 1.0) * 100.0).round() as i16, Ordering::Relaxed);
     }
 
     pub fn load(&self, path: PathBuf) {
@@ -222,6 +239,8 @@ struct Worker {
     position_ms: Arc<AtomicU64>,
     playing: Arc<AtomicBool>,
     duration_ms: Arc<AtomicU64>,
+    volume: Arc<AtomicU16>,
+    balance: Arc<AtomicI16>,
 }
 
 impl Worker {
@@ -421,6 +440,8 @@ impl Worker {
         let eq = self.eq.clone();
         let visualizer = self.visualizer.clone();
         let playing = self.playing.clone();
+        let volume = self.volume.clone();
+        let balance = self.balance.clone();
 
         let mut eq_proc = EqProcessor::new();
         let mut scratch: Vec<f64> = Vec::new();
@@ -465,8 +486,16 @@ impl Worker {
                         for i in 0..got {
                             out[i] = scratch[i] as f32;
                         }
+                        // the visualizer sees it before the volume, so the bars
+                        // read the same at any level (as on the Spotify path)
                         if let Ok(mut v) = visualizer.lock() {
                             v.push_samples(&out[..got]);
+                        }
+                        let gain = crate::sink::volume_amplitude(volume.load(Ordering::Relaxed)) as f32;
+                        let bal = balance.load(Ordering::Relaxed) as f32 / 100.0;
+                        let (left, right) = (gain * (1.0 - bal.max(0.0)), gain * (1.0 + bal.min(0.0)));
+                        for (i, s) in out[..got].iter_mut().enumerate() {
+                            *s *= if ch == 2 { if i % 2 == 0 { left } else { right } } else { gain };
                         }
                         frames_played.fetch_add((got / ch.max(1)) as u64, Ordering::Relaxed);
                     }
@@ -556,6 +585,22 @@ impl Worker {
 // Each call just queues a message to the worker, so the lock is held briefly.
 
 type State<'a> = tauri::State<'a, Mutex<LocalPlayer>>;
+
+/// The player's volume (0-100) for local files.
+#[tauri::command]
+pub fn local_set_volume(volume: u16, player: State) {
+    if let Ok(p) = player.lock() {
+        p.set_volume(volume);
+    }
+}
+
+/// The player's balance (-1 left .. 1 right) for local files.
+#[tauri::command]
+pub fn local_set_balance(balance: f32, player: State) {
+    if let Ok(p) = player.lock() {
+        p.set_balance(balance);
+    }
+}
 
 #[tauri::command]
 pub fn local_load(path: String, player: State) {

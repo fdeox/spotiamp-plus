@@ -114,7 +114,18 @@ fn apply_activity(
     }
     let client = guard.as_mut().expect("connected client");
 
-    let state = format!("by {artist}");
+    // Discord takes 2 to 128 characters here and drops the whole update
+    // otherwise (a long file name did that to local files)
+    let fit = |text: &str| {
+        let mut t: String = text.trim().chars().take(128).collect();
+        while t.chars().count() < 2 {
+            t.push('\u{2800}');
+        }
+        t
+    };
+    let name = fit(&name);
+    let state = fit(&if artist.trim().is_empty() { "Local file".to_string() } else { format!("by {artist}") });
+    let album = if album.trim().is_empty() { String::new() } else { fit(&album) };
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -158,13 +169,24 @@ fn apply_activity(
     // reconnect on the next track
     if client.set_activity(act).is_err() {
         *guard = None;
+        return;
+    }
+    // Discord answers every command: read it (unread answers pile up in the
+    // pipe) and note a refusal, which otherwise just shows nothing
+    match client.recv() {
+        Ok((_, reply)) if reply.get("evt").and_then(|e| e.as_str()) == Some("ERROR") => {
+            log::warn!("Discord didn't take the activity: {}", reply.get("data").map(|d| d.to_string()).unwrap_or_default());
+        }
+        Ok(_) => {}
+        Err(_) => *guard = None,
     }
 }
 
 fn apply_clear() {
     if let Ok(mut guard) = CLIENT.lock()
         && let Some(client) = guard.as_mut()
+        && client.clear_activity().is_ok()
     {
-        let _ = client.clear_activity();
+        let _ = client.recv();
     }
 }

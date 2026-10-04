@@ -447,11 +447,20 @@
   // the player on a fresh sink. Reload the current track on the new device at the
   // same spot so the switch is heard without the user pressing play again.
   async function reapplyAfterDeviceChange() {
-    // Local files have no Spotify uri to reload (and would crash on
-    // `uri.asString`); they pick the device up on the next file instead.
-    if (!loadedTrack || loadedTrack.unavailable || loadedTrack.isLocal) return;
+    if (!loadedTrack || loadedTrack.unavailable) return;
     const wasPlaying = playerState === "playing";
     const position = Math.max(0, Math.round(seekPosition));
+    // A local file: open it again (its stream picks the new device) at the
+    // same spot, still paused if it was.
+    if (loadedTrack.isLocal) {
+      if (playerState === "stopped") return;
+      await invoke("local_load", { path: loadedTrack.path }).catch(() => {});
+      await invoke("local_seek", { positionMs: position }).catch(() => {});
+      if (!wasPlaying) await invoke("local_pause").catch(() => {});
+      return;
+    }
+    // Free Mode mirrors the Spotify app, which follows the device itself
+    if (controllerMode) return;
     // One load, at the same spot, already paused if it was paused. (It used
     // to be load + seek + pause: the seek made librespot load the track twice
     // and the pause let a moment of sound through.)
@@ -620,6 +629,8 @@
   $effect(() => {
     // No player backend exists in controller mode — the sliders stay visual.
     if (!controllerMode) invoke("set_volume", { volume });
+    // local files play through their own engine (in Free Mode too)
+    invoke("local_set_volume", { volume }).catch(() => {});
   });
 
   // Right-click opens the app menu here too, like Winamp's main window. The
@@ -659,6 +670,7 @@
   const balanceRow = $derived(Math.round((Math.abs(balance) / 100) * 27));
   $effect(() => {
     if (!controllerMode) invoke("set_balance", { balance: balance / 100 });
+    invoke("local_set_balance", { balance: balance / 100 }).catch(() => {});
   });
 
   $effect(() => {
@@ -720,7 +732,7 @@
     invoke("set_discord_activity", {
       name: track.name,
       artist: track.artist,
-      album: track.album ?? "",
+      album: track.album || (track.isLocal ? "Local file" : ""),
       albumArt: track.albumArt ?? null,
       playlistIndex: playlistPos.index,
       playlistLength: playlistPos.length,

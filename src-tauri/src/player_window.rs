@@ -418,9 +418,13 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(700)).await;
             let _ = window.unminimize();
-            if let Ok(position) = window.outer_position() {
-                if position.x <= -30000 || position.y <= -30000 {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(200, 200));
+            // back onto a screen if its saved spot isn't on one any more
+            // (a smaller resolution, a monitor gone); the windows opened with
+            // it too
+            app_window::keep_on_screen(&window);
+            for (label, other) in window.app_handle().webview_windows() {
+                if !matches!(label.as_str(), "player" | "mascot" | "osd") && other.is_visible().unwrap_or(false) {
+                    app_window::keep_on_screen(&other);
                 }
             }
             let _ = window.show();

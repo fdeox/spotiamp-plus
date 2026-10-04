@@ -258,6 +258,26 @@ fn start_controller_mode(app_handle: &AppHandle) -> Result<(), StartError> {
     // The visualizer's only audio source in this mode is the system output,
     // captured via loopback — start it up front so it's ready when opened.
     loopback::start_loopback();
+    // Follow the default output for local files too (the Spotify app follows
+    // it by itself): the player window reopens the file on the new device.
+    {
+        let app = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let default_output = || {
+                use cpal::traits::{DeviceTrait, HostTrait};
+                cpal::default_host().default_output_device().and_then(|d| d.name().ok())
+            };
+            let mut last = tokio::task::spawn_blocking(default_output).await.ok().flatten();
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let now = tokio::task::spawn_blocking(default_output).await.ok().flatten();
+                if now.is_some() && now != last {
+                    last = now;
+                    let _ = app.emit("audioDeviceChanged", ());
+                }
+            }
+        });
+    }
     // Local files play through their own engine, Spotify or not, so a free
     // account can still play its own MP3s and FLACs. Without this every
     // local_* command failed and the file silently never played. Nothing
@@ -401,6 +421,44 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                     }
                     Err(e) => log::warn!("Reconnect failed (will retry in 10s): {e:?}"),
                 }
+            }
+        });
+    }
+
+    // Follow the system's default output: when it changes (headphones
+    // unplugged or plugged back in, a Bluetooth device dropping out and
+    // coming back), librespot kept writing to the old device and playback
+    // went silent (issue #9). Rebuild the player there and let the window
+    // pick the song up again where it was.
+    {
+        let player = player.clone();
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let default_output = || {
+                use cpal::traits::{DeviceTrait, HostTrait};
+                cpal::default_host().default_output_device().and_then(|d| d.name().ok())
+            };
+            let mut last = tokio::task::spawn_blocking(default_output).await.ok().flatten();
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let now = tokio::task::spawn_blocking(default_output).await.ok().flatten();
+                // no output at all for the moment: wait for one to appear
+                if now.is_none() || now == last {
+                    continue;
+                }
+                log::info!("Default audio output changed ({last:?} -> {now:?}); reopening playback there");
+                last = now;
+                let Some(window) = app_handle.get_webview_window("player") else {
+                    continue;
+                };
+                {
+                    let mut p = player.lock().await;
+                    retire_event_forwarders();
+                    let chosen = settings::Settings::current().player.audio_device.clone();
+                    let channel = p.set_audio_device(chosen);
+                    spawn_event_forwarder(window, channel);
+                }
+                let _ = app_handle.emit("audioDeviceChanged", ());
             }
         });
     }
@@ -568,6 +626,8 @@ pub fn run() {
             app_window::set_ui_scale,
             app_window::get_ui_scale,
             local_player::local_load,
+            local_player::local_set_volume,
+            local_player::local_set_balance,
             local_player::local_play,
             local_player::local_pause,
             local_player::local_stop,

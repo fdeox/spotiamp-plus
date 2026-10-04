@@ -146,6 +146,46 @@ pub fn apply_always_on_top(app: &AppHandle, active: bool) {
     }
 }
 
+/// A saved spot can be off every screen by now (a lower resolution, a monitor
+/// unplugged): if the window's title bar isn't on any screen, bring the window
+/// into the nearest screen's work area so it can be reached again. Window
+/// getters block off the main thread, so this is for a spawned task or the
+/// main thread itself.
+pub fn keep_on_screen(window: &WebviewWindow) {
+    let (Ok(pos), Ok(size), Ok(monitors)) = (window.outer_position(), window.outer_size(), window.available_monitors())
+    else {
+        return;
+    };
+    if monitors.is_empty() || window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+    // a point on the title bar: where you'd grab it to drag it back
+    let gx = pos.x + (size.width as i32).min(120) / 2;
+    let gy = pos.y + 6;
+    let inside = |a: &tauri::PhysicalRect<i32, u32>| {
+        gx >= a.position.x
+            && gx < a.position.x + a.size.width as i32
+            && gy >= a.position.y
+            && gy < a.position.y + a.size.height as i32
+    };
+    if monitors.iter().any(|m| inside(m.work_area())) {
+        return;
+    }
+    let distance = |a: &tauri::PhysicalRect<i32, u32>| {
+        let cx = gx.clamp(a.position.x, a.position.x + a.size.width as i32 - 1);
+        let cy = gy.clamp(a.position.y, a.position.y + a.size.height as i32 - 1);
+        (gx - cx) as i64 * (gx - cx) as i64 + (gy - cy) as i64 * (gy - cy) as i64
+    };
+    let Some(nearest) = monitors.iter().min_by_key(|m| distance(m.work_area())) else {
+        return;
+    };
+    let a = nearest.work_area();
+    let x = pos.x.clamp(a.position.x, a.position.x + (a.size.width as i32 - size.width as i32).max(0));
+    let y = pos.y.clamp(a.position.y, a.position.y + (a.size.height as i32 - size.height as i32).max(0));
+    log::info!("{} was off screen at {},{}; moved to {},{}", window.label(), pos.x, pos.y, x, y);
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
 pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i32>>) {
     if let Some(position) = position {
         let _ = window.set_position(position);
@@ -159,6 +199,7 @@ pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i
 pub fn restore_and_remember(window: &WebviewWindow, label: &'static str, default_pos: LogicalPosition<i32>) {
     let saved = crate::settings::Settings::current().window_position(label);
     apply_position(window, Some(saved.unwrap_or(default_pos)));
+    keep_on_screen(window);
     remember_position(window, label, move |position| {
         crate::settings::Settings::current_mut().set_window_position(label, position);
     });
