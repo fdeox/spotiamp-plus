@@ -132,8 +132,46 @@
       })
       .catch(() => {});
     loadSavedListsLib();
-    loadPlaylists();
+    // nothing picked yet: Recently played rather than an empty list (once
+    // the playlists are in, so Spotify is there to name the songs)
+    loadPlaylists().then(() => {
+      if (activeNode === null && !searchMode) selectHistory("recent");
+    });
   });
+
+  // Column widths in px: Artist and Album are set by dragging the line at
+  // their edge (Album's is on its left, by Title); Title takes the rest. Kept
+  // for next time.
+  const COLS_KEY = "ml-col-widths";
+  let colWidths = $state({ artist: 120, album: 110 });
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLS_KEY) || "null");
+    if (saved?.artist > 0 && saved?.album > 0) colWidths = { artist: saved.artist, album: saved.album };
+  } catch {}
+  /** @param {PointerEvent} e @param {"artist" | "album"} col */
+  function resizeColumn(e, col) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
+    const startX = e.clientX;
+    const start = colWidths[col];
+    // Album's line is on its left: dragging it right makes Album narrower
+    const sign = col === "album" ? -1 : 1;
+    /** @param {PointerEvent} ev */
+    const move = (ev) => {
+      const w = Math.round(start + (sign * (ev.clientX - startX)) / zoom);
+      colWidths = { ...colWidths, [col]: Math.max(40, Math.min(400, w)) };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try {
+        localStorage.setItem(COLS_KEY, JSON.stringify(colWidths));
+      } catch {}
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   // The Library can reopen with the app before Spotify has finished
   // connecting (a slow start takes a few seconds), and one failed fetch used
@@ -680,6 +718,12 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 
+  // Only some lists have a date (a playlist's added date, when it was last
+  // played); Loved songs, Favorite Songs and search results don't, so there
+  // the column goes rather than staying blank.
+  const showDate = $derived(displayTracks.some((t) => t.addedMs));
+  const dateLabel = $derived(activeNode === "recent" || activeNode === "top" ? "Played" : "Added");
+
   const headTitle = $derived(
     activeNode === "recent"
       ? "Recently played"
@@ -923,7 +967,12 @@
     <div class="ml-splitter" use:makeSplitter></div>
 
     <!-- right: search bar + column list -->
-    <div class="ml-content">
+    <div
+      class="ml-content"
+      style:--w-artist={`${colWidths.artist}px`}
+      style:--w-album={`${colWidths.album}px`}
+      style:--w-tail={`${(showDate ? 58 : 0) + 44}px`}
+    >
       <div class="ml-searchbar">
         <span class="ml-search-label">Search:</span>
         <input
@@ -947,18 +996,32 @@
         <button class="ml-col ml-c-artist ml-colbtn" onclick={() => sortBy("artist")}>
           Artist{sortCol === "artist" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
-        <button class="ml-col ml-c-album ml-colbtn" onclick={() => sortBy("album")}>
-          Album{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-        </button>
         <button class="ml-col ml-c-title ml-colbtn" onclick={() => sortBy("title")}>
           Title{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
-        <button class="ml-col ml-c-date ml-colbtn" onclick={() => sortBy("date")}>
-          Date{sortCol === "date" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+        <button class="ml-col ml-c-album ml-colbtn" onclick={() => sortBy("album")}>
+          Album{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
+        {#if showDate}
+          <button class="ml-col ml-c-date ml-colbtn" onclick={() => sortBy("date")}>
+            {dateLabel}{sortCol === "date" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+          </button>
+        {/if}
         <button class="ml-col ml-c-time ml-colbtn" onclick={() => sortBy("time")}>
           Time{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
+        <span
+          class="ml-resize ml-resize-artist"
+          role="separator"
+          aria-label="Artist column width"
+          onpointerdown={(e) => resizeColumn(e, "artist")}
+        ></span>
+        <span
+          class="ml-resize ml-resize-album"
+          role="separator"
+          aria-label="Album column width"
+          onpointerdown={(e) => resizeColumn(e, "album")}
+        ></span>
       </div>
 
       <div class="ml-listwrap">
@@ -986,11 +1049,13 @@
               onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
             >
               <div class="ml-col ml-c-artist">{t.artist}</div>
-              <div class="ml-col ml-c-album">{t.album}</div>
               <div class="ml-col ml-c-title">
                 {#if lovedSet.has(t.uri)}<span class="ml-heart" title="loved">♡</span>{/if}{t.name}
               </div>
-              <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
+              <div class="ml-col ml-c-album">{t.album}</div>
+              {#if showDate}
+                <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
+              {/if}
               <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
             </div>
           {/each}
@@ -999,7 +1064,13 @@
           {:else if tracksError}
             <div class="ml-hint ml-err">{tracksError}</div>
           {:else if tracks.length === 0}
-            <div class="ml-hint">{searchMode ? "no results" : "empty"}</div>
+            <div class="ml-hint">
+              {searchMode
+                ? "no results"
+                : activeNode === "recent"
+                  ? "nothing played yet: pick a playlist on the left, or search Spotify above"
+                  : "empty"}
+            </div>
           {/if}
         {/if}
       </div>
@@ -1453,10 +1524,29 @@
     text-align: right;
   }
   .ml-c-artist {
-    flex: 0 0 26%;
+    flex: 0 0 var(--w-artist, 26%);
   }
   .ml-c-album {
-    flex: 0 0 26%;
+    flex: 0 0 var(--w-album, 26%);
+  }
+  /* the lines to drag for a column's width: at Artist's right edge, and at
+     Album's left (by Title) */
+  .ml-cols {
+    position: relative;
+  }
+  .ml-resize {
+    position: absolute;
+    top: 0;
+    width: 6px;
+    height: 15px;
+    cursor: col-resize;
+    z-index: 2;
+  }
+  .ml-resize-artist {
+    left: calc(var(--w-artist) - 3px);
+  }
+  .ml-resize-album {
+    right: calc(var(--w-album) + var(--w-tail) - 3px);
   }
   .ml-c-title {
     flex: 1;
