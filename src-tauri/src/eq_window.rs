@@ -147,9 +147,14 @@ struct NowPlaying {
     song: Option<String>,
     artist: Option<String>,
     applied: Option<EqScope>,
+    /// the curve set by hand when this song began: tweaking the EQ for a song
+    /// changes it too, and saving the tweak as the song's preset puts it back,
+    /// so the other songs keep the usual curve
+    usual: Option<EqCurve>,
 }
 
-static NOW: std::sync::Mutex<NowPlaying> = std::sync::Mutex::new(NowPlaying { song: None, artist: None, applied: None });
+static NOW: std::sync::Mutex<NowPlaying> =
+    std::sync::Mutex::new(NowPlaying { song: None, artist: None, applied: None, usual: None });
 
 fn preset_key(now: &NowPlaying, scope: EqScope) -> Option<String> {
     match scope {
@@ -265,6 +270,7 @@ pub fn eq_track(app: AppHandle, song: Option<String>, artist: Option<String>) {
         }
         now.song = song;
         now.artist = artist;
+        now.usual = Some(Settings::current().player.eq.curve.clone());
     }
     reapply(&app);
 }
@@ -287,12 +293,16 @@ pub fn eq_auto_save(app: AppHandle, scope: EqScope) {
         let eq = eq.lock().unwrap();
         EqCurve { preamp: eq.preamp_db.round() as i8, bands: eq.bands_db.map(|b| b.round() as i8) }
     };
+    let usual = NOW.lock().unwrap().usual.clone();
     {
         let mut settings = Settings::current_mut();
         let presets = &mut settings.player.eq.presets;
         presets.retain(|(k, _)| *k != key);
         presets.push((key, curve));
         settings.player.eq.auto = true;
+        if let Some(usual) = usual {
+            settings.player.eq.curve = usual;
+        }
     }
     reapply(&app);
 }
