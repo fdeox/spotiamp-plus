@@ -977,7 +977,9 @@
       class="ml-content"
       style:--w-artist={`${colWidths.artist}%`}
       style:--w-album={`${colWidths.album}%`}
-      style:--w-tail={`${(showDate ? 58 : 0) + 44}px`}
+      style:--f-artist={colWidths.artist / 100}
+      style:--f-album={colWidths.album / 100}
+      style:--w-tail={`${(showDate ? 68 : 0) + 54}px`}
     >
       <div class="ml-searchbar">
         <span class="ml-search-label">Search:</span>
@@ -1017,13 +1019,13 @@
           Time{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
         <span
-          class="ml-resize ml-resize-artist"
+          class="ml-colresize ml-colresize-artist"
           role="separator"
           aria-label="Artist column width"
           onpointerdown={(e) => resizeColumn(e, "artist")}
         ></span>
         <span
-          class="ml-resize ml-resize-album"
+          class="ml-colresize ml-colresize-album"
           role="separator"
           aria-label="Album column width"
           onpointerdown={(e) => resizeColumn(e, "album")}
@@ -1499,6 +1501,9 @@
     letter-spacing: 0.5px;
   }
   .ml-col {
+    /* the header's cells are buttons (border-box); the rows' must size the
+       same way or their columns drift off the header's */
+    box-sizing: border-box;
     padding: 0 5px;
     white-space: nowrap;
     overflow: hidden;
@@ -1539,8 +1544,12 @@
      Album's left (by Title) */
   .ml-cols {
     position: relative;
+    /* the rows below stop at the scroll bar: so does the header, or Time's
+       label sat under it, cut off */
+    padding-right: 10px;
   }
-  .ml-resize {
+  /* (not .ml-resize: that's the window's corner grip, further down) */
+  .ml-colresize {
     position: absolute;
     top: 0;
     width: 6px;
@@ -1548,22 +1557,24 @@
     cursor: col-resize;
     z-index: 2;
   }
-  .ml-resize-artist {
-    left: calc(var(--w-artist) - 3px);
+  /* placed against the header's padding box: its width less the 10px by the
+     scroll bar is what the columns share */
+  .ml-colresize-artist {
+    left: calc((100% - 10px) * var(--f-artist) - 3px);
   }
-  .ml-resize-album {
-    right: calc(var(--w-album) + var(--w-tail) - 3px);
+  .ml-colresize-album {
+    right: calc((100% - 10px) * var(--f-album) + var(--w-tail) + 10px - 3px);
   }
   .ml-c-title {
     flex: 1;
     min-width: 0;
   }
   .ml-c-date {
-    flex: 0 0 58px;
+    flex: 0 0 68px;
     text-align: right;
   }
   .ml-c-time {
-    flex: 0 0 44px;
+    flex: 0 0 54px;
     text-align: right;
   }
 
