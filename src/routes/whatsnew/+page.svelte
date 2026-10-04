@@ -12,6 +12,13 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.5": [
+      "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, cheers for new badges and has a few surprises of her own. Drag her along the edge, double-click her for a stroll, right-click her for her size or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>).",
+      "Local files play in <b>Free Mode</b> too, follow the volume and balance sliders, and show on Discord. Thanks for the report, Incubo!",
+      "Fixed: after a change of screen resolution, or with a monitor gone, Spotiamp+ could open off screen. Its windows now come back onto your main screen, together. Thanks, kaool!",
+      "Fixed: no sound after Bluetooth headphones dropped out and came back. Playback now follows Windows' sound output and carries on where it was. Thanks, kaool!",
+      "Listening stats has a new <b>REWIND</b> tab. It opens on December 1.",
+    ],
     "0.7.4": [
       "<b>Listening stats</b>: time listened, top songs and artists, your streak and when you listen, for the last 7 days, 30 days, year or all time (Library, or right-click the playlist, <i>Windows</i>). <i>COPY</i> puts them on the clipboard as a picture. Kept on this computer only.",
       "<b>F</b> loves a song ♡: the playing one in the main window, the selected ones in the playlist. They're in the Library under <i>Loved songs</i>, with a ♡ next to them everywhere.",
