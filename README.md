@@ -30,23 +30,31 @@ docking windows that snap together like classic Winamp.
 
 - 🎵 **Native Spotify playback** — Premium account via librespot (Ogg 320 kbps),
   seek, volume, gapless.
+- 🦙 **Lala** — a little llama who lives on your player. She dances to the beat,
+  naps when the music stops, wakes up when you pat her, says something now and
+  then (a fact about the song, your listening streak, a tip) and wanders over to
+  your other windows when she's bored. Drag her along the edge, double-click her
+  for a stroll, right-click her for her size, to quiet her or to hide her.
 - 💿 **Local file playback** — play your own MP3, FLAC, M4A/AAC, WAV or OGG
   files right alongside Spotify. Add files or a whole folder from the playlist
   menu (or press **O** / **Shift+O**); they land in the playlist as normal rows,
   mixed with Spotify tracks, with next/previous walking the lot. Name, artist and
   length come from the file's own tags, and the EQ and visualizer work on them too.
+  In Free Mode too.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
   a two-pane Library (playlists + tracks), load or queue anything. In the
   **Library window**, just start typing a song or artist name and the selection
   jumps to it (what you typed shows in the header). **Pin** your favourite
   playlists to the top (right-click one), and **drag** songs or whole playlists
-  from the Library onto the playlist.
+  from the Library onto the playlist. The playlist's **List** button (bottom
+  right) opens it, with the list commands.
 - 🕘 **Recently played & Most played** — two lists in the Library, kept on your
   own computer by Spotiamp+ (nothing is sent anywhere).
 - 📊 **Listening stats** — time listened, top songs and artists, your streak and
   when you listen, for the last 7 days, 30 days, year or all time, plus
   **48 badges** to unlock (night owl, marathon, 30 days in a row, Winamp's
   birthday…). **Copy** them as a picture to share (Library → *Listening stats*).
+  Every December, **Rewind** looks back on your year.
 - ♡ **Loved songs** — press **F** to love the playing song (or the selected ones
   in the playlist); they're in the Library under *Loved songs*, with a ♡ next to
   them everywhere.
@@ -61,6 +69,7 @@ docking windows that snap together like classic Winamp.
 - 🔢 **Jump to track & queue** — press **J** and type part of a song's name to
   find it in the playlist (arrows pick, **Enter** plays); press **Q** to play
   the selected song next. The number on a row is its place in the queue.
+  **Ctrl+J** jumps to a time in the song (type `1:23`, **Enter**).
 - 🪄 **Instant mix** — right-click → *Instant mix*: 20 songs like the selected
   one, added to the end of the playlist or queued to play next.
 - ⏯️ **Picks up where you left off** — your last track is ready at the same
@@ -76,7 +85,9 @@ docking windows that snap together like classic Winamp.
 - 🎚️ **10-band Equalizer** — a pixel-perfect Winamp EQ window with a **real DSP**
   behind it (biquad peaking filters on the decoded audio), preamp, presets and
   the animated response curve. **Load and save `.EQF` presets** (yours, or real
-  Winamp ones). Plus a **balance** slider next to the volume.
+  Winamp ones). **AUTO** works like Winamp's: save a curve for a song or an
+  artist (*Presets*) and it comes back whenever they play. Your EQ is remembered
+  between runs. Plus a **balance** slider next to the volume.
 - 🎨 **Skins** — right-click → *Skins* to switch skins live: **Classic**,
   **Cherry**, **Amber**, **Emerald**, plus **six bundled classic Winamp skins**
   right in the menu — the *Classified* series by
@@ -124,7 +135,8 @@ docking windows that snap together like classic Winamp.
   windows reopen where and how you left them on the next launch.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
 - ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
-- 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session.
+- 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session,
+  and the song carries on where it was. A moment offline won't sign you out.
 - 🔄 **Built-in updater** — Spotiamp+ flags a new version on launch, and
   right-click → *Help → Check for updates* downloads and installs it (signed).
   After an update, a *What's new* window lists the changes once.
@@ -189,7 +201,7 @@ certificate by [SignPath Foundation](https://signpath.org). See the
 
 These work in the main window **and every other window** (equalizer,
 playlist, visualizer, lyrics, album art, stats). In the Library, typing searches
-instead, so there only `Ctrl+D`, `Ctrl+V` and `F1` work. The right-click menu
+instead, so there only `Ctrl+D`, `Ctrl+V`, `Ctrl+J` and `F1` work. The right-click menu
 shows each key next to what it does, and **`F1`** opens the whole list.
 
 | Key | Action | Key | Action |
@@ -201,6 +213,7 @@ shows each key next to what it does, and **`F1`** opens the whole list.
 | `F` | love the song ♡ | `Ctrl+V` | stop after the current song |
 | `L` | open Library | `O` / `Shift+O` | add local file(s) / folder |
 | `Ctrl+D` | everything 2× bigger | `F1` | all the keyboard shortcuts |
+| `Ctrl+J` | jump to a time in the song | | |
 
 The mouse wheel works over the main window. In the playlist window the arrow
 keys move the selection instead (see below).
@@ -251,4 +264,4 @@ npm run tauri build    # produce a release installer (src-tauri/target/release/b
 
 ---
 
-<sub>[MIT License](LICENSE) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
+<sub>[MIT License](LICENSE) (Lala's art and animations: © fdeox, all rights reserved, see [their license](src/lib/mascot/LICENSE.md)) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
