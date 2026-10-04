@@ -708,6 +708,8 @@ pub fn run() {
             mascot::mascot_drag,
             mascot::mascot_bubble,
             mascot::mascot_room,
+            mascot::mascot_hosts,
+            mascot::mascot_visit,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,

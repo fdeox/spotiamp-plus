@@ -317,6 +317,54 @@
     "Tip: drag me along the player's edge",
     "Tip: right-click the playlist for skins",
   ];
+  // --- Visits: now and then she hops over to another window ----------------
+  // A window that opens (while no music plays) gets a look, and now and then
+  // she wanders off to one when she's bored. She hops home after a while, or
+  // the moment the music starts. Only windows with room above them (mascot.rs).
+  const VISIT_MS = 20_000;
+  /** @type {Record<string, string>} */
+  const VISIT_LINES = {
+    playlist: "What's next?",
+    eq: "Nice sliders!",
+    library: "So many songs!",
+    lyrics: "Ooh, lyrics!",
+    visualizer: "Pretty colours!",
+    art: "Nice cover!",
+    stats: "Look at your stats!",
+  };
+  let visiting = /** @type {string | null} */ (null);
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let homeTimer;
+  /** A little hop: out, over, and in again. @param {string | null} label */
+  async function hop(label) {
+    if (canvas) canvas.style.opacity = "0";
+    await new Promise((r) => setTimeout(r, 170));
+    const went = /** @type {boolean} */ (await invoke("mascot_visit", { label }).catch(() => false));
+    await new Promise((r) => setTimeout(r, 80));
+    if (canvas) canvas.style.opacity = "1";
+    return went;
+  }
+  /** @param {string | null} [label] a window that just opened, or any */
+  async function visit(label = null) {
+    if (visiting || playing || held || walk || current === "sleep") return;
+    const hosts = /** @type {string[]} */ (await invoke("mascot_hosts").catch(() => []));
+    const to = label ?? hosts[Math.floor(Math.random() * hosts.length)];
+    if (!to || !hosts.includes(to) || playing) return;
+    if (!(await hop(to))) return;
+    visiting = to;
+    react("happy", 1500);
+    chat(VISIT_LINES[to] ?? "Hello there!", { gap: 60_000, mood: "" });
+    clearTimeout(homeTimer);
+    homeTimer = setTimeout(goHome, VISIT_MS);
+  }
+  async function goHome() {
+    clearTimeout(homeTimer);
+    if (!visiting) return;
+    visiting = null;
+    endWalk();
+    await hop(null);
+  }
+
   const TIP_EVERY_MIN = 25;
   let minutesSinceTip = 0;
   function maybeTip() {
@@ -358,6 +406,8 @@
       if (current !== "sleep" && !yawnedForSleep) {
         yawnedForSleep = true;
         react("yawn");
+        // she naps at home, on the player
+        if (visiting) goHome();
         // nothing played since the app opened: she asks, once
         if (!playedYet && !askedForMusic) {
           askedForMusic = true;
@@ -670,6 +720,7 @@
       }
       if (playing) lastPlayingAt = Date.now();
       if (playing && walk) endWalk();
+      if (playing && visiting) goHome();
       // asleep and the music starts: wake up with a start
       if (playing && !was && current === "sleep") react("surprised", 1200);
     }).then((u) => offs.push(u));
@@ -767,8 +818,18 @@
     let playingSince = 0;
     let stretched = false;
     const strolls = setInterval(() => {
-      if (Math.random() < 0.4) stroll();
+      if (!playing && !visiting && Math.random() < 0.2) visit();
+      else if (Math.random() < 0.4) stroll();
     }, 30_000);
+    // a window opened: she goes and has a look (not during the music)
+    listen("dockWindowShown", (e) => {
+      if (!playing) setTimeout(() => visit(String(e.payload)), 900);
+    }).then((u) => offs.push(u));
+    // the window she's on closed: home
+    listen("dockWindowHidden", (e) => {
+      if (visiting === String(e.payload)) goHome();
+    }).then((u) => offs.push(u));
+    offs.push(() => clearTimeout(homeTimer));
     const nightly = setInterval(() => {
       const t = new Date();
       if (playing) {
@@ -838,5 +899,7 @@
     right: 0;
     bottom: 0;
     cursor: grab;
+    /* the hop between windows */
+    transition: opacity 0.15s;
   }
 </style>

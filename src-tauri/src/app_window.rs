@@ -696,6 +696,17 @@ pub fn register_dock_window(window: &WebviewWindow) {
         });
     }
 
+    // A window Lala's visiting brings her along when it moves or resizes.
+    if label != MASTER {
+        let app = window.app_handle().clone();
+        let host = label.clone();
+        window.clone().on_window_event(move |event| {
+            if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+                crate::mascot::host_moved(&app, &host);
+            }
+        });
+    }
+
     // React to this window's drag lifecycle (emitted by the frontend on
     // `<label>Window`). The listener runs on a worker thread where window
     // getters/setters block, so the work hops to the main thread and runs inline.
@@ -771,6 +782,11 @@ pub fn set_dock_visible(window: &WebviewWindow, visible: bool) {
     let window = window.clone();
     let label = window.label().to_string();
     let _ = window.clone().run_on_main_thread(move || {
+        // Lala goes and has a look at a window that opens (and leaves one
+        // that closes)
+        if label != MASTER {
+            let _ = window.emit(if visible { "dockWindowShown" } else { "dockWindowHidden" }, &label);
+        }
         let mut dock = dock().lock().expect("docking state lock");
         if visible {
             dock.visible.insert(label.clone(), true);

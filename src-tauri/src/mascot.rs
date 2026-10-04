@@ -32,7 +32,155 @@ fn inset() -> f64 {
     if let Some(i) = dragged_inset().lock().ok().and_then(|i| *i) {
         return i;
     }
+    if visiting() {
+        return visit_inset().lock().map(|v| *v).unwrap_or(RIGHT_INSET);
+    }
     Settings::current().player.mascot_inset.map(f64::from).unwrap_or(RIGHT_INSET)
+}
+
+// --- Visits: she can go and sit on another window for a while ---------------
+
+/// The window she's visiting ("" = home, on the player).
+fn host() -> &'static Mutex<String> {
+    static HOST: Mutex<String> = Mutex::new(String::new());
+    &HOST
+}
+
+/// Her spot on the window she's visiting (1x px from its right end); her
+/// spot on the player stays the saved one.
+fn visit_inset() -> &'static Mutex<f64> {
+    static INSET: Mutex<f64> = Mutex::new(RIGHT_INSET);
+    &INSET
+}
+
+fn visiting() -> bool {
+    host().lock().map(|h| !h.is_empty()).unwrap_or(false)
+}
+
+/// The window she's sitting on: the one she's visiting while it's open,
+/// else the player.
+fn host_window(app: &AppHandle) -> Option<WebviewWindow> {
+    let label = host().lock().map(|h| h.clone()).unwrap_or_default();
+    if !label.is_empty() {
+        if let Some(window) = app.get_webview_window(&label).filter(|w| w.is_visible().unwrap_or(false)) {
+            return Some(window);
+        }
+        // it closed under her: she's home
+        if let Ok(mut h) = host().lock() {
+            h.clear();
+        }
+    }
+    app.get_webview_window("player")
+}
+
+/// A window moved or changed size: if she's on it, she comes along.
+pub fn host_moved(app: &AppHandle, label: &str) {
+    if host().lock().map(|h| h.as_str() == label).unwrap_or(false) {
+        follow_player(app);
+    }
+}
+
+/// The open windows she could go and sit on: room above their top edge, on
+/// a screen and not covered by another of ours.
+#[tauri::command]
+pub fn mascot_hosts(app: AppHandle) -> Vec<String> {
+    const OURS: [&str; 8] = ["player", "playlist", "eq", "library", "lyrics", "visualizer", "art", "stats"];
+    let rects: Vec<(&str, (i32, i32, i32, i32), WebviewWindow)> = OURS
+        .iter()
+        .filter_map(|label| {
+            let window = app.get_webview_window(label)?;
+            if !window.is_visible().ok()? {
+                return None;
+            }
+            let (p, s) = (window.outer_position().ok()?, window.outer_size().ok()?);
+            Some((*label, (p.x, p.y, s.width as i32, s.height as i32), window))
+        })
+        .collect();
+    let mut hosts = Vec::new();
+    for (label, (x, y, w, _), window) in &rects {
+        if *label == "player" {
+            continue;
+        }
+        let sf = window.scale_factor().unwrap_or(1.0);
+        let need = (logical_size(current().size).1 * sf).round() as i32;
+        let (top, bottom) = (y - need, *y);
+        let cx = x + w / 2;
+        let on_screen = window.available_monitors().is_ok_and(|monitors| {
+            monitors.iter().any(|m| {
+                let a = m.work_area();
+                cx >= a.position.x
+                    && cx < a.position.x + a.size.width as i32
+                    && top >= a.position.y
+                    && top < a.position.y + a.size.height as i32
+            })
+        });
+        let covered = rects.iter().any(|(other, (ox, oy, ow, oh), _)| {
+            other != label && *ox < x + w && ox + ow > *x && *oy < bottom && oy + oh > top
+        });
+        if on_screen && !covered {
+            hosts.push(label.to_string());
+        }
+    }
+    hosts
+}
+
+/// Go and sit on another window (`label`), or back home on the player
+/// (None). Returns whether she went.
+#[tauri::command]
+pub fn mascot_visit(app: AppHandle, label: Option<String>) -> bool {
+    match label {
+        Some(label) => {
+            if !mascot_hosts(app.clone()).contains(&label) {
+                return false;
+            }
+            // somewhere along its top edge, not always the same spot
+            if let Some(window) = app.get_webview_window(&label)
+                && let (Ok(size), Ok(sf)) = (window.outer_size(), window.scale_factor())
+            {
+                let ui = crate::app_window::ui_scale();
+                let llama = FRAME_W * current().size as f64 / 64.0;
+                let room = (size.width as f64 / (ui * sf) - llama).max(0.0);
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos())
+                    .unwrap_or(0);
+                let pick = 0.2 + 0.6 * (nanos % 1000) as f64 / 1000.0;
+                if let Ok(mut inset) = visit_inset().lock() {
+                    *inset = room * pick;
+                }
+            }
+            if let Ok(mut h) = host().lock() {
+                *h = label;
+            }
+        }
+        None => {
+            if let Ok(mut h) = host().lock() {
+                h.clear();
+            }
+        }
+    }
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        follow_player(&app2);
+        raise(&app2);
+    });
+    true
+}
+
+/// Above the other windows (theirs and ours), without taking the focus: on
+/// a visited window her feet would otherwise tuck under its title bar.
+fn raise(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    if let Some(mascot) = app.get_webview_window("mascot")
+        && let Ok(hwnd) = mascot.hwnd()
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+        };
+        unsafe {
+            let _ = SetWindowPos(hwnd, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    }
 }
 const SIZES: [u16; 3] = [48, 56, 64];
 
@@ -96,7 +244,8 @@ fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
 /// Where she goes: x, y, width, height, and whether there's room for her at
 /// all (none when the player is at the very top of the screen).
 fn bounds(app: &AppHandle) -> Option<(i32, i32, u32, u32, bool)> {
-    let player = app.get_webview_window("player")?;
+    // the player, or the window she's visiting
+    let player = host_window(app)?;
     let pos = player.outer_position().ok()?;
     let psize = player.outer_size().ok()?;
     let sf = player.scale_factor().ok()?;
@@ -315,7 +464,14 @@ pub fn mascot_drag(app: AppHandle, dx: f64, done: bool) {
         *d = if done { None } else { Some(next) };
     }
     if done {
-        Settings::current_mut().player.mascot_inset = Some(next.round() as u16);
+        // her spot on the player is kept; on a visited window, just for now
+        if visiting() {
+            if let Ok(mut inset) = visit_inset().lock() {
+                *inset = next;
+            }
+        } else {
+            Settings::current_mut().player.mascot_inset = Some(next.round() as u16);
+        }
     }
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || follow_player(&app2));
@@ -336,7 +492,7 @@ pub fn mascot_bubble(app: AppHandle, width: f64) {
 /// to the right) along the player's top edge.
 #[tauri::command]
 pub fn mascot_room(app: AppHandle) -> (f64, f64) {
-    let (Some(player), Some(_)) = (app.get_webview_window("player"), app.get_webview_window("mascot")) else {
+    let (Some(player), Some(_)) = (host_window(&app), app.get_webview_window("mascot")) else {
         return (0.0, 0.0);
     };
     let (Ok(psize), Ok(sf)) = (player.outer_size(), player.scale_factor()) else {
