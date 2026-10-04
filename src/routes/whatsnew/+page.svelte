@@ -14,7 +14,9 @@
   const NOTES = {
     "0.7.5": [
       "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, cheers for new badges and has a few surprises of her own. Drag her along the edge, double-click her for a stroll, right-click her for her size or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>).",
-      "Local files play in <b>Free Mode</b> too, follow the volume and balance sliders, and show on Discord. Thanks for the report, Incubo!",
+      "Local files play in <b>Free Mode</b> too, follow the volume and balance sliders, show on Discord, and play again when you press Play after Stop. Thanks for the reports, Incubo!",
+      "Every window now comes forward with the player and shares its one taskbar button, docked or not, like Winamp.",
+      "Library buttons match every skin, and a skin no longer picks up colours left over from the one before.",
       "Fixed: after a change of screen resolution, or with a monitor gone, Spotiamp+ could open off screen. Its windows now come back on screen, together. Thanks, kaool!",
       "Fixed: going back to a smaller scale (from 3× to 1×, say) could leave the windows above the top of the screen, out of reach. Thanks, worstmood!",
       "Fixed: no sound after Bluetooth headphones dropped out and came back. Playback now follows Windows' sound output and carries on where it was. Thanks, kaool!",
