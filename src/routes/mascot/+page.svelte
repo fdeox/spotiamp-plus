@@ -407,18 +407,26 @@
   let spinUntil = 0;
   /** @type {number[]} */
   let pats = [];
+  /**
+   * Something woke her or kept her up (a pat, being carried, riding the
+   * player): she stays up a while. Woken from sleep, she starts and says
+   * `line`. Returns whether she was asleep.
+   * @param {string} line
+   * @param {boolean} [wasAsleep]
+   */
+  function wakeUp(line, wasAsleep = current === "sleep") {
+    awakeUntil = Date.now() + WOKEN_MS;
+    if (!wasAsleep) return false;
+    yawnedForSleep = false;
+    react("surprised", 1200);
+    // once she's no longer drawn asleep (the next frame), she can talk
+    setTimeout(() => chat(line, { gap: 60_000, mood: "" }), 400);
+    return true;
+  }
+
   function pat() {
     const now = Date.now();
-    const asleep = current === "sleep";
-    awakeUntil = now + WOKEN_MS;
-    if (asleep) {
-      // woken up: a start, a word, and she stays up a while
-      yawnedForSleep = false;
-      react("surprised", 1200);
-      // once she's no longer drawn asleep (the next frame), she can talk
-      setTimeout(() => chat("I'm up, I'm up!", { gap: 60_000, mood: "" }), 400);
-      return;
-    }
+    if (wakeUp("I'm up, I'm up!")) return;
     pats = [...pats.filter((t) => now - t < 4000), now];
     if (pats.length >= 10) {
       pats = [];
@@ -516,12 +524,12 @@
 
   // Drag it along the player's top edge (it looks startled while held); a
   // click without moving is a pat, and it smiles.
-  let down = /** @type {{x: number, dx: number, moved: boolean} | null} */ (null);
+  let down = /** @type {{x: number, dx: number, moved: boolean, asleep: boolean} | null} */ (null);
   /** @param {PointerEvent} e */
   function onPointerDown(e) {
     if (e.button !== 0 || !canvas) return;
     endWalk();
-    down = { x: e.screenX, dx: 0, moved: false };
+    down = { x: e.screenX, dx: 0, moved: false, asleep: current === "sleep" };
     canvas.setPointerCapture(e.pointerId);
   }
   /** @param {PointerEvent} e */
@@ -537,11 +545,14 @@
   }
   function onPointerUp() {
     if (!down) return;
-    const { moved, dx } = down;
+    const { moved, dx, asleep } = down;
     down = null;
     held = false;
-    if (moved) invoke("mascot_drag", { dx, done: true }).catch(() => {});
-    else pat();
+    if (moved) {
+      invoke("mascot_drag", { dx, done: true }).catch(() => {});
+      // carried off in her sleep: she's up now (she went back to sleep)
+      wakeUp("Whoa, where are we going?", asleep);
+    } else pat();
   }
 
   // Right-click: hide it, or pick its size. The old menu is closed before a
@@ -620,6 +631,8 @@
     listen("mascotReact", (e) => react(String(e.payload))).then((u) => offs.push(u));
     listen("mascotRide", () => {
       ridingUntil = Date.now() + 350;
+      // the player's being dragged with her on it: that wakes her too
+      wakeUp("Hey, I was sleeping!");
     }).then((u) => offs.push(u));
     // a new skin: she notices
     listen("skinChanged", () => {
