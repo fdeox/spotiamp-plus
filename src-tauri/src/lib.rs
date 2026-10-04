@@ -331,7 +331,20 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     }
 
     let session = SpotifySession::default();
-    match session.login(app_handle).await {
+    // Offline at launch (the PC just woke, the wifi is still connecting):
+    // give the connection a little while before giving up.
+    let mut tries = 0;
+    let login = loop {
+        match session.login(app_handle).await {
+            Err(e) if e.is_unreachable() && tries < 5 => {
+                tries += 1;
+                log::warn!("Spotify isn't reachable yet ({e}); trying again in 5 s");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+            other => break other,
+        }
+    };
+    match login {
         Ok(()) => {}
         Err(SessionError::NotPremium { .. }) => {
             // A free account can't stream (librespot would exit the process on
@@ -698,8 +711,20 @@ pub fn run() {
                             }
                         }
                     );
+                    let offline = matches!(&e, StartError::LoginFailed { e } if e.is_unreachable());
                     if is_cancelled {
                         log::info!("Login cancelled by user");
+                    } else if offline {
+                        log::error!("Failed to start ({e:?})");
+                        let _ = app_handle
+                            .dialog()
+                            .message(
+                                "Spotiamp+ couldn't reach Spotify. Check your internet connection, \
+                                 then open Spotiamp+ again. You're still signed in.",
+                            )
+                            .title("Spotiamp+ - No connection")
+                            .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                            .blocking_show();
                     } else {
                         log::error!("Failed to start ({e:?})");
                         let _ = app_handle

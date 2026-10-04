@@ -96,6 +96,15 @@ impl SpotifySession {
                     log::debug!("Successfully connected with cached credentials");
                     Ok(())
                 }
+                // No internet, Spotify down, a DNS hiccup: the saved login is
+                // still good. It used to be thrown away here and a browser
+                // sign-in started, so a moment offline signed you out and the
+                // reconnect sat waiting for a login nobody asked for. Keep it;
+                // the caller tries again.
+                Err(e) if !is_login_refused(&e) => {
+                    log::warn!("Couldn't reach Spotify ({e:?}); keeping the saved login");
+                    Err(SessionError::ConnectError { e })
+                }
                 Err(e) => {
                     log::warn!(
                         "Failed to connect with cached credentials ({e:?}), re-authenticating..."
@@ -523,6 +532,20 @@ pub fn list_output_devices() -> Vec<String> {
     match cpal::default_host().output_devices() {
         Ok(devices) => devices.filter_map(|device| device.name().ok()).collect(),
         Err(_) => Vec::new(),
+    }
+}
+
+/// Spotify turned the saved login down (expired or revoked), as opposed to
+/// not being reachable at all.
+fn is_login_refused(e: &Error) -> bool {
+    use librespot::core::error::ErrorKind;
+    matches!(e.kind, ErrorKind::PermissionDenied | ErrorKind::Unauthenticated | ErrorKind::InvalidArgument)
+}
+
+impl SessionError {
+    /// Couldn't reach Spotify (offline, DNS, Spotify down): worth another try.
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, SessionError::ConnectError { e } if !is_login_refused(e))
     }
 }
 
