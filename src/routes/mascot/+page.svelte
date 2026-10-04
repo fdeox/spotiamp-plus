@@ -77,8 +77,12 @@
   /** @param {boolean} [asked] a double-click: go now, even mid-smile */
   async function stroll(asked = false) {
     if (walk || playing || held) return;
-    if (asked) reaction = null;
-    else if (reaction || current !== (PARTY ? "idle_party" : "idle")) return;
+    if (asked) {
+      reaction = null;
+      // asked for a walk in her sleep: she's up for it, and stays up after
+      awakeUntil = Date.now() + WOKEN_MS;
+      yawnedForSleep = false;
+    } else if (reaction || current !== (PARTY ? "idle_party" : "idle")) return;
     const room = /** @type {[number, number]} */ (await invoke("mascot_room").catch(() => [0, 0]));
     const px = window.innerHeight / FRAME_H; // screen px per art px
     const dir = room[0] > room[1] ? -1 : room[1] > room[0] ? 1 : Math.random() < 0.5 ? -1 : 1;
