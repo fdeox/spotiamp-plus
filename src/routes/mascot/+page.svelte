@@ -187,7 +187,9 @@
   let lastChat = 0;
   /** @param {number} gap ms since the last line */
   function canChat(gap) {
-    return chatty && !bubbleText && current !== "sleep" && !held && Date.now() - lastChat >= gap;
+    // asleep, but the music just started: she's waking up for it
+    const awake = playing || current !== "sleep";
+    return chatty && awake && !bubbleText && !held && Date.now() - lastChat >= gap;
   }
   /**
    * @param {string} text
@@ -229,8 +231,9 @@
   /** A song started (Spotify uri or local:path). */
   async function onSong(/** @type {string | null} */ uri) {
     const now = new Date();
-    // the day's first song: the streak, or a hello for the time of day
-    if (firstTime(`lala-day-${now.toDateString()}`)) {
+    // the day's first song: the streak, or a hello for the time of day (the
+    // day's hello isn't spent while she can't say it)
+    if (canChat(0) && firstTime(`lala-day-${now.toDateString()}`)) {
       const h = now.getHours();
       const streak = streakDays + 1;
       if (streak >= 3) chat(`Day ${streak} in a row!`, { gap: 0, mood: "celebrate" });
