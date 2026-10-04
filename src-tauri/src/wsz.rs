@@ -141,6 +141,42 @@ fn custom_skin_dir() -> Option<PathBuf> {
     get_config_dir().map(|dir| dir.join("custom-skin"))
 }
 
+/// The list of files the current skin brought, written when it's extracted.
+const SKIN_FILE_LIST: &str = "SKIN-FILES.TXT";
+
+/// The extracted skin's files, as listed when it was put on. Reads go through
+/// this, so a file from the skin before that couldn't be deleted (Windows can
+/// hold one for a moment, an antivirus scanning it) never bleeds into this one:
+/// a stale GENEX.BMP gave pink skins the previous skin's grey buttons. A skin
+/// extracted before the list existed reads everything, as it used to.
+struct SkinFiles {
+    dir: PathBuf,
+    listed: Option<std::collections::HashSet<String>>,
+}
+
+impl SkinFiles {
+    fn open(dir: PathBuf) -> Self {
+        let listed = std::fs::read_to_string(dir.join(SKIN_FILE_LIST)).ok().map(|text| {
+            text.lines()
+                .map(|line| line.trim().to_uppercase())
+                .filter(|line| !line.is_empty())
+                .collect()
+        });
+        Self { dir, listed }
+    }
+
+    fn has(&self, name: &str) -> bool {
+        self.listed.as_ref().is_none_or(|listed| listed.contains(name)) && self.dir.join(name).exists()
+    }
+
+    fn read(&self, name: &str) -> Option<Vec<u8>> {
+        if !self.has(name) {
+            return None;
+        }
+        std::fs::read(self.dir.join(name)).ok()
+    }
+}
+
 /// Extract the BMP sprite sheets from a .wsz/.zip file into the config dir.
 fn extract_wsz(path: &std::path::Path) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Could not open skin ({e})"))?;
@@ -154,16 +190,26 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
 
     let dir = custom_skin_dir().ok_or("no config dir")?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create skin dir ({e})"))?;
-    // Delete every file from a previously-loaded skin. `remove_dir_all` can fail
-    // silently on Windows (a lingering handle from the antivirus/indexer), which
-    // used to leave stale sheets behind — e.g. a GENEX.BMP from one skin bleeding
-    // into the next skin's media library. Removing files one by one is robust.
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let _ = std::fs::remove_file(entry.path());
+    // Delete every file from a previously-loaded skin, one by one
+    // (`remove_dir_all` can fail silently on Windows). A file can still be held
+    // for a moment (the antivirus scanning it), so try a few times; whatever
+    // stays is left out of the new skin's file list anyway (SkinFiles).
+    for attempt in 0..5 {
+        let mut left = false;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                left |= std::fs::remove_file(entry.path()).is_err();
+            }
+        }
+        if !left {
+            break;
+        }
+        if attempt < 4 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
     }
 
+    let mut written = Vec::new();
     let mut found_main = false;
     for i in 0..zip.len() {
         let mut entry = zip
@@ -198,11 +244,14 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
             if name == "MAIN.BMP" {
                 found_main = true;
             }
+            written.push(name);
         }
     }
     if !found_main {
         return Err("No MAIN.BMP in the archive — not a Winamp 2.x skin".into());
     }
+    std::fs::write(dir.join(SKIN_FILE_LIST), written.join("\n"))
+        .map_err(|e| format!("Could not save the skin's file list ({e})"))?;
     Ok(())
 }
 
@@ -259,19 +308,19 @@ pub fn load_bundled_skin(name: String) -> Result<(), String> {
 /// the frontend keeps the base art for those.
 #[tauri::command(async)]
 pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
-    let dir = custom_skin_dir().ok_or("no config dir")?;
+    let files = SkinFiles::open(custom_skin_dir().ok_or("no config dir")?);
     let mut sprites = HashMap::new();
     for (bmp, var) in SPRITES {
-        let mut path = dir.join(bmp);
+        let mut name = bmp;
         // some skins ship NUMS_EX.BMP instead of NUMBERS.BMP
-        if var == "numbers" && !path.exists() {
-            path = dir.join("NUMS_EX.BMP");
+        if var == "numbers" && !files.has(name) {
+            name = "NUMS_EX.BMP";
         }
         // skins without BALANCE.BMP reuse the volume art (Winamp behaviour)
-        if var == "balance" && !path.exists() {
-            path = dir.join("VOLUME.BMP");
+        if var == "balance" && !files.has(name) {
+            name = "VOLUME.BMP";
         }
-        let Ok(bytes) = std::fs::read(&path) else {
+        let Some(bytes) = files.read(name) else {
             continue;
         };
         let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
@@ -286,14 +335,10 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     // blue on the majority of loaded skins. PLEDIT.BMP, on the other hand, is in
     // every skin — so when GEN.BMP is missing we take the equivalent pieces from
     // the playlist titlebar instead, and the windows finally match the skin.
-    let gen_img = std::fs::read(dir.join("GEN.BMP"))
-        .ok()
-        .and_then(|b| image::load_from_memory(&b).ok());
+    let gen_img = files.read("GEN.BMP").and_then(|b| image::load_from_memory(&b).ok());
     let from_gen = gen_img.is_some();
     let sheet = gen_img.or_else(|| {
-        std::fs::read(dir.join("PLEDIT.BMP"))
-            .ok()
-            .and_then(|b| image::load_from_memory(&b).ok())
+        files.read("PLEDIT.BMP").and_then(|b| image::load_from_memory(&b).ok())
     });
 
     if let Some(sheet) = sheet {
@@ -386,7 +431,7 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     // GENEX.BMP is how real Winamp colours plugin windows (the media library):
     // single pixels along the top row define the UI palette, and the sheet
     // carries the generic button face (normal + pressed).
-    if let Ok(genex_bytes) = std::fs::read(dir.join("GENEX.BMP"))
+    if let Some(genex_bytes) = files.read("GENEX.BMP")
         && let Ok(genex) = image::load_from_memory(&genex_bytes)
     {
         use image::GenericImageView;
@@ -428,7 +473,7 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
 
     // Playlist colours (PLEDIT.TXT) — also drive the library list. Values are
     // plain #RRGGBB strings (the frontend sets them raw, not as url()).
-    if let Ok(bytes) = std::fs::read(dir.join("PLEDIT.TXT")) {
+    if let Some(bytes) = files.read("PLEDIT.TXT") {
         let text = String::from_utf8_lossy(&bytes);
         for line in text.lines() {
             let Some((key, value)) = line.split_once('=') else {
@@ -553,5 +598,33 @@ mod button_label_tests {
         assert_eq!(button_label_colour([30, 20, 40], None), [240, 242, 248]);
         assert_eq!(hex_rgb("#FF8000"), Some([255, 128, 0]));
         assert_eq!(hex_rgb("none"), None);
+    }
+}
+
+#[cfg(test)]
+mod skin_files_tests {
+    use super::*;
+
+    #[test]
+    fn a_file_left_from_the_skin_before_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("spotiamp-skinfiles-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("MAIN.BMP"), b"main").unwrap();
+        std::fs::write(dir.join("GENEX.BMP"), b"stale").unwrap();
+
+        // no list yet (a skin put on by an older version): everything reads
+        let files = SkinFiles::open(dir.clone());
+        assert!(files.has("MAIN.BMP") && files.has("GENEX.BMP"));
+
+        // listed: only what this skin brought
+        std::fs::write(dir.join(SKIN_FILE_LIST), "MAIN.BMP\nPLEDIT.TXT").unwrap();
+        let files = SkinFiles::open(dir.clone());
+        assert_eq!(files.read("MAIN.BMP").as_deref(), Some(&b"main"[..]));
+        assert!(!files.has("GENEX.BMP"));
+        assert!(files.read("GENEX.BMP").is_none());
+        // listed but not on disk
+        assert!(!files.has("PLEDIT.TXT"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
