@@ -39,6 +39,8 @@
   /** each animation: its frame count and how long each frame shows */
   const ANIMS = /** @type {Record<string, {frames: number, ms: number[]}>} */ (/** @type {unknown} */ (ANIMS_JSON));
   const SLEEP_AFTER_MS = 60_000;
+  // a pat keeps her up this long (she went straight back to sleep)
+  const WOKEN_MS = 2 * 60_000;
   const BADGE_CHECK_MS = 5 * 60_000;
   /** how much the bass has to jump between two looks, against its usual level */
   const BEAT_RISE = 0.2;
@@ -62,6 +64,7 @@
   let current = "";
   let frame = 0;
   let yawnedForSleep = false;
+  let awakeUntil = 0;
   /** being dragged along the player's edge */
   let held = false;
   /** the player is being dragged with her on it: she holds on */
@@ -305,7 +308,7 @@
       walk = null;
     }
     if (playing) return PARTY ? "dance_party" : "dance";
-    if (now - lastPlayingAt > SLEEP_AFTER_MS) {
+    if (now - lastPlayingAt > SLEEP_AFTER_MS && now > awakeUntil) {
       // a yawn first, then she lies down
       if (current !== "sleep" && !yawnedForSleep) {
         yawnedForSleep = true;
@@ -406,6 +409,16 @@
   let pats = [];
   function pat() {
     const now = Date.now();
+    const asleep = current === "sleep";
+    awakeUntil = now + WOKEN_MS;
+    if (asleep) {
+      // woken up: a start, a word, and she stays up a while
+      yawnedForSleep = false;
+      react("surprised", 1200);
+      // once she's no longer drawn asleep (the next frame), she can talk
+      setTimeout(() => chat("I'm up, I'm up!", { gap: 60_000, mood: "" }), 400);
+      return;
+    }
     pats = [...pats.filter((t) => now - t < 4000), now];
     if (pats.length >= 10) {
       pats = [];

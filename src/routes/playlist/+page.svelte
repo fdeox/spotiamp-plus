@@ -1715,14 +1715,12 @@
   }
   /* ------ TRACKS ------ */
   .tracks-container {
-    /* pushed down 14px to make room for the "my playlists" button strip */
-    margin-top: calc(34px * var(--zoom));
+    /* right under the title bar, as in Winamp (it was 14px lower while the
+       "♪ library" label sat above it) */
+    margin-top: calc(20px * var(--zoom));
     margin-left: calc(10px * var(--zoom));
     width: calc((var(--playlist-w) * 25px - 29px) * var(--zoom));
-    height: calc(
-      (var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom) -
-        14px * var(--zoom)
-    );
+    height: calc((var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom));
     overflow-x: hidden;
     overflow-y: scroll;
   }
@@ -1825,13 +1823,10 @@
   .jump-box {
     position: fixed;
     z-index: 2001;
-    top: calc(34px * var(--zoom));
+    top: calc(20px * var(--zoom));
     left: calc(10px * var(--zoom));
     width: calc((var(--playlist-w) * 25px - 29px) * var(--zoom));
-    height: calc(
-      (var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom) -
-        14px * var(--zoom)
-    );
+    height: calc((var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom));
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -2079,12 +2074,12 @@
 
   /* ------ MY PLAYLISTS browser (our addition) ------ */
   /* "update available" pill — only rendered when a launch check found a newer
-     version. Sits at the top left of the list, softly pulsing so it's noticed
+     version. Sits on the title bar's left end, softly pulsing so it's noticed
      without nagging; clicking it runs the normal download/install flow. */
   .update-pill {
     position: absolute;
-    top: calc(21px * var(--zoom));
-    left: calc(11px * var(--zoom));
+    top: calc(4px * var(--zoom));
+    left: calc(12px * var(--zoom));
     z-index: 41;
     padding: 0 6px;
     font-family: monospace;
