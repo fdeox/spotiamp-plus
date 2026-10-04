@@ -2054,7 +2054,8 @@
     font-family: monospace;
     font-size: calc(7px * var(--zoom));
     line-height: 1;
-    color: #14e614;
+    /* the skin's TEXT.BMP letter colour (what Winamp draws this in) */
+    color: var(--skin-textcolor, #14e614);
     white-space: nowrap;
     overflow: hidden;
     pointer-events: none;

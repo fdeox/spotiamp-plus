@@ -88,6 +88,8 @@ fn locate_title_plate(sheet: &image::DynamicImage) -> Option<u32> {
 /// the installer — external bundle resources don't survive NSIS reliably).
 /// `(display name, .wsz bytes)`.
 const BUNDLED_SKINS: &[(&str, &[u8])] = &[
+    // our own: the base skin in the logo's colours, with SPOTIAMP+ titles
+    ("Spotiamp+", include_bytes!("../../skins/Spotiamp+.wsz")),
     (
         "Bento Classified",
         include_bytes!("../../skins/Bento_Classified.wsz"),
@@ -325,6 +327,16 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         };
         let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
         sprites.insert(var.to_string(), format!("data:image/bmp;base64,{b64}"));
+    }
+
+    // Winamp draws the playlist's time display in TEXT.BMP's letters; ours is
+    // plain text, so it takes their colour (skins without one keep the green)
+    if let Some(c) = files
+        .read("TEXT.BMP")
+        .and_then(|b| image::load_from_memory(&b).ok())
+        .and_then(|sheet| text_colour(&sheet))
+    {
+        sprites.insert("textcolor".into(), format!("#{:02X}{:02X}{:02X}", c[0], c[1], c[2]));
     }
 
     // The library / visualizer / lyrics titlebars are built from three tiles —
@@ -581,6 +593,42 @@ fn button_label_colour(frame: [u8; 3], own: Option<[u8; 3]>) -> [u8; 3] {
             let (dark, light) = ([16, 16, 20], [240, 242, 248]);
             if contrast(dark, face) >= contrast(light, face) { dark } else { light }
         }
+    }
+}
+
+/// The colour of TEXT.BMP's letters: the commonest colour that stands out
+/// from the commonest one (the background). None when nothing does.
+fn text_colour(sheet: &image::DynamicImage) -> Option<[u8; 3]> {
+    let mut counts: HashMap<[u8; 3], u32> = HashMap::new();
+    for p in sheet.to_rgb8().pixels() {
+        *counts.entry(p.0).or_default() += 1;
+    }
+    let bg = *counts.iter().max_by_key(|(c, n)| (**n, **c))?.0;
+    counts
+        .into_iter()
+        .filter(|(c, _)| contrast(*c, bg) >= 3.0)
+        .max_by_key(|(c, n)| (*n, *c))
+        .map(|(c, _)| c)
+}
+
+#[cfg(test)]
+mod text_colour_tests {
+    use super::*;
+
+    #[test]
+    fn the_letters_not_the_background_or_their_soft_edges() {
+        let mut sheet = image::RgbImage::from_pixel(20, 6, image::Rgb([0, 0, 0]));
+        for x in 0..12 {
+            sheet.put_pixel(x, 2, image::Rgb([255, 160, 40])); // letters
+        }
+        for x in 0..4 {
+            sheet.put_pixel(x, 3, image::Rgb([40, 24, 6])); // their dim edges
+        }
+        let sheet = image::DynamicImage::ImageRgb8(sheet);
+        assert_eq!(text_colour(&sheet), Some([255, 160, 40]));
+        // one colour only: nothing stands out
+        let flat = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(4, 4, image::Rgb([9, 9, 9])));
+        assert_eq!(text_colour(&flat), None);
     }
 }
 
