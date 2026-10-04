@@ -413,11 +413,15 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                 } else {
                     log::warn!("Spotify session dropped — reconnecting…");
                 }
+                // the window notes whether a song was playing, to carry on
+                // with it once the connection is back
+                let _ = app_handle.emit("spotifyDropped", ());
                 let result = player.lock().await.reconnect(&app_handle).await;
                 match result {
                     Ok(channel) => {
                         log::info!("Reconnected to Spotify.");
                         spawn_event_forwarder(player_window.clone(), channel);
+                        let _ = app_handle.emit("spotifyReconnected", ());
                     }
                     Err(e) => log::warn!("Reconnect failed (will retry in 10s): {e:?}"),
                 }

@@ -105,6 +105,8 @@
   let currentTrackUri = $state(null);
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
+  /** the Spotify song last seen playing, and where (for carrying on after a dropped connection) */
+  let lastPlaying = { at: 0, uri: /** @type {string | null} */ (null), positionMs: 0 };
   // Resume last session: the track + spot saved at the last exit. The playlist
   // cues that track at launch (see Playlist.maybeCueResume); its first play
   // continues from here.
@@ -885,6 +887,9 @@
         durationMs: loadedTrack?.durationInMs ?? 0,
       }).catch(() => {});
       if (playerState == "playing" && ++resumeTick % 10 === 0) saveResumePoint();
+      if (playerState == "playing" && loadedTrack && !loadedTrack.isLocal) {
+        lastPlaying = { at: Date.now(), uri: loadedTrack.uri?.asString ?? null, positionMs: Math.round(seekPosition) };
+      }
       historyTick();
       osdTick();
     }, 1000);
@@ -1109,12 +1114,33 @@
     const audioDeviceSubscription = listen("audioDeviceChanged", () =>
       reapplyAfterDeviceChange(),
     );
+    // Spotify closes the connection now and then and the app reconnects by
+    // itself; the song stopped there and stayed stopped ("the music stops by
+    // itself"). If one was playing when it dropped, carry on with it, at the
+    // spot it had reached.
+    /** the song that was playing when the connection dropped */
+    let resumeAfterDrop = /** @type {string | null} */ (null);
+    const droppedSubscription = listen("spotifyDropped", () => {
+      if (resumeAfterDrop || controllerMode) return; // keep the first note if reconnecting takes tries
+      resumeAfterDrop = Date.now() - lastPlaying.at < 15_000 ? lastPlaying.uri : null;
+    });
+    const reconnectedSubscription = listen("spotifyReconnected", () => {
+      const uri = resumeAfterDrop;
+      resumeAfterDrop = null;
+      // still the same song, and nobody paused or changed it meanwhile; the
+      // old player may have played on from its buffer until the reconnect
+      // stopped it, so take the last second it was seen at
+      if (!uri || loadedTrack?.uri?.asString !== uri || lastPlaying.uri !== uri || playerState === "paused") return;
+      invoke("load_track", { uri, positionMs: lastPlaying.positionMs, play: true }).catch(() => {});
+    });
 
     return () => {
       clearTimeout(reopenTimer);
       clearTimeout(whatsNewTimer);
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
+      droppedSubscription.then((unlisten) => unlisten());
+      reconnectedSubscription.then((unlisten) => unlisten());
       playerEventsSubscription.then((unlisten) => unlisten());
       playlistWindowEventSubscription.then((unlisten) => unlisten());
       eqWindowEventSubscription.then((unlisten) => unlisten());
