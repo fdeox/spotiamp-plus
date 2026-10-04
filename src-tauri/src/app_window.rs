@@ -192,8 +192,8 @@ pub fn keep_on_screen(window: &WebviewWindow) -> Option<(i32, i32)> {
 /// is ever out of reach: after a launch (a smaller resolution, a monitor gone
 /// or switched off) and after a UI scale change (3x and back could leave the
 /// docked stack above the top of the screen). The player and the windows
-/// docked to it move as one group, keeping their shape: onto the screen the
-/// player is on, or the main screen if it's on none. Other windows are
+/// docked to it move as one group, keeping their shape, onto the player's
+/// screen (see `home_monitor`). Other windows are
 /// fitted one by one. Returns whether anything moved. MUST run on the main
 /// thread (it reads the dock and the windows).
 pub fn rescue_offscreen(app: &AppHandle) -> bool {
@@ -224,12 +224,14 @@ pub fn rescue_offscreen(app: &AppHandle) -> bool {
             .filter_map(|w| Some((w.clone(), w.outer_position().ok()?, w.outer_size().ok()?)))
             .collect();
         let player = app.get_webview_window(MASTER);
-        let monitor = player
-            .as_ref()
-            .filter(|p| title_on_screen(p))
-            .and_then(|p| p.current_monitor().ok().flatten())
-            .or_else(|| player.as_ref().and_then(|p| p.primary_monitor().ok().flatten()));
+        let monitor = player.as_ref().and_then(home_monitor);
         if let (Some(monitor), false) = (monitor, rects.is_empty()) {
+            // Landing on a screen with another scale, Windows resizes every
+            // window by the ratio (keeping its top-left); the gaps between
+            // them must shrink or grow alike, or the stack comes apart.
+            let from = player.as_ref().and_then(|p| p.scale_factor().ok()).unwrap_or(1.0);
+            let ratio = monitor.scale_factor() / from;
+            let scale = |d: i32| (d as f64 * ratio).round() as i32;
             let left = rects.iter().map(|(_, p, _)| p.x).min().unwrap_or(0);
             let top = rects.iter().map(|(_, p, _)| p.y).min().unwrap_or(0);
             let right = rects.iter().map(|(_, p, s)| p.x + s.width as i32).max().unwrap_or(0);
@@ -237,13 +239,13 @@ pub fn rescue_offscreen(app: &AppHandle) -> bool {
             let (x, y) = fit_into(
                 monitor.work_area(),
                 PhysicalPosition::new(left, top),
-                tauri::PhysicalSize::new((right - left) as u32, (bottom - top) as u32),
+                tauri::PhysicalSize::new(scale(right - left) as u32, scale(bottom - top) as u32),
             );
-            let (dx, dy) = (x - left, y - top);
-            if (dx, dy) != (0, 0) {
+            if (x, y) != (left, top) {
                 for (w, p, _) in &rects {
-                    log::info!("{} was off screen at {},{}; moved to {},{}", w.label(), p.x, p.y, p.x + dx, p.y + dy);
-                    let _ = w.set_position(PhysicalPosition::new(p.x + dx, p.y + dy));
+                    let to = PhysicalPosition::new(x + scale(p.x - left), y + scale(p.y - top));
+                    log::info!("{} was off screen at {},{}; moved to {},{}", w.label(), p.x, p.y, to.x, to.y);
+                    let _ = w.set_position(to);
                 }
                 moved = true;
             }
@@ -256,6 +258,29 @@ pub fn rescue_offscreen(app: &AppHandle) -> bool {
         crate::mascot::follow_player(app);
     }
     moved
+}
+
+/// The screen the player belongs on: the one its title bar is on; else the
+/// one it's straight above or below (pushed off the top or the bottom, it
+/// should come back there, not jump to another screen); else the main one.
+fn home_monitor(player: &WebviewWindow) -> Option<tauri::Monitor> {
+    let (Ok(pos), Ok(size), Ok(monitors)) = (player.outer_position(), player.outer_size(), player.available_monitors())
+    else {
+        return player.primary_monitor().ok().flatten();
+    };
+    let gx = pos.x + (size.width as i32).min(120) / 2;
+    let gy = pos.y + 6;
+    monitors
+        .into_iter()
+        .filter(|m| {
+            let a = m.work_area();
+            gx >= a.position.x && gx < a.position.x + a.size.width as i32
+        })
+        .min_by_key(|m| {
+            let a = m.work_area();
+            (a.position.y - gy).max(gy - (a.position.y + a.size.height as i32 - 1)).max(0)
+        })
+        .or_else(|| player.primary_monitor().ok().flatten())
 }
 
 fn fit_into(a: &tauri::PhysicalRect<i32, u32>, pos: PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) -> (i32, i32) {
