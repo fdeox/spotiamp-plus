@@ -2100,8 +2100,10 @@
     --sprite-y: 57px;
     width: 38px;
     height: 14px;
-    /* the balance trough bar sits at x=12..45 in the 68px-wide BMP */
-    background-position: -10px 0px;
+    /* the trough is x=9..46 in the 68px-wide BMP, as Winamp draws it; from
+       x=10 the last column was x=47, past it: the sheet's filler colour, a
+       blue line right of the slider on most skins */
+    background-position: -9px 0px;
   }
 
   #balance {
