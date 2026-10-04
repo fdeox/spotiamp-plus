@@ -304,8 +304,21 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     // cleared) — almost always a non-Premium account that slipped past the
     // profile check, which librespot answers by killing the process with no
     // dialog. Offer the way out instead of repeating the silent crash.
-    if settings::Settings::current().pending_connect {
-        settings::Settings::current_mut().pending_connect = false;
+    let connect_deaths = if settings::Settings::current().pending_connect {
+        let mut settings = settings::Settings::current_mut();
+        settings.pending_connect = false;
+        settings.connect_deaths = settings.connect_deaths.saturating_add(1);
+        settings.connect_deaths
+    } else {
+        0
+    };
+    // Once can be anything: closed, restarted by an update, or the PC shut
+    // down within seconds of connecting (the warning came up now and then
+    // for no reason). Twice in a row is the account gate.
+    if connect_deaths == 1 {
+        log::warn!("The last run ended while connecting to Spotify; trying again");
+    }
+    if connect_deaths >= 2 {
         let use_free_mode = app_handle
             .dialog()
             .message(
@@ -485,6 +498,13 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     }
 
     Ok(())
+}
+
+/// Quit the app. Closing it right after a connect isn't the crash the next
+/// start looks out for, so that mark comes off first.
+pub(crate) fn quit() -> ! {
+    settings::Settings::current_mut().pending_connect = false;
+    std::process::exit(0);
 }
 
 /// Set when songs fail to load twice in a row within a short time; the
@@ -695,9 +715,7 @@ pub fn run() {
             app_handle.listen("playerWindow", move |event| {
                 match serde_json::from_str::<PlayerWindowEvent>(event.payload()) {
                     Ok(e) => match e {
-                        PlayerWindowEvent::CloseRequested => {
-                            std::process::exit(0);
-                        }
+                        PlayerWindowEvent::CloseRequested => quit(),
                         PlayerWindowEvent::DragStarted | PlayerWindowEvent::DragEnded => {}
                     },
                     Err(e) => log::debug!(

@@ -439,7 +439,7 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
     // relaunching would spawn a second instance playing over the first.
     window.on_window_event(|event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
-            std::process::exit(0);
+            crate::quit();
         }
     });
 

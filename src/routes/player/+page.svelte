@@ -788,14 +788,13 @@
     if (!controllerMode) return;
     const poll = async () => {
       const np = await invoke("smtc_now_playing").catch(() => null);
-      // A local file has the player: leave it alone until it's stopped, or
-      // until the Spotify app starts playing over a paused file.
+      // A local file has the player, playing, paused or stopped (Play starts
+      // it again), until the Spotify app starts playing over it. Stopped, it
+      // used to be dropped at once, so Play after Stop had no song to play.
       if (loadedTrack?.isLocal) {
-        if (playerState === "playing" || (playerState === "paused" && !np?.playing)) return;
-        if (playerState === "paused") {
-          stopLocalPoll();
-          await invoke("local_stop").catch(() => {});
-        }
+        if (playerState === "playing" || !np?.playing) return;
+        stopLocalPoll();
+        await invoke("local_stop").catch(() => {});
       }
       if (!np?.available || !np.title) {
         playerState = "stopped";

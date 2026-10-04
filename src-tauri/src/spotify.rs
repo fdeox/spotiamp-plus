@@ -127,7 +127,9 @@ impl SpotifySession {
             Ok(()) => {
                 tauri::async_runtime::spawn(async {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    crate::settings::Settings::current_mut().pending_connect = false;
+                    let mut settings = crate::settings::Settings::current_mut();
+                    settings.pending_connect = false;
+                    settings.connect_deaths = 0;
                 });
             }
             Err(_) => crate::settings::Settings::current_mut().pending_connect = false,

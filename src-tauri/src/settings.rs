@@ -285,6 +285,11 @@ pub struct Settings {
     /// of an endless silent-crash loop.
     #[serde(default)]
     pub pending_connect: bool,
+    /// How many runs in a row ended with `pending_connect` still set. One can
+    /// be anything (closed or restarted within seconds of connecting); only
+    /// two in a row mean the account gate, so only then is Free Mode offered.
+    #[serde(default)]
+    pub connect_deaths: u8,
     /// Remembered geometry for the on-demand windows (library / visualizer /
     /// lyrics / eq), keyed by window label — so reopening one brings it back
     /// where and how it was left. Player and playlist keep their own fields
