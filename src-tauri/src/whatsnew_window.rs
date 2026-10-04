@@ -44,6 +44,7 @@ pub async fn show_whats_new(app_handle: AppHandle, keys_only: Option<bool>) -> R
             )
             .map_err(|_| ())?;
             let _ = window.center();
+            app_window::own_by_player(&app_handle, &window);
             window
         }
     };

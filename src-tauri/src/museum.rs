@@ -40,6 +40,7 @@ pub async fn show_museum(app_handle: AppHandle) -> Result<(), ()> {
             )
             .map_err(|_| ())?;
             let _ = window.center();
+            app_window::own_by_player(&app_handle, &window);
             window
         }
     };

@@ -532,6 +532,24 @@ fn on_drag_ended(dock: &mut Dock) {
     update_owners(dock);
 }
 
+/// A window outside the dock (What's new, the Skin Museum) still belongs to
+/// the player: no taskbar button of its own, minimized and brought forward
+/// with it.
+pub fn own_by_player(app: &AppHandle, window: &WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        let app = app.clone();
+        let own = window.clone();
+        let _ = window.run_on_main_thread(move || {
+            if let (Some(player), Ok(own)) = (app.get_webview_window(MASTER), own.hwnd())
+                && let Ok(owner) = player.hwnd()
+            {
+                set_owner(own.0 as isize, owner.0 as isize);
+            }
+        });
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub(crate) fn set_owner(follower_hwnd: isize, owner_hwnd: isize) {
     use windows::Win32::Foundation::HWND;
