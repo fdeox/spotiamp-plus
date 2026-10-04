@@ -344,13 +344,34 @@
     if (canvas) canvas.style.opacity = "1";
     return went;
   }
+  // on her way somewhere: two windows opening at once mustn't send her twice
+  let hopping = false;
+  /** @type {string | null} a window that closed while she was hopping */
+  let closedMeanwhile = null;
   /** @param {string | null} [label] a window that just opened, or any */
   async function visit(label = null) {
-    if (visiting || playing || held || walk || current === "sleep") return;
-    const hosts = /** @type {string[]} */ (await invoke("mascot_hosts").catch(() => []));
-    const to = label ?? hosts[Math.floor(Math.random() * hosts.length)];
-    if (!to || !hosts.includes(to) || playing) return;
-    if (!(await hop(to))) return;
+    if (hopping || visiting || playing || held || walk || current === "sleep") return;
+    hopping = true;
+    closedMeanwhile = null;
+    let went = false;
+    /** @type {string | undefined} */
+    let to;
+    try {
+      const hosts = /** @type {string[]} */ (await invoke("mascot_hosts").catch(() => []));
+      to = label ?? hosts[Math.floor(Math.random() * hosts.length)];
+      if (!to || !hosts.includes(to) || playing) return;
+      went = await hop(to);
+    } finally {
+      hopping = false;
+    }
+    if (!went || !to) return;
+    // it closed while she was on her way: back home
+    if (closedMeanwhile === to) {
+      closedMeanwhile = null;
+      visiting = to;
+      goHome();
+      return;
+    }
     visiting = to;
     react("happy", 1500);
     chat(VISIT_LINES[to] ?? "Hello there!", { gap: 60_000, mood: "" });
@@ -828,6 +849,7 @@
     // the window she's on closed: home
     listen("dockWindowHidden", (e) => {
       if (visiting === String(e.payload)) goHome();
+      else if (hopping) closedMeanwhile = String(e.payload);
     }).then((u) => offs.push(u));
     offs.push(() => clearTimeout(homeTimer));
     const nightly = setInterval(() => {
