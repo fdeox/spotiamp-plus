@@ -41,8 +41,14 @@
   // did would have overwritten it
   let loaded = $state(false);
 
+  // What Rust last said the EQ is. Showing it mustn't send it back: arriving
+  // late, that echo overwrote a newer change (a preset saved just after).
+  let fromRust = "";
+  const eqKey = () => JSON.stringify([enabled, preamp, bands]);
+
   /** @param {any} v the EQ as Rust has it */
   function applyView(v) {
+    fromRust = JSON.stringify([v.enabled, v.preamp, v.bands]);
     enabled = v.enabled;
     preamp = v.preamp;
     bands = [...v.bands];
@@ -135,10 +141,11 @@
     invoke("set_eq", { enabled, preamp, bands: [...bands] }).catch(() => {});
   }
   $effect(() => {
-    enabled;
-    preamp;
-    bands;
-    if (loaded) push();
+    const key = eqKey();
+    if (loaded && key !== fromRust) {
+      fromRust = key; // Rust has this now
+      push();
+    }
   });
 
   function setFromY(clientY, rect, fader) {
