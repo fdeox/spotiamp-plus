@@ -93,7 +93,9 @@ fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
 /// Where the window goes, in physical px: its size (the frame plus any speech
 /// bubble) and its spot on the player's top edge (near the right end, or
 /// wherever she was dragged or walked to).
-fn bounds(app: &AppHandle) -> Option<(i32, i32, u32, u32)> {
+/// Where she goes: x, y, width, height, and whether there's room for her at
+/// all (none when the player is at the very top of the screen).
+fn bounds(app: &AppHandle) -> Option<(i32, i32, u32, u32, bool)> {
     let player = app.get_webview_window("player")?;
     let pos = player.outer_position().ok()?;
     let psize = player.outer_size().ok()?;
@@ -107,27 +109,49 @@ fn bounds(app: &AppHandle) -> Option<(i32, i32, u32, u32)> {
     // bubble may hang past the player's left end)
     let max_inset = ((psize.width as f64 - FRAME_W * k) / (ui * sf)).max(0.0);
     let x = pos.x + psize.width as i32 - w as i32 - (inset().clamp(0.0, max_inset) * ui * sf).round() as i32;
-    let mut y = pos.y - h as i32 + (FEET_GAP * k).round() as i32;
-    // No room above (the player is at the top of the screen): keep it on
-    // screen, over the player's corner, rather than lost off the top.
-    if let Ok(Some(monitor)) = player.current_monitor() {
-        y = y.max(monitor.work_area().position.y);
-    }
-    Some((x, y, w, h))
+    let y = pos.y - h as i32 + (FEET_GAP * k).round() as i32;
+    // Room above the player? Her head must be on a screen. (She used to be
+    // pushed down onto the player then, sitting on its display.)
+    let (cx, top) = (x + w as i32 / 2, y + h as i32 / 4);
+    let room = player.available_monitors().map_or(true, |monitors| {
+        monitors.iter().any(|m| {
+            let a = m.work_area();
+            cx >= a.position.x
+                && cx < a.position.x + a.size.width as i32
+                && top >= a.position.y
+                && top < a.position.y + a.size.height as i32
+        })
+    });
+    Some((x, y, w, h, room))
 }
+
+/// She was hidden for want of room, and comes back once there is.
+static PARKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Move (and with `resize`, size) the window in one go: two separate steps
 /// showed a frame of it in between, a little jump whenever a speech bubble
-/// came or went. MUST run on the main thread.
-fn apply_bounds(app: &AppHandle, mascot: &WebviewWindow, resize: bool) {
-    let Some((x, y, w, h)) = bounds(app) else {
-        return;
+/// came or went. With no room above the player she's hidden until there is.
+/// Returns whether she has room. MUST run on the main thread.
+fn apply_bounds(app: &AppHandle, mascot: &WebviewWindow, resize: bool) -> bool {
+    let Some((x, y, w, h, room)) = bounds(app) else {
+        return true;
     };
     #[cfg(target_os = "windows")]
     if let Ok(hwnd) = mascot.hwnd() {
+        use std::sync::atomic::Ordering;
         use windows::Win32::UI::WindowsAndMessaging::{
-            SET_WINDOW_POS_FLAGS, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+            IsWindowVisible, SET_WINDOW_POS_FLAGS, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOSIZE,
+            SWP_NOZORDER, SetWindowPos, ShowWindow,
         };
+        if !room {
+            if unsafe { IsWindowVisible(hwnd) }.as_bool() {
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                }
+                PARKED.store(true, Ordering::SeqCst);
+            }
+            return false;
+        }
         let flags = SWP_NOZORDER | SWP_NOACTIVATE | if resize { SET_WINDOW_POS_FLAGS(0) } else { SWP_NOSIZE };
         unsafe {
             let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, flags);
@@ -140,12 +164,19 @@ fn apply_bounds(app: &AppHandle, mascot: &WebviewWindow, resize: bool) {
                 let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, flags);
             }
         }
-        return;
+        // room again: back she comes, without taking the focus
+        if PARKED.swap(false, Ordering::SeqCst) {
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            }
+        }
+        return true;
     }
     if resize {
         let _ = mascot.set_size(tauri::PhysicalSize::new(w, h));
     }
     let _ = mascot.set_position(PhysicalPosition::new(x, y));
+    room
 }
 
 /// Windows keeps a new window at least ~136 px wide unless told the minimum,
@@ -159,7 +190,7 @@ fn allow_size(mascot: &WebviewWindow) {
 fn place(app: &AppHandle, mascot: &WebviewWindow) {
     // a move can take her to a screen with another scale, which resizes her;
     // only then is the size set too
-    let resize = bounds(app).is_some_and(|(_, _, w, h)| mascot.outer_size().is_ok_and(|s| (s.width, s.height) != (w, h)));
+    let resize = bounds(app).is_some_and(|(_, _, w, h, _)| mascot.outer_size().is_ok_and(|s| (s.width, s.height) != (w, h)));
     apply_bounds(app, mascot, resize);
 }
 
@@ -206,7 +237,11 @@ fn show(app: &AppHandle) -> Result<(), String> {
         // the size again now that it exists: at creation Windows kept it
         // ~136 px wide whatever was asked; a resize afterwards takes
         allow_size(&mascot);
-        apply_bounds(&app, &mascot, true);
+        // no room above the player right now: she waits, hidden, until there is
+        if !apply_bounds(&app, &mascot, true) {
+            PARKED.store(true, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
         let _ = mascot.show();
         // showing it mustn't take the focus from the player
         if let Some(player) = app.get_webview_window("player") {
