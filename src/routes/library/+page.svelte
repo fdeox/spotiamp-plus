@@ -1360,10 +1360,16 @@
     padding: 1px 4px;
     outline: none;
   }
-  /* the skin's real GENEX button face (base skin included) */
+  /* the skin's real GENEX button face (base skin included); a skin without one
+     gets the frame-coloured bevel, like .ml-btn */
   .ml-clear {
-    background: none;
-    border: 4px solid transparent;
+    background: color-mix(in srgb, var(--frame) 82%, #fff);
+    border: 4px solid;
+    border-color:
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 72%, #fff);
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
     color: var(--skin-genexbtntext, #393942);
     font-family: "px sans nouveaux", sans-serif;
@@ -1375,6 +1381,12 @@
   }
   .ml-clear:active {
     border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
+    border-color:
+      color-mix(in srgb, var(--frame) 40%, #000)
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 72%, #fff)
+      color-mix(in srgb, var(--frame) 40%, #000);
+    background: color-mix(in srgb, var(--frame) 72%, #000);
   }
 
   .ml-view-head {

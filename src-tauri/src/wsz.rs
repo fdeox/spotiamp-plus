@@ -480,5 +480,78 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         derive(&mut sprites, "genexdivider", "plselbg");
     }
 
+    // No button face of its own either: the library buttons borrowed the base
+    // skin's grey one, with this skin's label colour on it (pink on grey, hard
+    // to read, out of place). "none" makes the page draw them in the skin's
+    // frame colour instead, with a label colour that reads on that face.
+    if !sprites.contains_key("genexbtn") {
+        sprites.insert("genexbtn".into(), "none".into());
+        sprites.insert("genexbtnp".into(), "none".into());
+        let frame = ["titlebarcolor", "genexwndbg", "plbg"]
+            .iter()
+            .find_map(|key| sprites.get(*key).and_then(|v| hex_rgb(v)));
+        if let Some(frame) = frame {
+            let own = sprites.get("genexbtntext").and_then(|v| hex_rgb(v));
+            let text = button_label_colour(frame, own);
+            sprites.insert(
+                "genexbtntext".into(),
+                format!("#{:02X}{:02X}{:02X}", text[0], text[1], text[2]),
+            );
+        }
+    }
+
     Ok(sprites)
+}
+
+fn hex_rgb(value: &str) -> Option<[u8; 3]> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    Some([byte(0)?, byte(2)?, byte(4)?])
+}
+
+/// WCAG contrast ratio between two colours (1 = none, 21 = black on white).
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let luminance = |c: [u8; 3]| {
+        let lin = |v: u8| {
+            let s = v as f64 / 255.0;
+            if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+    };
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// The label colour for a library button drawn in the frame colour (the
+/// page's face: 82 % frame, 18 % white): the skin's own if it reads well
+/// there, else near-black or near-white, whichever reads better.
+fn button_label_colour(frame: [u8; 3], own: Option<[u8; 3]>) -> [u8; 3] {
+    let face = frame.map(|c| (c as f64 * 0.82 + 255.0 * 0.18).round() as u8);
+    match own {
+        Some(own) if contrast(own, face) >= 4.5 => own,
+        _ => {
+            let (dark, light) = ([16, 16, 20], [240, 242, 248]);
+            if contrast(dark, face) >= contrast(light, face) { dark } else { light }
+        }
+    }
+}
+
+#[cfg(test)]
+mod button_label_tests {
+    use super::*;
+
+    #[test]
+    fn keeps_a_readable_skin_colour_and_replaces_an_unreadable_one() {
+        // light grey frame, the skin's dark label: kept
+        assert_eq!(button_label_colour([200, 200, 200], Some([20, 20, 60])), [20, 20, 60]);
+        // hot pink frame, a pale pink label: swapped for one that reads
+        assert_eq!(button_label_colour([230, 80, 160], Some([255, 200, 230])), [16, 16, 20]);
+        // dark frame, no label colour: light text
+        assert_eq!(button_label_colour([30, 20, 40], None), [240, 242, 248]);
+        assert_eq!(hex_rgb("#FF8000"), Some([255, 128, 0]));
+        assert_eq!(hex_rgb("none"), None);
+    }
 }
