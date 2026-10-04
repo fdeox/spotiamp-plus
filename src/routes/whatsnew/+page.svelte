@@ -15,8 +15,10 @@
     "0.7.5": [
       "Meet <b>Lala</b>, a little llama who sits on your player. She dances to the beat, naps when the music stops, cheers for new badges and has a few surprises of her own. Drag her along the edge, double-click her for a stroll, right-click her for her size or to hide her (also under <i>Windows</i>, <i>Lala the llama</i>).",
       "Local files play in <b>Free Mode</b> too, follow the volume and balance sliders, and show on Discord. Thanks for the report, Incubo!",
-      "Fixed: after a change of screen resolution, or with a monitor gone, Spotiamp+ could open off screen. Its windows now come back onto your main screen, together. Thanks, kaool!",
+      "Fixed: after a change of screen resolution, or with a monitor gone, Spotiamp+ could open off screen. Its windows now come back on screen, together. Thanks, kaool!",
+      "Fixed: going back to a smaller scale (from 3× to 1×, say) could leave the windows above the top of the screen, out of reach. Thanks, worstmood!",
       "Fixed: no sound after Bluetooth headphones dropped out and came back. Playback now follows Windows' sound output and carries on where it was. Thanks, kaool!",
+      "When Spotify drops the connection (it does now and then), the song now carries on where it was once Spotiamp+ reconnects, instead of stopping. Thanks, worstmood!",
       "Listening stats has a new <b>REWIND</b> tab. It opens on December 1.",
     ],
     "0.7.4": [
