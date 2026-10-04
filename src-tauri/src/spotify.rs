@@ -373,13 +373,13 @@ impl SpotifyPlayer {
         }
         let session = SpotifySession::default();
         session.login(app).await?;
-        self.player = Self::build_player(
+        self.replace_player(Self::build_player(
             &session.inner,
             self.volume.clone(),
             self.visualizer.clone(),
             self.eq.clone(),
             self.audio_device.clone(),
-        );
+        ));
         self.session = session;
         Ok(self.player.get_player_event_channel())
     }
@@ -450,6 +450,15 @@ impl SpotifyPlayer {
         self.rebuild_player()
     }
 
+    /// Reopen playback on the system's new default output, asked for by
+    /// name. Asked for "the default" while Windows is still switching (a
+    /// Bluetooth headset connecting), the sink could get the old device and
+    /// stay there unnoticed. The saved choice stays "system default".
+    pub fn follow_default_output(&mut self, name: Option<String>) -> PlayerEventChannel {
+        *self.audio_device.lock().unwrap() = name;
+        self.rebuild_player()
+    }
+
     /// Turn loudness normalisation on or off. librespot reads it from the
     /// PlayerConfig, fixed when the player is built, so this rebuilds the player
     /// the same way a device switch does (the frontend then reloads the track).
@@ -460,14 +469,28 @@ impl SpotifyPlayer {
 
     fn rebuild_player(&mut self) -> PlayerEventChannel {
         self.player.stop();
-        self.player = Self::build_player(
+        self.replace_player(Self::build_player(
             &self.session.inner,
             self.volume.clone(),
             self.visualizer.clone(),
             self.eq.clone(),
             self.audio_device.clone(),
-        );
+        ));
         self.player.get_player_event_channel()
+    }
+
+    /// Put a new player in place of the old one, and let the old one go on a
+    /// thread of its own. Dropping a librespot player waits for its thread,
+    /// and that thread can be stuck for good writing to an output that's gone
+    /// (its rodio sink waits for a queue a vanished device never drains):
+    /// waited for here, under the player lock, every command after it hung
+    /// and the app showed "playing" with no sound (Bluetooth headphones
+    /// dropping out, issue #9).
+    fn replace_player(&mut self, player: Arc<Player>) {
+        let old = std::mem::replace(&mut self.player, player);
+        let _ = std::thread::Builder::new()
+            .name("old-player".into())
+            .spawn(move || drop(old));
     }
 
     pub fn seek(&self, position_ms: u32) {

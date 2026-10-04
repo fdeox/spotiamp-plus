@@ -451,7 +451,7 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                     continue;
                 }
                 log::info!("Default audio output changed ({last:?} -> {now:?}); reopening playback there");
-                last = now;
+                last = now.clone();
                 let Some(window) = app_handle.get_webview_window("player") else {
                     continue;
                 };
@@ -459,7 +459,11 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                     let mut p = player.lock().await;
                     retire_event_forwarders();
                     let chosen = settings::Settings::current().player.audio_device.clone();
-                    let channel = p.set_audio_device(chosen);
+                    let channel = match chosen {
+                        Some(_) => p.set_audio_device(chosen),
+                        // "system default": the very device just seen
+                        None => p.follow_default_output(now),
+                    };
                     spawn_event_forwarder(window, channel);
                 }
                 let _ = app_handle.emit("audioDeviceChanged", ());
