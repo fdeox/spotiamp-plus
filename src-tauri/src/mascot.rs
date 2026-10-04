@@ -132,6 +132,14 @@ fn apply_bounds(app: &AppHandle, mascot: &WebviewWindow, resize: bool) {
         unsafe {
             let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, flags);
         }
+        // Landing on a screen with another scale, Windows resizes it once
+        // more by itself (she came out 1.25x too big on a 125 % screen): set
+        // the size again now that she's there.
+        if resize && mascot.outer_size().is_ok_and(|s| (s.width, s.height) != (w, h)) {
+            unsafe {
+                let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, flags);
+            }
+        }
         return;
     }
     if resize {
@@ -141,14 +149,18 @@ fn apply_bounds(app: &AppHandle, mascot: &WebviewWindow, resize: bool) {
 }
 
 /// Windows keeps a new window at least ~136 px wide unless told the minimum,
-/// and only takes it once the window exists.
+/// and only takes it once the window exists. The minimum also gets the
+/// invisible frame added on top, so it must stay well under her size or the
+/// window comes out bigger than asked (and she sat lower and further right).
 fn allow_size(mascot: &WebviewWindow) {
-    let (w, h) = logical_size(current().size);
-    let _ = mascot.set_min_size(Some(tauri::LogicalSize::new(w.min(FRAME_W), h)));
+    let _ = mascot.set_min_size(Some(tauri::LogicalSize::new(1.0, 1.0)));
 }
 
 fn place(app: &AppHandle, mascot: &WebviewWindow) {
-    apply_bounds(app, mascot, false);
+    // a move can take her to a screen with another scale, which resizes her;
+    // only then is the size set too
+    let resize = bounds(app).is_some_and(|(_, _, w, h)| mascot.outer_size().is_ok_and(|s| (s.width, s.height) != (w, h)));
+    apply_bounds(app, mascot, resize);
 }
 
 /// The player moved or changed size: bring the llama along. Called from the

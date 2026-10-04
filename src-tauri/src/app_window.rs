@@ -146,44 +146,103 @@ pub fn apply_always_on_top(app: &AppHandle, active: bool) {
     }
 }
 
-/// A saved spot can be off every screen by now (a lower resolution, a monitor
-/// unplugged): if the window's title bar isn't on any screen, bring the window
-/// into the nearest screen's work area so it can be reached again. Window
-/// getters block off the main thread, so this is for a spawned task or the
-/// main thread itself.
-pub fn keep_on_screen(window: &WebviewWindow) {
+/// Whether a window's title bar (where you'd grab it) is on some screen.
+pub fn title_on_screen(window: &WebviewWindow) -> bool {
     let (Ok(pos), Ok(size), Ok(monitors)) = (window.outer_position(), window.outer_size(), window.available_monitors())
     else {
-        return;
+        return true;
     };
-    if monitors.is_empty() || window.is_fullscreen().unwrap_or(false) {
-        return;
-    }
-    // a point on the title bar: where you'd grab it to drag it back
     let gx = pos.x + (size.width as i32).min(120) / 2;
     let gy = pos.y + 6;
-    let inside = |a: &tauri::PhysicalRect<i32, u32>| {
+    monitors.iter().any(|m| {
+        let a = m.work_area();
         gx >= a.position.x
             && gx < a.position.x + a.size.width as i32
             && gy >= a.position.y
             && gy < a.position.y + a.size.height as i32
-    };
-    if monitors.iter().any(|m| inside(m.work_area())) {
-        return;
+    })
+}
+
+/// A saved spot can be off every screen by now (a lower resolution, a monitor
+/// unplugged or switched off): if the window's title bar isn't on any screen,
+/// bring the window onto the main screen, all of it inside the work area.
+/// Returns how far it moved. Window getters block off the main thread, so
+/// this is for a spawned task or the main thread itself.
+pub fn keep_on_screen(window: &WebviewWindow) -> Option<(i32, i32)> {
+    if window.is_fullscreen().unwrap_or(false) || title_on_screen(window) {
+        return None;
     }
-    let distance = |a: &tauri::PhysicalRect<i32, u32>| {
-        let cx = gx.clamp(a.position.x, a.position.x + a.size.width as i32 - 1);
-        let cy = gy.clamp(a.position.y, a.position.y + a.size.height as i32 - 1);
-        (gx - cx) as i64 * (gx - cx) as i64 + (gy - cy) as i64 * (gy - cy) as i64
+    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return None;
     };
-    let Some(nearest) = monitors.iter().min_by_key(|m| distance(m.work_area())) else {
-        return;
-    };
-    let a = nearest.work_area();
-    let x = pos.x.clamp(a.position.x, a.position.x + (a.size.width as i32 - size.width as i32).max(0));
-    let y = pos.y.clamp(a.position.y, a.position.y + (a.size.height as i32 - size.height as i32).max(0));
+    // the main screen (where the taskbar is) is the one that's surely in
+    // front of the user; any screen if Windows won't say
+    let monitor = window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.available_monitors().ok().and_then(|m| m.into_iter().next()))?;
+    let (x, y) = fit_into(monitor.work_area(), pos, size);
     log::info!("{} was off screen at {},{}; moved to {},{}", window.label(), pos.x, pos.y, x, y);
     let _ = window.set_position(PhysicalPosition::new(x, y));
+    Some((x - pos.x, y - pos.y))
+}
+
+/// Bring the windows whose title bars are off every screen onto the main
+/// screen as one group, so a docked stack keeps its shape (fitted one by one,
+/// the playlist ended up on top of the player). Returns whether any moved.
+pub fn bring_group_on_screen(windows: &[WebviewWindow]) -> bool {
+    let off: Vec<(&WebviewWindow, PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> = windows
+        .iter()
+        .filter(|w| !w.is_fullscreen().unwrap_or(false) && !title_on_screen(w))
+        .filter_map(|w| Some((w, w.outer_position().ok()?, w.outer_size().ok()?)))
+        .collect();
+    let Some((first, _, _)) = off.first() else {
+        return false;
+    };
+    let Some(monitor) = first
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| first.available_monitors().ok().and_then(|m| m.into_iter().next()))
+    else {
+        return false;
+    };
+    // the group's outline, fitted as one
+    let left = off.iter().map(|(_, p, _)| p.x).min().unwrap_or(0);
+    let top = off.iter().map(|(_, p, _)| p.y).min().unwrap_or(0);
+    let right = off.iter().map(|(_, p, s)| p.x + s.width as i32).max().unwrap_or(0);
+    let bottom = off.iter().map(|(_, p, s)| p.y + s.height as i32).max().unwrap_or(0);
+    let (x, y) = fit_into(
+        monitor.work_area(),
+        PhysicalPosition::new(left, top),
+        tauri::PhysicalSize::new((right - left) as u32, (bottom - top) as u32),
+    );
+    let (dx, dy) = (x - left, y - top);
+    for (w, p, _) in &off {
+        log::info!("{} was off screen at {},{}; moved to {},{}", w.label(), p.x, p.y, p.x + dx, p.y + dy);
+        let _ = w.set_position(PhysicalPosition::new(p.x + dx, p.y + dy));
+    }
+    true
+}
+
+/// Nudge a window so all of it is inside the screen it's on (moving to a
+/// screen with another scale makes Windows resize it after it arrived).
+pub fn keep_inside(window: &WebviewWindow) {
+    let (Ok(pos), Ok(size), Ok(Some(monitor))) = (window.outer_position(), window.outer_size(), window.current_monitor())
+    else {
+        return;
+    };
+    let (x, y) = fit_into(monitor.work_area(), pos, size);
+    if (x, y) != (pos.x, pos.y) {
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
+fn fit_into(a: &tauri::PhysicalRect<i32, u32>, pos: PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) -> (i32, i32) {
+    let x = pos.x.clamp(a.position.x, a.position.x + (a.size.width as i32 - size.width as i32).max(0));
+    let y = pos.y.clamp(a.position.y, a.position.y + (a.size.height as i32 - size.height as i32).max(0));
+    (x, y)
 }
 
 pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i32>>) {
@@ -199,7 +258,7 @@ pub fn apply_position(window: &WebviewWindow, position: Option<LogicalPosition<i
 pub fn restore_and_remember(window: &WebviewWindow, label: &'static str, default_pos: LogicalPosition<i32>) {
     let saved = crate::settings::Settings::current().window_position(label);
     apply_position(window, Some(saved.unwrap_or(default_pos)));
-    keep_on_screen(window);
+    let _ = keep_on_screen(window);
     remember_position(window, label, move |position| {
         crate::settings::Settings::current_mut().set_window_position(label, position);
     });
