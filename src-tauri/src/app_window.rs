@@ -545,15 +545,17 @@ pub(crate) fn set_owner(follower_hwnd: isize, owner_hwnd: isize) {
     }
 }
 
-/// Make every window in the player's group owned by the player — so the group
-/// minimizes/restores together, stays above it and shares one taskbar button —
-/// and release any window that has left the group. MUST run on the main thread.
+/// Make every open window owned by the player, docked or not, like Winamp's:
+/// they minimize/restore together, come forward together when the player is
+/// clicked, stay above it and share its one taskbar button. (Only the docked
+/// ones used to be, so a lyrics window off on its own had a taskbar button of
+/// its own and stayed behind when the player was brought back.) A hidden
+/// window is let go. MUST run on the main thread.
 #[cfg(target_os = "windows")]
 fn update_owners(dock: &mut Dock) {
     let Some(&player_hwnd) = dock.hwnds.get(MASTER) else {
         return;
     };
-    let group = connected_group(dock, MASTER);
     let labels: Vec<String> = dock.windows.keys().cloned().collect();
     for label in labels {
         if label == MASTER {
@@ -562,13 +564,12 @@ fn update_owners(dock: &mut Dock) {
         let Some(&hwnd) = dock.hwnds.get(&label) else {
             continue;
         };
-        let in_group =
-            group.contains(&label) && dock.visible.get(&label).copied().unwrap_or(false);
+        let own = dock.visible.get(&label).copied().unwrap_or(false);
         let currently_owned = dock.owned_by_player.contains(&label);
-        if in_group && !currently_owned {
+        if own && !currently_owned {
             set_owner(hwnd, player_hwnd);
             dock.owned_by_player.insert(label);
-        } else if !in_group && currently_owned {
+        } else if !own && currently_owned {
             set_owner(hwnd, 0);
             dock.owned_by_player.remove(&label);
         }
