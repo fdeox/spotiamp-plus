@@ -422,6 +422,8 @@ struct Dock {
     /// the player, frozen at drag start so the whole group stays rigid.
     #[allow(dead_code)]
     group_offsets: HashMap<String, (i32, i32)>,
+    /// The player's scale factor when that drag began (0 = no drag yet).
+    drag_scale: f64,
     /// Docked offset of a window that was hidden while docked, so it re-docks to
     /// the player when shown again.
     hidden_offset: HashMap<String, (i32, i32)>,
@@ -519,6 +521,7 @@ fn on_master_drag_started(dock: &mut Dock) {
             }
         }
     }
+    dock.drag_scale = dock.windows.get(MASTER).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
     dock.dragging = Some(MASTER.to_string());
 }
 
@@ -613,12 +616,22 @@ fn move_group_with_master(pos: PhysicalPosition<i32>) {
         if dock.dragging.as_deref() != Some(MASTER) {
             return;
         }
+        // Dragged onto a screen with another scale, Windows resizes every
+        // window by the ratio; the gaps must follow, or the group lands in a
+        // heap and comes apart when dropped.
+        let ratio = dock
+            .windows
+            .get(MASTER)
+            .and_then(|w| w.scale_factor().ok())
+            .filter(|_| dock.drag_scale > 0.0)
+            .map_or(1.0, |now| now / dock.drag_scale);
+        let scale = |d: i32| (d as f64 * ratio).round() as i32;
         dock.group_offsets
             .iter()
             .filter_map(|(label, (dx, dy))| {
                 dock.windows
                     .get(label)
-                    .map(|w| (w.clone(), PhysicalPosition::new(pos.x + dx, pos.y + dy)))
+                    .map(|w| (w.clone(), PhysicalPosition::new(pos.x + scale(*dx), pos.y + scale(*dy))))
             })
             .collect()
     };
@@ -666,12 +679,19 @@ pub fn register_dock_window(window: &WebviewWindow) {
     // frozen group member to follow. (Non-player windows move only themselves.)
     if label == MASTER {
         let app = window.app_handle().clone();
+        let player = window.clone();
         window.clone().on_window_event(move |event| match event {
             tauri::WindowEvent::Moved(position) => {
                 move_group_with_master(*position);
                 crate::mascot::player_moved(&app);
             }
             tauri::WindowEvent::Resized(_) => crate::mascot::follow_player(&app),
+            // crossed onto a screen with another scale mid-drag: the gaps change
+            tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                if let Ok(position) = player.outer_position() {
+                    move_group_with_master(position);
+                }
+            }
             _ => {}
         });
     }
