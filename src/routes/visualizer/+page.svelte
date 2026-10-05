@@ -89,10 +89,11 @@
 
   // --- MilkDrop ------------------------------------------------------------
   // Real MilkDrop presets, drawn by projectM in a native window laid over the
-  // canvas (milkdrop.rs). HTML can't draw on top of that window, so out of
-  // fullscreen it leaves a strip at the bottom for the preset name and PIN.
-  const MILK_STRIP = 15;
+  // canvas (milkdrop.rs). HTML can't draw on top of that window, so it draws
+  // the bottom line (the preset's name, MILKDROP, PIN) over its picture itself.
   let milk = $state(false);
+  /** MilkDrop's window is up (it takes the bottom line from then on) */
+  let milkUp = $state(false);
   /** presets found, or null while unknown / when MilkDrop can't run here */
   let milkPresets = $state(/** @type {number | null} */ (null));
   let milkUnavailable = $state("");
@@ -109,16 +110,15 @@
   /** set in onMount: restart the canvas drawing after MilkDrop */
   let restartDrawing = () => {};
 
-  // the canvas, in the window's device pixels, less the strip
+  // the canvas, in the window's device pixels
   function milkRect() {
     const r = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const strip = fullscreen ? 0 : MILK_STRIP * (REACTIVE_WINDOW_SIZE.zoom || 1);
     return {
       x: Math.round(r.left * dpr),
       y: Math.round(r.top * dpr),
       width: Math.max(1, Math.round(r.width * dpr)),
-      height: Math.max(1, Math.round((r.height - strip) * dpr)),
+      height: Math.max(1, Math.round(r.height * dpr)),
     };
   }
 
@@ -130,6 +130,7 @@
     } catch {}
     if (!on) {
       milk = false;
+      milkUp = false;
       milkPreset = "";
       overMilk = false;
       await invoke("milkdrop_stop").catch(() => {});
@@ -141,19 +142,37 @@
       return;
     }
     milk = true;
-    await tick(); // the strip is laid out first
+    await tick(); // the page is laid out for it first
     try {
       await invoke("milkdrop_start", { rect: milkRect() });
+      milkUp = true;
       if (pinned) await invoke("milkdrop_lock", { locked: true });
       // switched on in fullscreen: the title over it now
       if (fullscreen) flashTitle();
       if (!milkPresets) noteMilk("No presets yet: put .milk files in the milkdrop folder");
     } catch (e) {
       milk = false;
+      milkUp = false;
       restartDrawing();
       noteMilk(`MilkDrop couldn't start: ${e}`);
     }
   }
+  // the bottom line over MilkDrop's picture: what the page's own would show,
+  // in its letters (a CSS px is zoom x devicePixelRatio of the picture's)
+  $effect(() => {
+    if (!milkUp) return;
+    const scale = (window.devicePixelRatio || 1) * (REACTIVE_WINDOW_SIZE.zoom || 1);
+    invoke("milkdrop_bar", {
+      bar: {
+        text: milkNote || `MilkDrop · ${milkPreset || (milkPresets ? "loading…" : "no presets")}`,
+        note: !!milkNote,
+        shown: !rest && !(fullscreen && idle),
+        pinned,
+        px: Math.round((fullscreen ? 12 : 9) * scale),
+        inset: Math.round(4 * scale),
+      },
+    }).catch(() => {});
+  });
   function resizeMilk() {
     if (milk) invoke("milkdrop_resize", { rect: milkRect() }).catch(() => {});
   }
@@ -201,7 +220,11 @@
   /** @param {string} what */
   function onMilkMouse(what) {
     overMilk = what !== "leave";
-    if (what === "contextmenu") {
+    if (what === "milkdropButton") {
+      setMilk(false);
+    } else if (what === "pinButton") {
+      togglePin();
+    } else if (what === "contextmenu") {
       showMilkMenu();
     } else if (what === "move") {
       wake();
@@ -1266,6 +1289,7 @@
     appWindow
       .listen("milkdropError", (e) => {
         milk = false;
+        milkUp = false;
         restartDrawing();
         noteMilk(`MilkDrop stopped: ${e.payload}`);
       })
@@ -1623,9 +1647,9 @@
     color: #ffd24a;
     opacity: 0.95;
   }
-  /* MilkDrop draws over the canvas (a native window); the strip under it is
-     plain black behind the preset name */
-  .milk .viz-canvas {
+  /* MilkDrop draws over the canvas (a native window), the bottom line too */
+  .milk .viz-canvas,
+  .milk .viz-bar {
     visibility: hidden;
   }
   .milk {

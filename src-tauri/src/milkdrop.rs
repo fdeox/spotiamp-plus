@@ -14,6 +14,8 @@
 //!   Mode the system loopback), fed in only while MilkDrop is on.
 //! - Clicks on it are passed to the page as events, so the visualizer's own
 //!   click (next) and double-click (fullscreen) keep working.
+//! - The bottom line (the preset's name, MILKDROP and PIN) is drawn over the
+//!   picture here, as the page draws it over its own canvas.
 #![cfg(target_os = "windows")]
 
 use std::cell::Cell;
@@ -28,7 +30,7 @@ use std::time::{Duration, Instant};
 use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-use windows::Win32::Graphics::Gdi::{ClientToScreen, GetDC, HDC, ReleaseDC};
+use windows::Win32::Graphics::Gdi::{ClientToScreen, GetDC, HDC, ReleaseDC, ScreenToClient};
 use windows::Win32::Graphics::OpenGL::{
     ChoosePixelFormat, GL_ALPHA, GL_BACK, GL_BLEND, GL_CULL_FACE, GL_DEPTH_TEST, GL_LINEAR, GL_MODELVIEW, GL_MODULATE,
     GL_ONE_MINUS_SRC_ALPHA, GL_PROJECTION, GL_QUADS, GL_RGBA, GL_SCISSOR_TEST, GL_SRC_ALPHA, GL_TEXTURE_2D,
@@ -43,8 +45,8 @@ use windows::Win32::Graphics::OpenGL::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_DBLCLKS, CS_OWNDC, CreateWindowExW, DefWindowProcW, DestroyWindow, GW_OWNER, GetForegroundWindow, GetWindow,
-    HCURSOR, HWND_TOP, IDC_ARROW, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, MA_NOACTIVATE, RegisterClassW,
+    CS_DBLCLKS, CS_OWNDC, CreateWindowExW, DefWindowProcW, DestroyWindow, GW_OWNER, GetCursorPos, GetForegroundWindow,
+    GetWindow, HCURSOR, HWND_TOP, IDC_ARROW, IDC_HAND, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, MA_NOACTIVATE, RegisterClassW,
     SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowPos, ShowWindow,
     WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_RBUTTONUP, WM_SETCURSOR,
     WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
@@ -262,6 +264,36 @@ static LAST_MOVE: AtomicU64 = AtomicU64::new(0);
 static TRACKING: AtomicBool = AtomicBool::new(false);
 /// (the windows crate has it under Win32_UI_Controls, a feature for one number)
 const WM_MOUSELEAVE: u32 = 0x02A3;
+/// Where the bottom line's buttons are on the picture (px), while they show:
+/// a click there is that button, not the next preset.
+static BAR_HITS: Mutex<Option<BarHits>> = Mutex::new(None);
+
+/// A box on the picture: left, top, right, bottom (px).
+type Area = (i32, i32, i32, i32);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct BarHits {
+    milk: Area,
+    pin: Area,
+}
+
+/// The page's event for the button at `(x, y)` on the picture, if one's there.
+fn button_at(x: i32, y: i32) -> Option<&'static str> {
+    let hits = (*BAR_HITS.lock().ok()?)?;
+    let inside = |(l, t, r, b): Area| x >= l && x < r && y >= t && y < b;
+    if inside(hits.milk) {
+        Some("milkdropButton")
+    } else if inside(hits.pin) {
+        Some("pinButton")
+    } else {
+        None
+    }
+}
+
+/// A mouse message's `(x, y)` (signed: off the left or top is negative).
+fn point_of(lparam: LPARAM) -> (i32, i32) {
+    ((lparam.0 & 0xFFFF) as i16 as i32, ((lparam.0 >> 16) & 0xFFFF) as i16 as i32)
+}
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -278,6 +310,17 @@ unsafe extern "system" fn child_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
             unsafe { SetCursor(None) };
             return LRESULT(1);
         }
+        // a hand over the buttons, as over the page's
+        WM_SETCURSOR => {
+            let mut at = POINT::default();
+            let over = unsafe { GetCursorPos(&mut at).is_ok() && ScreenToClient(hwnd, &mut at).as_bool() }
+                && button_at(at.x, at.y).is_some();
+            if over && let Ok(hand) = unsafe { LoadCursorW(None, IDC_HAND) } {
+                unsafe { SetCursor(Some(hand)) };
+                return LRESULT(1);
+            }
+            None
+        }
         // it never takes the focus itself...
         WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),
         WM_LBUTTONDOWN => {
@@ -290,9 +333,14 @@ unsafe extern "system" fn child_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
                     let _ = SetForegroundWindow(owner);
                 }
             }
-            Some("click")
+            let (x, y) = point_of(lparam);
+            Some(button_at(x, y).unwrap_or("click"))
         }
-        WM_LBUTTONDBLCLK => Some("dblclick"),
+        // the second click of a quick two on a button is that button again
+        WM_LBUTTONDBLCLK => {
+            let (x, y) = point_of(lparam);
+            Some(button_at(x, y).unwrap_or("dblclick"))
+        }
         WM_RBUTTONUP => Some("contextmenu"),
         WM_MOUSEMOVE => {
             // a WM_MOUSELEAVE when the pointer is off it again: the page shows
@@ -418,9 +466,14 @@ impl OverlayKind {
     }
 }
 
+/// The room around a text in its mask, each side (px).
+fn text_pad(px: i32) -> i32 {
+    px / 4 + 2
+}
+
 /// White text as an 8-bit alpha mask (top row first) and its size; longer
-/// than `max_width` ends in an ellipsis.
-fn text_mask(text: &str, px: i32, bold: bool, max_width: i32) -> Option<(Vec<u8>, i32, i32)> {
+/// than `max_width` ends in an ellipsis. `text_pad` around it.
+fn text_mask(text: &str, px: i32, bold: bool, max_width: i32, face: PCWSTR) -> Option<(Vec<u8>, i32, i32)> {
     use windows::Win32::Foundation::{COLORREF, RECT, SIZE};
     use windows::Win32::Graphics::Gdi::{
         ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
@@ -453,12 +506,12 @@ fn text_mask(text: &str, px: i32, bold: bool, max_width: i32) -> Option<(Vec<u8>
             CLIP_DEFAULT_PRECIS,
             ANTIALIASED_QUALITY,
             (DEFAULT_PITCH.0 | FF_SWISS.0) as u32,
-            w!("Segoe UI"),
+            face,
         );
         let old_font = SelectObject(dc, HGDIOBJ(font.0));
         let mut extent = SIZE::default();
         let _ = GetTextExtentPoint32W(dc, &wide, &mut extent);
-        let pad = px / 4 + 2;
+        let pad = text_pad(px);
         let (w, h) = ((extent.cx + 2 * pad).clamp(1, max_width.max(1)), extent.cy + 2 * pad);
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -523,18 +576,10 @@ const GL_FRAMEBUFFER: u32 = 0x8D40;
 const GL_TEXTURE0: u32 = 0x84C0;
 const GL_CLAMP_TO_EDGE: i32 = 0x812F;
 
-/// (Re)make an overlay's texture for the window's size.
-fn build_overlay(o: &mut Overlay, width: u32, height: u32) {
+/// An alpha mask as a texture.
+fn mask_texture(mask: &[u8], w: i32, h: i32) -> u32 {
+    let mut texture = 0u32;
     unsafe {
-        if o.texture != 0 {
-            glDeleteTextures(1, &o.texture);
-            o.texture = 0;
-        }
-        let max_width = (width as f32 * 0.9) as i32;
-        let Some((mask, w, h)) = text_mask(&o.text, o.kind.px(height), o.kind == OverlayKind::Title, max_width) else {
-            return;
-        };
-        let mut texture = 0u32;
         glGenTextures(1, &mut texture);
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
@@ -545,10 +590,24 @@ fn build_overlay(o: &mut Overlay, width: u32, height: u32) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA as i32, w, h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, mask.as_ptr() as *const c_void);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         glBindTexture(GL_TEXTURE_2D, 0);
-        o.texture = texture;
-        o.size = (w, h);
-        o.for_height = height;
     }
+    texture
+}
+
+/// (Re)make an overlay's texture for the window's size.
+fn build_overlay(o: &mut Overlay, width: u32, height: u32) {
+    if o.texture != 0 {
+        unsafe { glDeleteTextures(1, &o.texture) };
+        o.texture = 0;
+    }
+    let max_width = (width as f32 * 0.9) as i32;
+    let bold = o.kind == OverlayKind::Title;
+    let Some((mask, w, h)) = text_mask(&o.text, o.kind.px(height), bold, max_width, w!("Segoe UI")) else {
+        return;
+    };
+    o.texture = mask_texture(&mask, w, h);
+    o.size = (w, h);
+    o.for_height = height;
 }
 
 fn drop_overlay(o: &Overlay) {
@@ -575,6 +634,30 @@ fn draw_overlays(calls: &GlCalls, overlays: &mut Vec<Overlay>, width: u32, heigh
         }
     }
     let (w, h) = (width as f32, height as f32);
+    begin_2d(calls, width, height);
+    for o in overlays.iter() {
+        if o.texture == 0 {
+            continue;
+        }
+        let t = o.shown_at.elapsed().as_secs_f32();
+        let fade = (t / 0.4).min((o.kind.seconds() - t) / 0.8).clamp(0.0, 1.0);
+        let (tw, th) = (o.size.0 as f32, o.size.1 as f32);
+        let x = ((w - tw) / 2.0).round();
+        let y = match o.kind {
+            OverlayKind::Title => (h * 0.86 - th / 2.0).round(),
+            OverlayKind::Hint => (h * 0.02).round(),
+        };
+        let shadow = (th / 24.0).max(1.0).round();
+        unsafe { glBindTexture(GL_TEXTURE_2D, o.texture) };
+        quad((x + shadow, y + shadow), (tw, th), [0.0, 0.0, 0.0, 0.8 * fade]);
+        quad((x, y), (tw, th), [1.0, 1.0, 1.0, fade]);
+    }
+    end_2d();
+}
+
+/// GL set up for laying text over projectM's frame (its state set aside);
+/// `end_2d` puts it back.
+fn begin_2d(calls: &GlCalls, width: u32, height: u32) {
     unsafe {
         (calls.bind_framebuffer)(GL_FRAMEBUFFER, 0);
         (calls.use_program)(0);
@@ -586,46 +669,219 @@ fn draw_overlays(calls: &GlCalls, overlays: &mut Vec<Overlay>, width: u32, heigh
         glDisable(GL_CULL_FACE);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        glOrtho(0.0, w as f64, h as f64, 0.0, -1.0, 1.0);
+        glOrtho(0.0, width as f64, height as f64, 0.0, -1.0, 1.0);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glEnable(GL_TEXTURE_2D);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE as i32);
-        for o in overlays.iter() {
-            if o.texture == 0 {
-                continue;
-            }
-            let t = o.shown_at.elapsed().as_secs_f32();
-            let fade = (t / 0.4).min((o.kind.seconds() - t) / 0.8).clamp(0.0, 1.0);
-            let (tw, th) = (o.size.0 as f32, o.size.1 as f32);
-            let x = ((w - tw) / 2.0).round();
-            let y = match o.kind {
-                OverlayKind::Title => (h * 0.86 - th / 2.0).round(),
-                OverlayKind::Hint => (h * 0.02).round(),
-            };
-            let shadow = (th / 24.0).max(1.0).round();
-            glBindTexture(GL_TEXTURE_2D, o.texture);
-            for (dx, color) in [(shadow, [0.0, 0.0, 0.0, 0.8 * fade]), (0.0, [1.0, 1.0, 1.0, fade])] {
-                glColor4f(color[0], color[1], color[2], color[3]);
-                glBegin(GL_QUADS);
-                glTexCoord2f(0.0, 0.0);
-                glVertex2f(x + dx, y + dx);
-                glTexCoord2f(1.0, 0.0);
-                glVertex2f(x + dx + tw, y + dx);
-                glTexCoord2f(1.0, 1.0);
-                glVertex2f(x + dx + tw, y + dx + th);
-                glTexCoord2f(0.0, 1.0);
-                glVertex2f(x + dx, y + dx + th);
-                glEnd();
-            }
-        }
-        // as projectM expects it
+    }
+}
+
+/// As projectM expects it.
+fn end_2d() {
+    unsafe {
         glBindTexture(GL_TEXTURE_2D, 0);
         glDisable(GL_BLEND);
         glDisable(GL_TEXTURE_2D);
         glColor4f(1.0, 1.0, 1.0, 1.0);
+    }
+}
+
+/// The bound text mask at `(x, y)` (its top left), `size` big, in `color`.
+fn quad((x, y): (f32, f32), (w, h): (f32, f32), color: [f32; 4]) {
+    unsafe {
+        glColor4f(color[0], color[1], color[2], color[3]);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex2f(x, y);
+        glTexCoord2f(1.0, 0.0);
+        glVertex2f(x + w, y);
+        glTexCoord2f(1.0, 1.0);
+        glVertex2f(x + w, y + h);
+        glTexCoord2f(0.0, 1.0);
+        glVertex2f(x, y + h);
+        glEnd();
+    }
+}
+
+// --- the bottom line: the preset's name, MILKDROP and PIN ---------------------
+// Laid over the picture as the page lays them over its own canvas (for them
+// it used to leave a black strip under the picture). They show while the
+// pointer's over the visualizer, fading like the page's; a note shows alone.
+
+/// What the page wants on the bottom line.
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+pub struct Bar {
+    /// the preset's name, or a note
+    text: String,
+    /// `text` is a note: amber, and shown with the rest hidden too
+    note: bool,
+    /// the name and the buttons show: the pointer's over the visualizer
+    shown: bool,
+    pinned: bool,
+    /// the letters' size and the gap to the picture's edges, in px
+    px: i32,
+    inset: i32,
+}
+
+impl Bar {
+    /// the same letters (only the showing differs)
+    fn same_text(&self, other: &Bar) -> bool {
+        (&self.text, self.note, self.pinned, self.px, self.inset)
+            == (&other.text, other.note, other.pinned, other.px, other.inset)
+    }
+}
+
+/// The page's colours there: its green, its amber.
+const GREEN: [f32; 3] = [0.431, 1.0, 0.627];
+const AMBER: [f32; 3] = [1.0, 0.824, 0.29];
+const MILK_LABEL: &str = "◆ MILKDROP";
+/// The pin's room is PINNED's either way, so MILKDROP stays put.
+const PINNED_LABEL: &str = "● PINNED";
+
+/// A text made into a texture.
+struct Label {
+    texture: u32,
+    size: (i32, i32),
+    /// the text's own width in it (the mask has `text_pad` either side)
+    width: i32,
+}
+
+impl Label {
+    fn new(text: &str, px: i32, max_width: i32) -> Option<Label> {
+        let (mask, w, h) = text_mask(text, px, false, max_width, w!("Consolas"))?;
+        Some(Label { texture: mask_texture(&mask, w, h), size: (w, h), width: w - 2 * text_pad(px) })
+    }
+}
+
+impl Drop for Label {
+    fn drop(&mut self) {
+        unsafe { glDeleteTextures(1, &self.texture) };
+    }
+}
+
+/// Where the bottom line's texts go, as boxes around the letters.
+#[derive(Debug, PartialEq)]
+struct BarLayout {
+    /// the room the name has, from the left inset
+    name_room: i32,
+    milk: Area,
+    pin: Area,
+}
+
+/// The bottom line in a `width` x `height` picture: PIN at the right (in
+/// PINNED's room), MILKDROP left of it, the name up to MILKDROP.
+fn bar_layout(width: i32, height: i32, inset: i32, line: i32, milk_width: i32, pin_room: i32) -> BarLayout {
+    let gap = line;
+    let (bottom, top) = (height - inset, height - inset - line);
+    let pin_right = width - inset;
+    let milk_right = pin_right - pin_room - gap;
+    let milk_left = milk_right - milk_width;
+    BarLayout {
+        name_room: (milk_left - gap - inset).max(0),
+        milk: (milk_left, top, milk_right, bottom),
+        pin: (pin_right - pin_room, top, pin_right, bottom),
+    }
+}
+
+/// The bottom line's state on the render thread.
+struct BarState {
+    bar: Bar,
+    /// how much the name and the buttons show, fading towards `bar.shown`
+    alpha: f32,
+    last: Instant,
+    /// name, MILKDROP, PIN and PINNED's room, made for `made_for`
+    labels: Option<(Option<Label>, Label, Label, i32)>,
+    made_for: (u32, u32),
+}
+
+impl BarState {
+    fn new() -> BarState {
+        BarState { bar: Bar::default(), alpha: 0.0, last: Instant::now(), labels: None, made_for: (0, 0) }
+    }
+
+    fn set(&mut self, bar: Bar) {
+        if !self.bar.same_text(&bar) {
+            self.labels = None;
+        }
+        self.bar = bar;
+    }
+}
+
+fn draw_bar(calls: &GlCalls, state: &mut BarState, width: u32, height: u32) {
+    let step = state.last.elapsed().as_secs_f32() / 0.2;
+    state.last = Instant::now();
+    state.alpha = if state.bar.shown { (state.alpha + step).min(1.0) } else { (state.alpha - step).max(0.0) };
+    let note = state.bar.note && !state.bar.text.is_empty();
+    if (state.alpha == 0.0 && !note) || state.bar.px <= 0 {
+        set_hits(None);
+        return;
+    }
+    let px = state.bar.px;
+    let pad = text_pad(px);
+    if state.labels.is_none() || state.made_for != (width, height) {
+        state.labels = None;
+        let pin_label = if state.bar.pinned { PINNED_LABEL } else { "○ PIN" };
+        let Some((milk, pin)) = Label::new(MILK_LABEL, px, i32::MAX).zip(Label::new(pin_label, px, i32::MAX)) else {
+            set_hits(None);
+            return;
+        };
+        let pin_room = Label::new(PINNED_LABEL, px, i32::MAX).map_or(pin.width, |l| l.width).max(pin.width);
+        let line = milk.size.1 - 2 * pad;
+        let layout = bar_layout(width as i32, height as i32, state.bar.inset, line, milk.width, pin_room);
+        let name = Label::new(&state.bar.text, px, layout.name_room + 2 * pad);
+        state.labels = Some((name, milk, pin, pin_room));
+        state.made_for = (width, height);
+    }
+    let Some((name, milk, pin, pin_room)) = &state.labels else {
+        return;
+    };
+    let line = milk.size.1 - 2 * pad;
+    let layout = bar_layout(width as i32, height as i32, state.bar.inset, line, milk.width, *pin_room);
+    // the buttons answer clicks only while they can be seen
+    set_hits((state.alpha > 0.5).then(|| {
+        let grow = |(l, t, r, b): Area| (l - pad, t - pad, r + pad, b + pad);
+        BarHits { milk: grow(layout.milk), pin: grow(layout.pin) }
+    }));
+    let a = state.alpha;
+    let (name_alpha, name_color) = if note { (0.95, AMBER) } else { (0.75 * a, GREEN) };
+    let (pin_alpha, pin_color) = if state.bar.pinned { (0.95 * a, AMBER) } else { (0.5 * a, GREEN) };
+    // each text's mask with its top left where its letters' box goes
+    let at = |left: i32, top: i32| ((left - pad) as f32, (top - pad) as f32);
+    let mut parts = vec![
+        (milk, at(layout.milk.0, layout.milk.1), 0.95 * a, AMBER),
+        (pin, at(layout.pin.2 - pin.width, layout.pin.1), pin_alpha, pin_color),
+    ];
+    if let Some(name) = name {
+        parts.push((name, at(state.bar.inset, layout.milk.1), name_alpha, name_color));
+    }
+    // dark around the letters, as the page's text-shadow, so they read on
+    // a bright picture
+    let edge = (px as f32 / 12.0).round().max(1.0);
+    begin_2d(calls, width, height);
+    for (label, (x, y), alpha, color) in parts {
+        if alpha <= 0.0 {
+            continue;
+        }
+        let size = (label.size.0 as f32, label.size.1 as f32);
+        unsafe { glBindTexture(GL_TEXTURE_2D, label.texture) };
+        for (dx, dy) in AROUND {
+            quad((x + dx * edge, y + dy * edge), size, [0.0, 0.0, 0.0, 0.7 * alpha]);
+        }
+        quad((x, y), size, [color[0], color[1], color[2], alpha]);
+    }
+    end_2d();
+}
+
+/// The eight steps around a pixel.
+const AROUND: [(f32, f32); 8] =
+    [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)];
+
+fn set_hits(hits: Option<BarHits>) {
+    if let Ok(mut h) = BAR_HITS.lock() {
+        *h = hits;
     }
 }
 
@@ -641,6 +897,8 @@ enum Command {
     Overlay(OverlayKind, Option<String>),
     /// take every text away
     ClearOverlays,
+    /// the bottom line
+    Bar(Bar),
     Snapshot(PathBuf, Sender<Result<(), String>>),
 }
 
@@ -653,6 +911,8 @@ pub struct Status {
     frames: u64,
     skipped: u32,
     error: Option<String>,
+    /// where the bottom line's MILKDROP and PIN are while they show
+    buttons: Option<[Area; 2]>,
 }
 
 /// How long a preset stays before the next blends in.
@@ -872,6 +1132,7 @@ fn render(
     let mut locked = false;
     let calls = gl_calls();
     let mut overlays: Vec<Overlay> = Vec::new();
+    let mut bar = BarState::new();
     let mut next_frame = Instant::now();
     // when something was last heard
     let mut heard = Instant::now();
@@ -919,6 +1180,7 @@ fn render(
                     overlays.iter().for_each(drop_overlay);
                     overlays.clear();
                 }
+                Ok(Command::Bar(b)) => bar.set(b),
                 Ok(Command::Snapshot(path, reply)) => snapshot = Some((path, reply)),
                 Ok(_) => {}
                 Err(TryRecvError::Empty) => break,
@@ -953,6 +1215,7 @@ fn render(
         unsafe { (api.render_frame)(handle) };
         if let Some(calls) = &calls {
             draw_overlays(calls, &mut overlays, width, height);
+            draw_bar(calls, &mut bar, width, height);
         }
         if measuring {
             unsafe { glFinish() };
@@ -1066,8 +1329,9 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
     }
 
     register_class()?;
-    // a new window: nothing tracked over it yet
+    // a new window: nothing tracked over it yet, no buttons on it
     TRACKING.store(false, Ordering::Relaxed);
+    set_hits(None);
     let owner = window.hwnd().map_err(|e| e.to_string())?;
     let child = unsafe {
         let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
@@ -1241,13 +1505,25 @@ pub fn milkdrop_lock(locked: bool) {
     }
 }
 
+/// The bottom line over the picture: the preset's name, MILKDROP and PIN.
+#[tauri::command]
+pub fn milkdrop_bar(bar: Bar) {
+    if let Ok(running) = RUNNING.lock()
+        && let Some(r) = running.as_ref()
+    {
+        let _ = r.commands.send(Command::Bar(bar));
+    }
+}
+
 #[tauri::command]
 pub fn milkdrop_status() -> Status {
-    RUNNING
+    let mut status: Status = RUNNING
         .lock()
         .ok()
         .and_then(|r| r.as_ref().and_then(|r| r.status.lock().ok().map(|s| s.clone())))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    status.buttons = BAR_HITS.lock().ok().and_then(|h| *h).map(|h| [h.milk, h.pin]);
+    status
 }
 
 /// The next frame, saved as a PNG (for the smoke test).
@@ -1287,16 +1563,40 @@ mod tests {
 
     #[test]
     fn titles_are_drawn_into_a_mask_and_cut_short_when_too_long() {
-        let (mask, w, h) = text_mask("Şebnem Ferah - Sigara", 40, true, 2000).expect("a mask");
+        let (mask, w, h) = text_mask("Şebnem Ferah - Sigara", 40, true, 2000, w!("Segoe UI")).expect("a mask");
         assert_eq!(mask.len(), (w * h) as usize);
         assert!(h >= 40 && w > 200);
         // some ink, but mostly the clear ground
         let inked = mask.iter().filter(|&&a| a > 128).count();
         assert!(inked > 100 && inked < mask.len() / 2);
         // a long one stops at the width it's given
-        let (_, w, _) = text_mask(&"long title ".repeat(40), 40, true, 600).expect("a mask");
+        let (_, w, _) = text_mask(&"long title ".repeat(40), 40, true, 600, w!("Segoe UI")).expect("a mask");
         assert_eq!(w, 600);
-        assert!(text_mask("", 40, true, 600).is_none());
+        assert!(text_mask("", 40, true, 600, w!("Segoe UI")).is_none());
+    }
+
+    #[test]
+    fn the_bottom_line_keeps_the_name_off_the_buttons() {
+        // 320 x 240, 4 px in, 11 px letters; MILKDROP 60 wide, PINNED 46
+        let l = bar_layout(320, 240, 4, 11, 60, 46);
+        assert_eq!(l.pin, (270, 225, 316, 236));
+        assert_eq!(l.milk, (199, 225, 259, 236));
+        assert_eq!(l.name_room, 199 - 11 - 4);
+        // too narrow for a name: no room, never less
+        assert_eq!(bar_layout(100, 50, 4, 11, 60, 46).name_room, 0);
+    }
+
+    #[test]
+    fn a_click_on_a_shown_button_is_that_button() {
+        set_hits(Some(BarHits { milk: (10, 10, 20, 20), pin: (30, 10, 40, 20) }));
+        assert_eq!(button_at(15, 15), Some("milkdropButton"));
+        assert_eq!(button_at(39, 10), Some("pinButton"));
+        assert_eq!(button_at(25, 15), None);
+        assert_eq!(button_at(20, 15), None);
+        set_hits(None);
+        assert_eq!(button_at(15, 15), None);
+        // off the left edge (a drag) reads as negative
+        assert_eq!(point_of(LPARAM((0xFFFB | (7 << 16)) as isize)), (-5, 7));
     }
 
     #[test]
