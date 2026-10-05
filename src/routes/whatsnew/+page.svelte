@@ -13,7 +13,7 @@
   /** @type {Record<string, string[]>} */
   const NOTES = {
     "0.7.6": [
-      "<b>MilkDrop</b> comes to the visualizer: real MilkDrop presets, drawn by projectM and moving with the music. Press <b>M</b> in the visualizer (or its MILKDROP button). 119 presets come with it, chosen to run smoothly; a click is the next one, PIN keeps one, double-click goes fullscreen, and right-click opens the presets folder for your own <i>.milk</i> files.",
+      "<b>MilkDrop</b> comes to the visualizer: real MilkDrop presets, drawn by projectM and moving with the music. Press <b>M</b> in the visualizer (or its MILKDROP button). Nearly 500 presets come with it, chosen to run smoothly, 150 of them by <b>Incubo</b> (Se7enSlasher), among them his MilkDrop takes on Spotiamp+'s own patterns. Thank you, Incubo! A click is the next one, PIN keeps one, double-click goes fullscreen, and right-click opens the presets folder for your own <i>.milk</i> files.",
       "The <b>Library</b> opens on <i>Recently played</i>, shows when each song was added or last played (a <i>Date</i> column, where there's a date to show), puts Title before Album, and its columns can be sized by dragging the lines between them.",
       "A skin of our own: <b>Spotiamp+</b>, the classic look in the logo's orange and amber, with its own titles and media library frame. Pick it under <i>Skins</i>; Winamp Classic stays the default.",
       "The <b>volume</b> slider is gentler at the bottom: its lowest quarter was next to silent, with <i>Normalize volume</i> on above all. Your volume moves to where it sounds the same as before.",
