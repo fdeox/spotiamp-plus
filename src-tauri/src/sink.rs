@@ -11,20 +11,30 @@ use crate::visualizer::Visualizer;
 
 /// Map a 0..100 slider position to an amplitude multiplier.
 ///
-/// A cubic curve, not the straight `vol/100` it used to be: loudness is
-/// perceived roughly logarithmically, so a linear multiplier makes the bottom
-/// fifth of the slider cover almost the whole *audible* range and everything
-/// above it barely change — which is exactly the "I can't go past 20 %" report.
-/// Cubic is one of librespot's own volume curves; it maps a comfortable low
-/// listening level to around the middle of the slider and leaves the top at
-/// unity, so nothing gets quieter than before at max.
+/// A square curve: 50 % is -12 dB, 25 % -24 dB, 10 % -40 dB. Loudness is
+/// heard roughly logarithmically, so the straight `vol/100` it once was put
+/// the whole audible range in the slider's bottom fifth (the "I can't go past
+/// 20 %" report). The cubic curve that followed went too far the other way:
+/// 25 % was -36 dB, and with normalisation taking a few dB more, the bottom
+/// quarter was next to silent. The top stays at unity.
 ///
 /// The sink's visualizer tap divides by this same value to stay volume-
 /// independent, so both callers MUST use this one function — otherwise the
 /// spectrum would react to the wrong amount at low volume.
 pub fn volume_amplitude(volume_percent: u16) -> f64 {
     let v = (volume_percent as f64 / 100.0).clamp(0.0, 1.0);
-    v * v * v
+    v * v
+}
+
+/// Where a volume set under the old cubic curve sounds the same now (50 % ->
+/// 35 %), so an update doesn't change how loud anything plays.
+pub fn volume_from_cubic(volume_percent: u16) -> u16 {
+    if volume_percent == 0 {
+        return 0;
+    }
+    let v = (volume_percent as f64 / 100.0).clamp(0.0, 1.0);
+    // v^3 = w^2; never down to 0, which would read as muted
+    ((v.powf(1.5) * 100.0).round() as u16).max(1)
 }
 
 pub struct SpotiampSink {
@@ -96,5 +106,34 @@ impl Sink for SpotiampSink {
         };
 
         self.backend_delegate.write(packet, converter)
+    }
+}
+
+#[cfg(test)]
+mod volume_tests {
+    use super::{volume_amplitude, volume_from_cubic};
+
+    #[test]
+    fn the_curve_is_square_and_unity_at_the_top() {
+        assert_eq!(volume_amplitude(0), 0.0);
+        assert_eq!(volume_amplitude(50), 0.25);
+        assert_eq!(volume_amplitude(100), 1.0);
+        assert_eq!(volume_amplitude(250), 1.0);
+    }
+
+    #[test]
+    fn an_old_cubic_volume_sounds_the_same_after_converting() {
+        assert_eq!(volume_from_cubic(0), 0);
+        assert_eq!(volume_from_cubic(100), 100);
+        assert_eq!(volume_from_cubic(50), 35);
+        assert_eq!(volume_from_cubic(1), 1);
+        // within about a dB (whole percents can't do better); below 15 %, the
+        // old curve's -49 dB and quieter, they can't follow closely at all
+        for old in 15..=100u16 {
+            let before = (old as f64 / 100.0).powi(3);
+            let after = volume_amplitude(volume_from_cubic(old));
+            let db = 20.0 * (after / before).log10();
+            assert!(db.abs() < 1.2, "{old}% -> {}%: {db:.2} dB", volume_from_cubic(old));
+        }
     }
 }

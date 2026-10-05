@@ -178,6 +178,20 @@ pub struct PlayerSettings {
     /// The equalizer: it used to start flat on every launch.
     #[serde(default)]
     pub eq: EqSettings,
+    /// The volume curve `volume` was set under: 0 in files from before
+    /// 0.7.6 (cubic), 2 since (square, sink::volume_amplitude). An old
+    /// volume is converted on loading, so it plays as loud as before.
+    #[serde(default)]
+    pub volume_curve: u8,
+}
+
+impl PlayerSettings {
+    fn convert_old_volume(&mut self) {
+        if self.volume_curve < 2 {
+            self.volume = crate::sink::volume_from_cubic(self.volume);
+            self.volume_curve = 2;
+        }
+    }
 }
 
 /// An EQ curve in whole dB (the sliders move in 1 dB steps), -12..+12.
@@ -238,6 +252,7 @@ impl Default for PlayerSettings {
             mascot_size: None,
             mascot_inset: None,
             eq: EqSettings::default(),
+            volume_curve: 2,
         }
     }
 }
@@ -370,11 +385,13 @@ impl Settings {
         }
         //TODO: Check if the error is something else than file not found and log
         //eprintln!("Failed to load config ({err}), falling back to default settings");
-        settings.unwrap_or_else(|e| {
+        let mut settings = settings.unwrap_or_else(|e| {
             log::info!("Could not load a settings file ({e:?}, creating a new one");
             // start with an empty playlist (was a hardcoded "One More Time" demo track)
             Settings::default()
-        })
+        });
+        settings.player.convert_old_volume();
+        settings
     }
 
     fn save(&self) {
