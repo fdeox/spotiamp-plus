@@ -184,6 +184,19 @@ pub fn start_loopback() {
 /// `take_latest_spectrum` returns, so the visualizer surfaces can poll either
 /// one interchangeably. Empty until capture is running (or while nothing plays,
 /// which loopback reports as no data — the visualizer idles, as it should).
+/// The waveform, like the player's `take_latest_waveform`; silence until
+/// capture is running.
+#[tauri::command]
+pub fn loopback_waveform() -> tauri::ipc::Response {
+    let silence = || vec![128u8; crate::visualizer::WAVE_LEN * 3];
+    let handle = shared().lock().ok().and_then(|g| g.clone());
+    let bytes = match handle {
+        Some(viz) => viz.lock().map(|v| v.waveform_bytes()).unwrap_or_else(|_| silence()),
+        None => silence(),
+    };
+    tauri::ipc::Response::new(bytes)
+}
+
 #[tauri::command]
 pub fn loopback_spectrum() -> Vec<(f32, f32)> {
     let handle = shared().lock().ok().and_then(|g| g.clone());

@@ -164,6 +164,13 @@ pub async fn take_latest_spectrum(player: State<'_, SharedPlayer>) -> Result<Vec
     Ok(player.lock().await.take_latest_spectrum())
 }
 
+/// The waveform MilkDrop draws from, as raw bytes (an ArrayBuffer on the
+/// page, no JSON: it's asked for every frame). Spotify and local files alike.
+#[tauri::command]
+pub async fn take_latest_waveform(player: State<'_, SharedPlayer>) -> Result<tauri::ipc::Response, ()> {
+    Ok(tauri::ipc::Response::new(player.lock().await.waveform_bytes()))
+}
+
 /// Load a track, optionally at a position and paused. Starting at the right
 /// spot in the load itself matters: a seek sent while librespot is still
 /// loading makes it start the whole load over (the doubled "Loading" lines).

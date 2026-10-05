@@ -504,6 +504,11 @@ impl SpotifyPlayer {
         self.visualizer.lock().unwrap().take_latest_spectrum()
     }
 
+    /// The latest waveform (see `Visualizer::waveform_bytes`).
+    pub fn waveform_bytes(&self) -> Vec<u8> {
+        self.visualizer.lock().unwrap().waveform_bytes()
+    }
+
     pub fn get_player_event_channel(&self) -> PlayerEventChannel {
         self.player.get_player_event_channel()
     }
