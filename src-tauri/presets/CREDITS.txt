@@ -1,0 +1,126 @@
+MilkDrop presets that come with Spotiamp+ (119)
+Chosen from projectM's "Cream of the Crop" pack (github.com/projectM-visualizer/presets-cream-of-the-crop):
+presets that load cleanly in projectM 4.1 and run light (under 4 ms a frame on a laptop GPU).
+Each is by the author named at the start of its file name. MilkDrop presets were
+released freely, without a specific licence; if you made one and want it out,
+open an issue at github.com/fdeox/spotiamp-plus.
+
+Dancer/$$$ Royal - Mashup (158).milk
+Dancer/$$$ Royal - Mashup (189).milk
+Dancer/AdamFX 2 Geiss - Mash-Up Sphere Xibit Graffiti Warp me Oval Interprise4.milk
+Dancer/EoS + Phat - chasers 14 sentinel 616_Update_Beta5_.milk
+Dancer/LuxXx - Radiation lightShow 2.milk
+Dancer/LuxXx - iWhat Happened Right After I Ate That Toxic Waste charlie-whiskey.milk
+Dancer/ORB - Blowtorch chill.milk
+Dancer/ORB - Comic Book Curves 2 fetid glam dicord plastique orthopthalmahl.milk
+Dancer/ORB - Solar Fire.milk
+Dancer/fed's chasers in the sky.milk
+Dancer/fiShbRaiN - psychotic meltdown (peyote mix).milk
+Dancer/rstacy.milk
+Dancer/suksma - sphinxtorrid glassphlegmythos.milk
+Dancer/whoraeckle' - curt ain Rod --- Isosceles edit.milk
+Drawing/fishbrain + Geiss + Stahlregen + Orb - Witchcraft [jelly compatibility check].milk
+Drawing/schpequlumbar.milk
+Drawing/suksma - waxen shawls of ominknow - quail lewd --- Isosceles edit1.milk
+Drawing/warm sun bleeds in your womb genius vescicle ranger.milk
+Fractal/3D function draw template [flexi's learning by doing session 05] nz+ nglumbrephonle hsdv.milk
+Fractal/3D function draw template [flexi's learning by doing session 05] nz+ nglumbrephonle.milk
+Fractal/A Ultimate AdamFX 2 Martin - disco mix 6 (UFO RMX)Inside the ship (thereShooting)Flexi,Fishbrain,Hexoco2.milk
+Fractal/A Ultimate AdamFX 2 Martin - disco mix 6 (UFO RMX)Inside the ship (thereShooting)Flexi,Fishbrain,Hexocollie1.milk
+Fractal/EoS - Apocalypse D_ImFuckedUP_2.milk
+Fractal/EoS+Phat - I_v2 gradients.milk
+Fractal/Flexi - explore space not drugs - like there's a fucking difference flacc.milk
+Fractal/NeW Adam Master Mashup FX 2 Geiss - Reaction Diffusion 34 + Swelling Spiral  + Liquid Fire  + Geiss and Zylot + Various 4.milk
+Fractal/ORB - Toy snakes hectic.milk
+Fractal/Stahlregen + martin - Spiral Beats (Spiral City).milk
+Fractal/TonyMilkdrop - Angels Of Glory [Flexi - a quite bitter pink + $this shall not retain] --- Isosceles edit.milk
+Fractal/TonyMilkdrop - Angels Of Glory [Flexi - made-up objectification] --- Isosceles edit.milk
+Fractal/beta106Random - Turbulence Sandwich.milk
+Fractal/cammy told me about yeast infected loaves.milk
+Fractal/fiShbRaiN - submarine - exp ame med.milk
+Fractal/martin - mandelbox stepper.milk
+Fractal/shifter + Flexi - liquid circuitry from the neon grafitti hive nz+ agony lovesickle` (esh) whisch ewe a way.milk
+Geometric/EoS + Phat - CAT Scan (Nirvana).milk
+Geometric/EoS - pointfield 06 changing arcform.milk
+Geometric/Hexcollie, Idiot n Inventive Software - Another alien to add to the list.milk
+Geometric/Mstress - Color Rain.milk
+Geometric/ORB - Mega Spectrum 1-04.milk
+Geometric/fishbrain and flexi - box of tricks 15 polar borders [logarithmic][iterative definition] --- Isosceles edit.milk
+Geometric/flexi, martin, stahlregan n hexcollie - hexcollie twizt mushmash.milk
+Geometric/stupid mash5 - men in black 3 'i like hogs'.milk
+Hypnotic/TonyMilkdrop - Nuclear [Flexi - this sorcery + alien complex] --- Isosceles edit3.milk
+Hypnotic/TonyMilkdrop - Nuclear [Flexi - this sorcery + alien complex].milk
+Hypnotic/TonyMilkdrop - This Is A Painting [Flexi - whoever came up with the blob acronym deserves an oscar --- Isosceles edit.milk
+Hypnotic/flexi - grind my glitch up [240].milk
+Particles/Geiss - Artifact 6.milk
+Particles/Rovastar - Kronos' Twisted Spawn.milk
+Particles/Waltra - Phantom UltraMATTER.milk
+Particles/shifter - plasmic fact - witholding, with-a holding, widdaholting - ap3 nz.milk
+Reaction/$$$ Royal - Mashup (127).milk
+Reaction/AdamFX 2 Geiss - Crystal Run 2.milk
+Reaction/BEST OF ADAMFX 2 Flexi + Geiss - Bipolar vs reaction diffusion + Aderassi Phat Zylot4 --- Isosceles edit.milk
+Reaction/BEST OF ADAMFX 2 Flexi + Geiss - Bipolar vs reaction diffusion + Another Flexi + Fishbrain  + Phat Zylot5.milk
+Reaction/Flexi + Geiss - milky cascade [silver distortion]#.milk
+Reaction/Flexi + Geiss - rorschach bomb (bccn Jelly V4).milk
+Reaction/Geiss - Mash-Up 1 (Jelly).milk
+Reaction/Geiss - Reaction Diffusion - Simple Squamous Mix.milk
+Reaction/Geiss - Two-Pointed Pulsagon - mash0000 - bubonic super-fluid centrifuge.milk
+Reaction/Halfbreak - Caramelize Serpentine.milk
+Reaction/Isosceles mashup02.milk
+Reaction/Mashup ADAMFX 2 Flexi + Geiss - Bipolar vs reaction diffusion + Another Flexi + Fishbrain  + Flexi And ADAMFX 9.milk
+Reaction/Mig_COLORFUL9.milk
+Reaction/NE9071~1.milk
+Reaction/NeW Adam Master Mashup FX 2 Geiss - Reaction Diffusion 3.milk
+Reaction/NeW Adam Master Mashup FX 2 Geiss - Reaction Diffusion 34 + Swelling Spiral  + Liquid Fire  + Geiss an58.milk
+Reaction/NeW Adam Master Mashup FX 2 Geiss and Zylot - Reaction Diffusion 3 (Overload Mix 2) AMAZING MASUP  - orb sth go 4-ret tork.milk
+Reaction/Stahlregen & bdrv + flexi + Geiss + shifter - Hypno Swirl (MashUp 38 - Coral Trance RMX).milk
+Reaction/drugsincombat - liquidfire iv.milk
+Reaction/geiss - reaction diffusion 3 (rippling leopard skin).milk
+Reaction/genuine dead.milk
+Reaction/phliping out ovre normal duqs.milk
+Reaction/phltll.milk
+Reaction/pork blouse.milk
+Reaction/shifter + flexi - liquid circuitry from the fractalism hive nz+ --- Isosceles edit4.milk
+Reaction/shifter - crosshatch colony beta6 - loved to death by nymphs.milk
+Reaction/shifter - crosshatch colony beta6 - your situation is sad, but you'll get no sympathy from me you abusiv.milk
+Reaction/when i first mixed this, i loved it, now, because of your existence, i fucking hate it --- Isosceles edit.milk
+Reaction/you are now leaving the materialistic sector --- Isosceles edit.milk
+Sparkle/$$$ Royal - Mashup (279).milk
+Sparkle/Phat_Zylot_EoS Come_fly_with_me_vidio_echo_v2 nz+ digitalia dildoniq law divorcement lattice detectives.milk
+Sparkle/Stahlregen + Amandio C - Rototranslate difference layers 2 + on dotes2 roams.milk
+Sparkle/Stahlregen + Amandio C - Rototranslate difference layers 2 + on dotes5.milk
+Sparkle/Stahlregen - Dots (Pixels - Blocky) (Jelly V2).milk
+Sparkle/Stahlregen - Dots (Pixels - Blocky) (Reverse Jelly V3).milk
+Sparkle/Stahlregen - Dots (Pixels - no Blur).milk
+Sparkle/Zylot - DISCO INFERNO (solid floor) (Epileptic Boogaloo Jelly).milk
+Sparkle/bdrv + al Rovastar - Fractopia bdrv132456 mix bleuarg - delight in freakish sothsaying.milk
+Sparkle/cleave and cleave to thine w thankee sai for more trippy ass shit nz+.milk
+Sparkle/drugsincombat - reactive molecule v-05c.milk
+Sparkle/fleekus flokus - ap3 roam2 as fuck would have it nz+ jaos prasm turdth.milk
+Sparkle/hexcollie, ti@n, suksma, zylot n orb - blarffff fire --- Isosceles edit.milk
+Sparkle/mess n777 - shf fab parched i k your existence out of insane boredom.milk
+Supernova/Bmelgren - Liquirdo 2.milk
+Supernova/Martin - QBikal - Surface Turbulence IIyyyy hakanh mash-up k (flexi well)5.milk
+Supernova/Mxyzptlk - Warp Velocity.milk
+Supernova/Syst3mFailur - phat - EoS planetfunk-tracers(devilglobe-1).milk
+Supernova/Syst3mFailur - satanic ring V2 nz+ --- Isosceles edit2.milk
+Waveform/214.milk
+Waveform/AkashaDude & Geiss - DeltaTango.milk
+Waveform/EVET - Lovegates.milk
+Waveform/Fumbling_Foo & Flexi, Martin, Orb - Star Forge v14d.milk
+Waveform/Fumbling_Foo & Flexi, Martin, Orb - Star Forge v5.milk
+Waveform/Fumbling_Foo & Flexi, Martin, Orb, Unchained - Acid Mandala v4c.milk
+Waveform/Rovastar & Malte - Circle Of Deeper Meaning.milk
+Waveform/Rozzor and Shreyas - Happy Hubris.milk
+Waveform/Stahlregen & Aderrasi + Geiss + Rovastar - Dahlia (MashUp 31).milk
+Waveform/Stahlregen & Esotic + Idiot24-7 + Rozzer + Zylot - Digital Heartbeat (Reverse Jelly V3) ___.milk
+Waveform/Tripgnosis - K Hole 2.milk
+Waveform/Unchained-liquardoblitz [shifter's esc shader].milk
+Waveform/Vovan - Bass With Flover remix a.milk
+Waveform/Waltra - Spectrum 4.milk
+Waveform/festidiout roam3.milk
+Waveform/p wrap twist fold and starch.milk
+Waveform/phlab salute.milk
+Waveform/stahlregen + flexi + goody + martin + others - frosted mosaik [how far to reality blend].milk
+Waveform/yin - 140 - Ohm to the stars.milk
+Waveform/yin - 191 - Temporal singularities --- Isosceles edit.milk

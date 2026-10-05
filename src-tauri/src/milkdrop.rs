@@ -54,7 +54,7 @@ struct Api {
     glew_init: unsafe extern "C" fn() -> u32,
     create: unsafe extern "C" fn() -> Handle,
     destroy: unsafe extern "C" fn(Handle),
-    load_preset_file: unsafe extern "C" fn(Handle, *const c_char, bool),
+    load_preset_data: unsafe extern "C" fn(Handle, *const c_char, bool),
     pcm_add_float: unsafe extern "C" fn(Handle, *const f32, u32, u32),
     pcm_max_samples: unsafe extern "C" fn() -> u32,
     render_frame: unsafe extern "C" fn(Handle),
@@ -90,7 +90,7 @@ fn load_api(dir: &Path) -> Result<Api, String> {
             glew_init: sym!(glew, "glewInit"),
             create: sym!(projectm, "projectm_create"),
             destroy: sym!(projectm, "projectm_destroy"),
-            load_preset_file: sym!(projectm, "projectm_load_preset_file"),
+            load_preset_data: sym!(projectm, "projectm_load_preset_data"),
             pcm_add_float: sym!(projectm, "projectm_pcm_add_float"),
             pcm_max_samples: sym!(projectm, "projectm_pcm_get_max_samples"),
             render_frame: sym!(projectm, "projectm_opengl_render_frame"),
@@ -217,6 +217,24 @@ fn shuffle(items: &mut [PathBuf]) {
         x ^= x << 17;
         items.swap(i, (x % (i as u64 + 1)) as usize);
     }
+}
+
+/// A preset's text, read here: projectM opens a path in the ANSI code page,
+/// so a folder or user name with letters outside it (Masaüstü, Ömer) never
+/// loaded. None if it can't be read.
+fn read_preset(path: &Path) -> Option<CString> {
+    let mut data = std::fs::read(path).ok()?;
+    data.retain(|&b| b != 0);
+    CString::new(data).ok()
+}
+
+/// The next preset after `from` (or before it) that isn't known to be bad:
+/// round the list, `from` itself last. None when every one is bad.
+fn next_index(bad: &[bool], from: usize, forward: bool) -> Option<usize> {
+    let n = bad.len();
+    (1..=n)
+        .map(|k| if forward { (from + k) % n } else { (from + n - k % n) % n })
+        .find(|&i| !bad[i])
 }
 
 fn preset_name(path: &Path) -> String {
@@ -522,29 +540,45 @@ fn render(
         s.running = true;
         s.presets = presets.len();
     });
-    let mut index = 0usize;
-    // presets too slow here, skipped from now on
-    let mut slow = vec![false; presets.len()];
+    // presets that are too slow here, or wouldn't load: skipped from now on
+    let mut bad = vec![false; presets.len()];
     let mut loaded_at = Instant::now();
     let mut measured = (Duration::ZERO, 0u32);
-    let load = |index: usize, smooth: bool| {
-        let Some(path) = presets.get(index) else { return };
-        let Ok(c_path) = CString::new(path.to_string_lossy().as_bytes()) else { return };
-        unsafe { (api.load_preset_file)(engine.handle, c_path.as_ptr(), smooth) };
-        let name = preset_name(path);
+    // put preset `i` on: false if it couldn't be read
+    let show = |i: usize, smooth: bool| -> bool {
+        let Some(text) = presets.get(i).and_then(|p| read_preset(p)) else {
+            return false;
+        };
+        unsafe { (api.load_preset_data)(engine.handle, text.as_ptr(), smooth) };
+        let name = preset_name(&presets[i]);
         set_status(&status, |s| s.preset = name.clone());
         let _ = app.emit_to("visualizer", "milkdropPreset", name);
+        true
     };
-    // the next one that isn't known to be slow
-    let step = |from: usize, forward: bool, slow: &[bool]| {
-        let n = presets.len();
-        (1..=n)
-            .map(|k| if forward { (from + k) % n } else { (from + n - k % n) % n })
-            .find(|&i| !slow[i])
-            .unwrap_or(from)
+    // on to the next usable preset from `from`, skipping unreadable ones; if
+    // none is left, say so and stay (no retrying the same one every frame)
+    let go = |from: usize, forward: bool, smooth: bool, bad: &mut Vec<bool>, index: &mut usize| {
+        let mut from = from;
+        loop {
+            let Some(i) = next_index(bad, from, forward) else {
+                set_status(&status, |s| s.preset = String::new());
+                let _ = app.emit_to("visualizer", "milkdropPreset", "none of the presets would load");
+                return;
+            };
+            if show(i, smooth) {
+                *index = i;
+                return;
+            }
+            log::warn!("MilkDrop: couldn't read {}", presets[i].display());
+            bad[i] = true;
+            set_status(&status, |s| s.skipped += 1);
+            from = i;
+        }
     };
+    let mut index = presets.len().saturating_sub(1);
     if !presets.is_empty() {
-        load(index, false);
+        // from the last one round to the first
+        go(index, true, false, &mut bad, &mut index);
     }
 
     let max_chunk = unsafe { (api.pcm_max_samples)() }.max(1) as usize;
@@ -568,13 +602,11 @@ fn render(
                     unsafe { (api.set_window_size)(handle, width as usize, height as usize) };
                 }
                 Ok(Command::Next) if !presets.is_empty() => {
-                    index = step(index, true, &slow);
-                    load(index, true);
+                    go(index, true, true, &mut bad, &mut index);
                     loaded_at = Instant::now();
                 }
                 Ok(Command::Previous) if !presets.is_empty() => {
-                    index = step(index, false, &slow);
-                    load(index, true);
+                    go(index, false, true, &mut bad, &mut index);
                     loaded_at = Instant::now();
                 }
                 Ok(Command::Lock(on)) => locked = on,
@@ -619,7 +651,7 @@ fn render(
             measured = (Duration::ZERO, 0);
             if avg_ms > SLOW_MS && !presets.is_empty() {
                 log::info!("MilkDrop: {} is too slow here ({avg_ms:.1} ms a frame), skipped", preset_name(&presets[index]));
-                slow[index] = true;
+                bad[index] = true;
                 set_status(&status, |s| s.skipped += 1);
                 advance = Some(false);
             }
@@ -650,8 +682,8 @@ fn render(
             second = (Instant::now(), 0);
         }
         // projectM's word: this one wouldn't load, or its time is up
-        if signals.failed.get() {
-            slow[index] = true;
+        if signals.failed.get() && !presets.is_empty() && !bad[index] {
+            bad[index] = true;
             set_status(&status, |s| s.skipped += 1);
             advance = Some(false);
         }
@@ -663,8 +695,7 @@ fn render(
         if let Some(smooth) = advance
             && !presets.is_empty()
         {
-            index = step(index, true, &slow);
-            load(index, smooth);
+            go(index, true, smooth, &mut bad, &mut index);
             loaded_at = Instant::now();
         }
     }
@@ -922,6 +953,29 @@ mod tests {
         append(&mut feed, &lots, false);
         assert_eq!(feed.len(), FEED_MAX);
         assert_eq!(feed.back(), Some(&1.0));
+    }
+
+    #[test]
+    fn the_next_preset_skips_bad_ones_and_gives_up_when_all_are() {
+        let bad = [false, true, false, true];
+        assert_eq!(next_index(&bad, 0, true), Some(2));
+        assert_eq!(next_index(&bad, 2, true), Some(0));
+        assert_eq!(next_index(&bad, 0, false), Some(2));
+        // only one left: that one, even from itself
+        assert_eq!(next_index(&[true, false, true], 1, true), Some(1));
+        assert_eq!(next_index(&[true, true], 0, true), None);
+    }
+
+    #[test]
+    fn a_preset_is_read_from_a_path_with_any_letters() {
+        let dir = std::env::temp_dir().join(format!("spotiamp-masaüstü-Ömer-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("şarkı ğ - deneme.milk");
+        std::fs::write(&path, b"[preset00]\nzoom=1.0\0\n").unwrap();
+        let text = read_preset(&path).expect("read");
+        assert_eq!(text.as_bytes(), b"[preset00]\nzoom=1.0\n");
+        assert!(read_preset(&dir.join("missing.milk")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
