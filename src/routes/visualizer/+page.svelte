@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { Menu } from "@tauri-apps/api/menu";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
@@ -162,9 +163,43 @@
   // double-click (fullscreen): wait that long before acting on it.
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let milkClickTimer;
+  // Its right-click menu, Windows' own. One at a time, the old one closed
+  // before the next is made (overlapping them froze the app once; see the
+  // library's popMenu).
+  /** @type {Menu | null} */
+  let milkMenu = null;
+  let milkMenuBusy = false;
+  async function showMilkMenu() {
+    if (milkMenuBusy) return;
+    milkMenuBusy = true;
+    try {
+      const old = milkMenu;
+      milkMenu = null;
+      if (old) await old.close().catch(() => {});
+      const menu = await Menu.new({
+        items: [
+          { text: "Next preset", action: () => invoke("milkdrop_step", { forward: true }).catch(() => {}) },
+          { text: "Previous preset", action: () => invoke("milkdrop_step", { forward: false }).catch(() => {}) },
+          { text: "Pin this preset", checked: pinned, action: togglePin },
+          { item: "Separator" },
+          { text: "Open the presets folder…", action: () => invoke("milkdrop_open_folder").catch(() => {}) },
+          { item: "Separator" },
+          { text: "Back to the visualizer's patterns", action: () => setMilk(false) },
+        ],
+      });
+      milkMenu = menu;
+      await menu.popup();
+    } catch {
+      /* no menu then */
+    } finally {
+      milkMenuBusy = false;
+    }
+  }
   /** @param {string} what */
   function onMilkMouse(what) {
-    if (what === "move") {
+    if (what === "contextmenu") {
+      showMilkMenu();
+    } else if (what === "move") {
       wake();
     } else if (what === "click") {
       clearTimeout(milkClickTimer);

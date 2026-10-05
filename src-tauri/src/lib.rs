@@ -723,6 +723,7 @@ pub fn run() {
             milkdrop::milkdrop_snapshot,
             milkdrop::milkdrop_cursor,
             milkdrop::milkdrop_lock,
+            milkdrop::milkdrop_open_folder,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,

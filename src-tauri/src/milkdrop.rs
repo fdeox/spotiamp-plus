@@ -861,6 +861,15 @@ pub fn milkdrop_step(forward: bool) {
     }
 }
 
+/// Open the user's presets folder (made first if needed) in Explorer.
+#[tauri::command(async)]
+pub fn milkdrop_open_folder() -> Result<(), String> {
+    let dir = user_presets_dir().ok_or("no config folder")?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer").arg(&dir).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Pin the preset on screen (no changes by time), or let them change again.
 #[tauri::command]
 pub fn milkdrop_lock(locked: bool) {
