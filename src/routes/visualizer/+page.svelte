@@ -131,6 +131,7 @@
     if (!on) {
       milk = false;
       milkPreset = "";
+      overMilk = false;
       await invoke("milkdrop_stop").catch(() => {});
       restartDrawing();
       return;
@@ -199,6 +200,7 @@
   }
   /** @param {string} what */
   function onMilkMouse(what) {
+    overMilk = what !== "leave";
     if (what === "contextmenu") {
       showMilkMenu();
     } else if (what === "move") {
@@ -226,6 +228,31 @@
     idle = false;
     clearTimeout(idleTimer);
     if (fullscreen) idleTimer = setTimeout(() => (idle = true), 2500);
+  }
+  // The name and the buttons show while the pointer is over the visualizer:
+  // over the page, or over the MilkDrop picture (a window of its own, which
+  // says when the pointer comes and goes). Away from both a moment: just the
+  // picture.
+  let overPage = $state(false);
+  let overMilk = $state(false);
+  let rest = $state(true);
+  $effect(() => {
+    if (overPage || overMilk) {
+      rest = false;
+      return;
+    }
+    // not on the way from the page to the picture or back
+    const t = setTimeout(() => (rest = true), 400);
+    return () => clearTimeout(t);
+  });
+  function onPageMove() {
+    overPage = true;
+    wake();
+  }
+  /** @param {MouseEvent} e */
+  function onPageOut(e) {
+    // out of the page altogether (onto the picture, too), not to another element
+    if (!e.relatedTarget) overPage = false;
   }
   /** @param {boolean} on */
   async function setFullscreen(on) {
@@ -1347,9 +1374,9 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} onmousemove={wake} />
+<svelte:window onkeydown={onKey} onmousemove={onPageMove} onmouseout={onPageOut} />
 
-<div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle}>
+<div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle} class:rest>
   <div class="viz-titlebar" use:makeVizDraggable>
     <div class="viz-tl"></div>
     <span class="viz-title">VISUALIZER</span>
@@ -1373,33 +1400,35 @@
         <div class="viz-songtitle">{titleShown}</div>
       {/if}
     {/key}
-    {#if milkNote}
-      <span class="viz-preset viz-note">{milkNote}</span>
-    {:else if milk}
-      <span class="viz-preset">MilkDrop · {milkPreset || (milkPresets ? "loading…" : "no presets")}</span>
-    {:else}
-      <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
-    {/if}
-    <button
-      class="viz-milk"
-      class:on={milk}
-      data-no-drag
-      onclick={() => setMilk(!milk)}
-      title={milkPresets === null
-        ? `MilkDrop isn't available${milkUnavailable ? `: ${milkUnavailable}` : ""}`
-        : milk
-          ? "Back to the visualizer's own patterns (M)"
-          : "MilkDrop presets (M)"}
-      aria-label="MilkDrop"
-    >{milk ? "◆ MILKDROP" : "◇ MILKDROP"}</button>
-    <button
-      class="viz-pin"
-      class:pinned
-      data-no-drag
-      onclick={togglePin}
-      title={pinned ? "Unpin — resume auto-cycling" : "Pin — keep this pattern"}
-      aria-label={pinned ? "Unpin visualizer" : "Pin visualizer"}
-    >{pinned ? "● PINNED" : "○ PIN"}</button>
+    <div class="viz-bar">
+      {#if milkNote}
+        <span class="viz-preset viz-note">{milkNote}</span>
+      {:else if milk}
+        <span class="viz-preset">MilkDrop · {milkPreset || (milkPresets ? "loading…" : "no presets")}</span>
+      {:else}
+        <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
+      {/if}
+      <button
+        class="viz-milk"
+        class:on={milk}
+        data-no-drag
+        onclick={() => setMilk(!milk)}
+        title={milkPresets === null
+          ? `MilkDrop isn't available${milkUnavailable ? `: ${milkUnavailable}` : ""}`
+          : milk
+            ? "Back to the visualizer's own patterns (M)"
+            : "MilkDrop presets (M)"}
+        aria-label="MilkDrop"
+      >{milk ? "◆ MILKDROP" : "◇ MILKDROP"}</button>
+      <button
+        class="viz-pin"
+        class:pinned
+        data-no-drag
+        onclick={togglePin}
+        title={pinned ? "Unpin — resume auto-cycling" : "Pin — keep this pattern"}
+        aria-label={pinned ? "Unpin visualizer" : "Pin visualizer"}
+      >{pinned ? "● PINNED" : "○ PIN"}</button>
+    </div>
   </div>
 
   <div class="viz-resize" use:makeVizResizable></div>
@@ -1522,23 +1551,40 @@
     background: #000;
     cursor: pointer;
   }
-  .viz-preset {
+  /* The bottom line: the pattern or preset name, then MILKDROP and PIN. A
+     long name ends in "…" before the buttons instead of running under them. */
+  .viz-bar {
     position: absolute;
     left: 4px;
+    right: 4px;
     bottom: 3px;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .viz-preset {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-right: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: monospace;
     font-size: 9px;
     color: #6effa0;
     text-shadow: 0 0 3px #000, 0 0 2px #000;
-    pointer-events: none;
     opacity: 0.75;
+    transition: opacity 0.2s;
   }
-  /* Pin toggle, bottom-right so it doesn't cover the preset name. Dim until
-     hovered or active, like the rest of the overlay. */
+  /* Pin toggle, at the right end. Dim until hovered or active; as wide as
+     PINNED either way, so MILKDROP stays put. */
   .viz-pin {
-    position: absolute;
-    right: 4px;
-    bottom: 3px;
+    flex: none;
+    min-width: 10ch;
+    text-align: right;
+    pointer-events: auto;
     background: none;
     border: none;
     padding: 1px 3px;
@@ -1549,16 +1595,15 @@
     text-shadow: 0 0 3px #000, 0 0 2px #000;
     opacity: 0.5;
     cursor: pointer;
-    z-index: 3;
+    transition: opacity 0.2s;
   }
   .viz-pin:hover {
     opacity: 0.9;
   }
   /* MilkDrop toggle, left of PIN */
   .viz-milk {
-    position: absolute;
-    right: 62px;
-    bottom: 3px;
+    flex: none;
+    pointer-events: auto;
     background: none;
     border: none;
     padding: 1px 3px;
@@ -1569,7 +1614,7 @@
     text-shadow: 0 0 3px #000, 0 0 2px #000;
     opacity: 0.5;
     cursor: pointer;
-    z-index: 3;
+    transition: opacity 0.2s;
   }
   .viz-milk:hover {
     opacity: 0.9;
@@ -1589,10 +1634,13 @@
   .viz-note {
     color: #ffd24a;
     opacity: 0.95;
-    max-width: calc(100% - 150px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+  /* the pointer away from the visualizer: just the picture (a note stays) */
+  .rest .viz-preset:not(.viz-note),
+  .rest .viz-pin,
+  .rest .viz-milk {
+    opacity: 0;
+    pointer-events: none;
   }
   .viz-pin.pinned {
     color: #ffd24a;
@@ -1633,9 +1681,6 @@
   .fs .viz-milk {
     font-size: 12px;
     transition: opacity 0.4s;
-  }
-  .fs .viz-milk {
-    right: 84px;
   }
   /* mouse at rest: hide the cursor and the overlays */
   .idle,

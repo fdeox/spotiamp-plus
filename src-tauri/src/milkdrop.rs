@@ -41,6 +41,7 @@ use windows::Win32::Graphics::OpenGL::{
     wglMakeCurrent,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CS_OWNDC, CreateWindowExW, DefWindowProcW, DestroyWindow, GW_OWNER, GetForegroundWindow, GetWindow,
     HCURSOR, HWND_TOP, IDC_ARROW, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, MA_NOACTIVATE, RegisterClassW,
@@ -256,6 +257,11 @@ static CURSOR_HIDDEN: AtomicBool = AtomicBool::new(false);
 /// When the last "move" went to the page (ms since the epoch): a few a second
 /// are plenty to wake its idle timer.
 static LAST_MOVE: AtomicU64 = AtomicU64::new(0);
+/// Whether Windows will tell us when the pointer leaves the picture (asked
+/// for on the first move over it, once per visit).
+static TRACKING: AtomicBool = AtomicBool::new(false);
+/// (the windows crate has it under Win32_UI_Controls, a feature for one number)
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -289,11 +295,30 @@ unsafe extern "system" fn child_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
         WM_LBUTTONDBLCLK => Some("dblclick"),
         WM_RBUTTONUP => Some("contextmenu"),
         WM_MOUSEMOVE => {
+            // a WM_MOUSELEAVE when the pointer is off it again: the page shows
+            // its buttons while the pointer is over the visualizer
+            if !TRACKING.swap(true, Ordering::Relaxed) {
+                let mut track = TRACKMOUSEEVENT {
+                    cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                if unsafe { TrackMouseEvent(&mut track) }.is_err() {
+                    TRACKING.store(false, Ordering::Relaxed);
+                }
+                // the first move of a visit goes to the page at once
+                LAST_MOVE.store(0, Ordering::Relaxed);
+            }
             let now = now_ms();
             (now.saturating_sub(LAST_MOVE.load(Ordering::Relaxed)) > 150).then(|| {
                 LAST_MOVE.store(now, Ordering::Relaxed);
                 "move"
             })
+        }
+        WM_MOUSELEAVE => {
+            TRACKING.store(false, Ordering::Relaxed);
+            Some("leave")
         }
         _ => None,
     };
@@ -1041,6 +1066,8 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
     }
 
     register_class()?;
+    // a new window: nothing tracked over it yet
+    TRACKING.store(false, Ordering::Relaxed);
     let owner = window.hwnd().map_err(|e| e.to_string())?;
     let child = unsafe {
         let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;

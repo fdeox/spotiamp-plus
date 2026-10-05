@@ -90,6 +90,8 @@ windows = { version = "0.61", features = [
     # MilkDrop: projectM draws with OpenGL into a child window
     "Win32_Graphics_OpenGL",
     "Win32_System_LibraryLoader",
+    # ...and says when the pointer leaves it
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # MilkDrop: projectM-4.dll / glew32.dll are loaded at runtime, so the app still
 # runs (without MilkDrop) if they're missing
