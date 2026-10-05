@@ -144,6 +144,8 @@
     try {
       await invoke("milkdrop_start", { rect: milkRect() });
       if (pinned) await invoke("milkdrop_lock", { locked: true });
+      // switched on in fullscreen: the title over it now
+      if (fullscreen) flashTitle();
       if (!milkPresets) noteMilk("No presets yet: put .milk files in the milkdrop folder");
     } catch (e) {
       milk = false;
@@ -236,7 +238,13 @@
       console.error("fullscreen failed", e);
     }
     wake();
-    if (fullscreen) flashTitle();
+    if (fullscreen) {
+      // over MilkDrop the page's own hint can't show: it draws it instead
+      if (milk) invoke("milkdrop_overlay", { kind: "hint", text: "Double-click or Esc to exit fullscreen" }).catch(() => {});
+      flashTitle();
+    } else if (milk) {
+      invoke("milkdrop_overlay", { kind: "clear", text: "" }).catch(() => {});
+    }
   }
 
   // The first click of a double-click has already stepped the pattern; the
@@ -278,6 +286,7 @@
   let titleTimer;
   function flashTitle() {
     if (!songTitle) return;
+    if (milk && fullscreen) invoke("milkdrop_overlay", { kind: "title", text: songTitle }).catch(() => {});
     titleShown = songTitle;
     titleSeq++;
     clearTimeout(titleTimer);

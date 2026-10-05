@@ -30,9 +30,15 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{ClientToScreen, GetDC, HDC, ReleaseDC};
 use windows::Win32::Graphics::OpenGL::{
-    ChoosePixelFormat, GL_BACK, GL_RGBA, GL_UNSIGNED_BYTE, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
-    PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR, SetPixelFormat, SwapBuffers,
-    glFinish, glReadBuffer, glReadPixels, wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent,
+    ChoosePixelFormat, GL_ALPHA, GL_BACK, GL_BLEND, GL_CULL_FACE, GL_DEPTH_TEST, GL_LINEAR, GL_MODELVIEW, GL_MODULATE,
+    GL_ONE_MINUS_SRC_ALPHA, GL_PROJECTION, GL_QUADS, GL_RGBA, GL_SCISSOR_TEST, GL_SRC_ALPHA, GL_TEXTURE_2D,
+    GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_TEXTURE_MAG_FILTER, GL_TEXTURE_MIN_FILTER, GL_TEXTURE_WRAP_S,
+    GL_TEXTURE_WRAP_T, GL_UNPACK_ALIGNMENT, GL_UNSIGNED_BYTE, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
+    PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR, SetPixelFormat, SwapBuffers, glBegin,
+    glBindTexture, glBlendFunc, glColor4f, glDeleteTextures, glDisable, glEnable, glEnd, glFinish, glGenTextures,
+    glLoadIdentity, glMatrixMode, glOrtho, glPixelStorei, glReadBuffer, glReadPixels, glTexCoord2f, glTexEnvi,
+    glTexImage2D, glTexParameteri, glVertex2f, glViewport, wglCreateContext, wglDeleteContext, wglGetProcAddress,
+    wglMakeCurrent,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -349,6 +355,255 @@ fn place(picture: HWND, owner: HWND, rect: Rect) {
     }
 }
 
+// --- text over the picture: the song title (and a hint) in fullscreen --------
+// HTML can't draw over this window, so text is drawn in GL after projectM's
+// frame: Windows renders it (GDI, grey antialiasing) into an alpha mask, and
+// it's laid on as a texture, a shadow first, fading in and out.
+
+/// The two texts there can be.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OverlayKind {
+    Title,
+    Hint,
+}
+
+struct Overlay {
+    kind: OverlayKind,
+    text: String,
+    shown_at: Instant,
+    texture: u32,
+    size: (i32, i32),
+    /// the window height its letters were sized for
+    for_height: u32,
+}
+
+impl OverlayKind {
+    fn seconds(self) -> f32 {
+        match self {
+            OverlayKind::Title => 6.0,
+            OverlayKind::Hint => 3.0,
+        }
+    }
+    /// letter height (px) for a window this tall
+    fn px(self, height: u32) -> i32 {
+        match self {
+            OverlayKind::Title => (height as i32 / 16).clamp(16, 72),
+            OverlayKind::Hint => (height as i32 / 50).clamp(11, 24),
+        }
+    }
+}
+
+/// White text as an 8-bit alpha mask (top row first) and its size; longer
+/// than `max_width` ends in an ellipsis.
+fn text_mask(text: &str, px: i32, bold: bool, max_width: i32) -> Option<(Vec<u8>, i32, i32)> {
+    use windows::Win32::Foundation::{COLORREF, RECT, SIZE};
+    use windows::Win32::Graphics::Gdi::{
+        ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS, CreateCompatibleDC,
+        CreateDIBSection, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_CENTER, DT_END_ELLIPSIS,
+        DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW, FF_SWISS, FW_BOLD, FW_NORMAL,
+        GdiFlush, GetTextExtentPoint32W, HGDIOBJ, OUT_DEFAULT_PRECIS, SelectObject, SetBkMode, SetTextColor,
+        TRANSPARENT,
+    };
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    if wide.is_empty() {
+        return None;
+    }
+    unsafe {
+        let dc = CreateCompatibleDC(None);
+        if dc.is_invalid() {
+            return None;
+        }
+        let weight = if bold { FW_BOLD } else { FW_NORMAL };
+        let font = CreateFontW(
+            -px,
+            0,
+            0,
+            0,
+            weight.0 as i32,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            ANTIALIASED_QUALITY,
+            (DEFAULT_PITCH.0 | FF_SWISS.0) as u32,
+            w!("Segoe UI"),
+        );
+        let old_font = SelectObject(dc, HGDIOBJ(font.0));
+        let mut extent = SIZE::default();
+        let _ = GetTextExtentPoint32W(dc, &wide, &mut extent);
+        let pad = px / 4 + 2;
+        let (w, h) = ((extent.cx + 2 * pad).clamp(1, max_width.max(1)), extent.cy + 2 * pad);
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h, // top row first
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits: *mut c_void = std::ptr::null_mut();
+        let result = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0).ok().map(|bitmap| {
+            let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, COLORREF(0x00FF_FFFF));
+            let mut rect = RECT { left: pad, top: 0, right: w - pad, bottom: h };
+            let mut text = wide.clone();
+            DrawTextW(dc, &mut text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+            let _ = GdiFlush();
+            // a fresh DIB is black: the brightest channel is how much ink
+            let pixels = std::slice::from_raw_parts(bits as *const u8, (w * h * 4) as usize);
+            let mask: Vec<u8> = pixels.chunks_exact(4).map(|p| p[0].max(p[1]).max(p[2])).collect();
+            SelectObject(dc, old_bitmap);
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            mask
+        });
+        SelectObject(dc, old_font);
+        let _ = DeleteObject(HGDIOBJ(font.0));
+        let _ = DeleteDC(dc);
+        result.map(|mask| (mask, w, h))
+    }
+}
+
+/// The GL functions past 1.1 the text needs, to set projectM's state aside.
+struct GlCalls {
+    use_program: unsafe extern "system" fn(u32),
+    bind_vertex_array: unsafe extern "system" fn(u32),
+    active_texture: unsafe extern "system" fn(u32),
+    bind_framebuffer: unsafe extern "system" fn(u32, u32),
+}
+
+fn gl_calls() -> Option<GlCalls> {
+    unsafe {
+        macro_rules! get {
+            ($name:literal, $ty:ty) => {
+                std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(wglGetProcAddress(s!($name))?)
+            };
+        }
+        Some(GlCalls {
+            use_program: get!("glUseProgram", unsafe extern "system" fn(u32)),
+            bind_vertex_array: get!("glBindVertexArray", unsafe extern "system" fn(u32)),
+            active_texture: get!("glActiveTexture", unsafe extern "system" fn(u32)),
+            bind_framebuffer: get!("glBindFramebuffer", unsafe extern "system" fn(u32, u32)),
+        })
+    }
+}
+
+const GL_FRAMEBUFFER: u32 = 0x8D40;
+const GL_TEXTURE0: u32 = 0x84C0;
+const GL_CLAMP_TO_EDGE: i32 = 0x812F;
+
+/// (Re)make an overlay's texture for the window's size.
+fn build_overlay(o: &mut Overlay, width: u32, height: u32) {
+    unsafe {
+        if o.texture != 0 {
+            glDeleteTextures(1, &o.texture);
+            o.texture = 0;
+        }
+        let max_width = (width as f32 * 0.9) as i32;
+        let Some((mask, w, h)) = text_mask(&o.text, o.kind.px(height), o.kind == OverlayKind::Title, max_width) else {
+            return;
+        };
+        let mut texture = 0u32;
+        glGenTextures(1, &mut texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA as i32, w, h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, mask.as_ptr() as *const c_void);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        o.texture = texture;
+        o.size = (w, h);
+        o.for_height = height;
+    }
+}
+
+fn drop_overlay(o: &Overlay) {
+    if o.texture != 0 {
+        unsafe { glDeleteTextures(1, &o.texture) };
+    }
+}
+
+/// Lay the overlays over the frame projectM just drew; drops the finished.
+fn draw_overlays(calls: &GlCalls, overlays: &mut Vec<Overlay>, width: u32, height: u32) {
+    overlays.retain(|o| {
+        let done = o.shown_at.elapsed().as_secs_f32() > o.kind.seconds();
+        if done {
+            drop_overlay(o);
+        }
+        !done
+    });
+    if overlays.is_empty() {
+        return;
+    }
+    for o in overlays.iter_mut() {
+        if o.for_height != height || o.texture == 0 {
+            build_overlay(o, width, height);
+        }
+    }
+    let (w, h) = (width as f32, height as f32);
+    unsafe {
+        (calls.bind_framebuffer)(GL_FRAMEBUFFER, 0);
+        (calls.use_program)(0);
+        (calls.bind_vertex_array)(0);
+        (calls.active_texture)(GL_TEXTURE0);
+        glViewport(0, 0, width as i32, height as i32);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_CULL_FACE);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho(0.0, w as f64, h as f64, 0.0, -1.0, 1.0);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE as i32);
+        for o in overlays.iter() {
+            if o.texture == 0 {
+                continue;
+            }
+            let t = o.shown_at.elapsed().as_secs_f32();
+            let fade = (t / 0.4).min((o.kind.seconds() - t) / 0.8).clamp(0.0, 1.0);
+            let (tw, th) = (o.size.0 as f32, o.size.1 as f32);
+            let x = ((w - tw) / 2.0).round();
+            let y = match o.kind {
+                OverlayKind::Title => (h * 0.86 - th / 2.0).round(),
+                OverlayKind::Hint => (h * 0.02).round(),
+            };
+            let shadow = (th / 24.0).max(1.0).round();
+            glBindTexture(GL_TEXTURE_2D, o.texture);
+            for (dx, color) in [(shadow, [0.0, 0.0, 0.0, 0.8 * fade]), (0.0, [1.0, 1.0, 1.0, fade])] {
+                glColor4f(color[0], color[1], color[2], color[3]);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0, 0.0);
+                glVertex2f(x + dx, y + dx);
+                glTexCoord2f(1.0, 0.0);
+                glVertex2f(x + dx + tw, y + dx);
+                glTexCoord2f(1.0, 1.0);
+                glVertex2f(x + dx + tw, y + dx + th);
+                glTexCoord2f(0.0, 1.0);
+                glVertex2f(x + dx, y + dx + th);
+                glEnd();
+            }
+        }
+        // as projectM expects it
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_BLEND);
+        glDisable(GL_TEXTURE_2D);
+        glColor4f(1.0, 1.0, 1.0, 1.0);
+    }
+}
+
 // --- the render thread ----------------------------------------------------------------
 
 enum Command {
@@ -357,6 +612,10 @@ enum Command {
     Previous,
     /// pinned: no changes by time (a slow or broken one still goes)
     Lock(bool),
+    /// show (Some) or take away (None) a text over the picture
+    Overlay(OverlayKind, Option<String>),
+    /// take every text away
+    ClearOverlays,
     Snapshot(PathBuf, Sender<Result<(), String>>),
 }
 
@@ -586,6 +845,8 @@ fn render(
     let mut frames = 0u64;
     let mut second = (Instant::now(), 0u32);
     let mut locked = false;
+    let calls = gl_calls();
+    let mut overlays: Vec<Overlay> = Vec::new();
     let mut next_frame = Instant::now();
     // when something was last heard
     let mut heard = Instant::now();
@@ -610,6 +871,29 @@ fn render(
                     loaded_at = Instant::now();
                 }
                 Ok(Command::Lock(on)) => locked = on,
+                Ok(Command::Overlay(kind, text)) => {
+                    overlays.retain(|o| {
+                        let same = o.kind == kind;
+                        if same {
+                            drop_overlay(o);
+                        }
+                        !same
+                    });
+                    if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
+                        overlays.push(Overlay {
+                            kind,
+                            text,
+                            shown_at: Instant::now(),
+                            texture: 0,
+                            size: (0, 0),
+                            for_height: 0,
+                        });
+                    }
+                }
+                Ok(Command::ClearOverlays) => {
+                    overlays.iter().for_each(drop_overlay);
+                    overlays.clear();
+                }
                 Ok(Command::Snapshot(path, reply)) => snapshot = Some((path, reply)),
                 Ok(_) => {}
                 Err(TryRecvError::Empty) => break,
@@ -642,6 +926,9 @@ fn render(
         let measuring = since > Duration::from_secs(4) && since < Duration::from_secs(6);
         let started = Instant::now();
         unsafe { (api.render_frame)(handle) };
+        if let Some(calls) = &calls {
+            draw_overlays(calls, &mut overlays, width, height);
+        }
         if measuring {
             unsafe { glFinish() };
             measured.0 += started.elapsed();
@@ -892,6 +1179,22 @@ pub fn milkdrop_step(forward: bool) {
     }
 }
 
+/// Text over the picture: `kind` "title" or "hint" with its text (empty
+/// takes it away), or "clear" for none. The page sends these in fullscreen.
+#[tauri::command]
+pub fn milkdrop_overlay(kind: String, text: String) {
+    let command = match kind.as_str() {
+        "title" => Command::Overlay(OverlayKind::Title, Some(text)),
+        "hint" => Command::Overlay(OverlayKind::Hint, Some(text)),
+        _ => Command::ClearOverlays,
+    };
+    if let Ok(running) = RUNNING.lock()
+        && let Some(r) = running.as_ref()
+    {
+        let _ = r.commands.send(command);
+    }
+}
+
 /// Open the user's presets folder (made first if needed) in Explorer.
 #[tauri::command(async)]
 pub fn milkdrop_open_folder() -> Result<(), String> {
@@ -953,6 +1256,20 @@ mod tests {
         append(&mut feed, &lots, false);
         assert_eq!(feed.len(), FEED_MAX);
         assert_eq!(feed.back(), Some(&1.0));
+    }
+
+    #[test]
+    fn titles_are_drawn_into_a_mask_and_cut_short_when_too_long() {
+        let (mask, w, h) = text_mask("Şebnem Ferah - Sigara", 40, true, 2000).expect("a mask");
+        assert_eq!(mask.len(), (w * h) as usize);
+        assert!(h >= 40 && w > 200);
+        // some ink, but mostly the clear ground
+        let inked = mask.iter().filter(|&&a| a > 128).count();
+        assert!(inked > 100 && inked < mask.len() / 2);
+        // a long one stops at the width it's given
+        let (_, w, _) = text_mask(&"long title ".repeat(40), 40, true, 600).expect("a mask");
+        assert_eq!(w, 600);
+        assert!(text_mask("", 40, true, 600).is_none());
     }
 
     #[test]
