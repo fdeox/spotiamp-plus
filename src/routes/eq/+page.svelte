@@ -84,10 +84,12 @@
   const TRAVEL = WELL_H - THUMB_H; // 53
 
   // dB (+12..-12) -> one of the 28 EQMAIN slider background frames (0 = top/green).
+  /** @param {number} db */
   function dbToV(db) {
     let v = Math.round(((12 - db) / 24) * 27);
     return Math.max(0, Math.min(27, v));
   }
+  /** @param {number} db */
   function frameBg(db) {
     const v = dbToV(db);
     const x = -(13 + (v % 14) * 15);
@@ -95,6 +97,7 @@
     return `${x}px ${y}px`;
   }
   // smooth thumb position (unlike the snapped colour frame)
+  /** @param {number} db */
   function thumbTop(db) {
     let f = (12 - db) / 24;
     f = Math.max(0, Math.min(1, f));
@@ -108,9 +111,11 @@
   const SP_STEP = 12; // grid columns are 12px apart
   const SP_TOP = 17; // +12 dB
   const SP_BOT = 34; // -12 dB
+  /** @param {number} db */
   function splineY(db) {
     return SP_TOP + ((12 - db) / 24) * (SP_BOT - SP_TOP);
   }
+  /** @param {{ x: number, y: number }[]} pts */
   function catmullRom(pts) {
     if (pts.length < 2) return "";
     let d = `M ${pts[0].x} ${pts[0].y}`;
@@ -148,6 +153,11 @@
     }
   });
 
+  /**
+   * @param {number} clientY
+   * @param {DOMRect} rect
+   * @param {number} fader a band, or -1 for the preamp
+   */
   function setFromY(clientY, rect, fader) {
     const relPx = ((clientY - rect.top) / rect.height) * WELL_H;
     const f = Math.max(0, Math.min(1, (relPx - THUMB_H / 2) / TRAVEL));
@@ -156,13 +166,17 @@
     if (fader === -1) preamp = db;
     else bands[fader] = db;
   }
+  /**
+   * @param {PointerEvent & { currentTarget: HTMLElement }} e
+   * @param {number} fader
+   */
   function beginDrag(e, fader) {
     e.preventDefault();
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     activeFader = fader;
     setFromY(e.clientY, rect, fader);
-    const move = (ev) => setFromY(ev.clientY, rect, fader);
+    const move = (/** @type {PointerEvent} */ ev) => setFromY(ev.clientY, rect, fader);
     const up = () => {
       activeFader = -99;
       window.removeEventListener("pointermove", move);
@@ -171,10 +185,15 @@
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
+  /** @param {number} fader */
   function resetFader(fader) {
     if (fader === -1) preamp = 0;
     else bands[fader] = 0;
   }
+  /**
+   * @param {KeyboardEvent} e
+   * @param {number} fader
+   */
   function nudge(e, fader) {
     let d = 0;
     if (e.key === "ArrowUp") d = 1;
@@ -187,6 +206,8 @@
     else bands[fader] = next;
   }
 
+  const PRESET_NAMES = /** @type {(keyof typeof PRESETS)[]} */ (Object.keys(PRESETS));
+  /** @param {keyof typeof PRESETS} name */
   function applyPreset(name) {
     bands = [...PRESETS[name]];
     menuOpen = false;
@@ -199,7 +220,7 @@
     try {
       const preset = await invoke("import_eqf");
       if (!preset) return; // cancelled
-      const clamp = (db) => Math.max(-12, Math.min(12, Math.round(db)));
+      const clamp = (/** @type {number} */ db) => Math.max(-12, Math.min(12, Math.round(db)));
       bands = preset.bands.map(clamp);
       preamp = clamp(preset.preamp);
     } catch {
@@ -230,6 +251,7 @@
     REACTIVE_WINDOW_SIZE.setSize(275, 116);
   });
 
+  /** @param {HTMLElement} element */
   function makeEqDraggable(element) {
     makeDockedDraggable(element, "eq", "eqWindow");
   }
@@ -269,7 +291,7 @@
   ></button>
   {#if menuOpen}
     <div class="eq-menu">
-      {#each Object.keys(PRESETS) as name}
+      {#each PRESET_NAMES as name}
         <div
           class="eq-menu-item"
           role="button"

@@ -1223,7 +1223,10 @@ export class Playlist {
         return false;
     }
 
-    /** Pick a random row index, avoiding `exclude` when there's a choice. */
+    /**
+     * Pick a random row index, avoiding `exclude` when there's a choice.
+     * @param {number} exclude
+     */
     pickRandomIndex(exclude) {
         if (this.rows.length <= 1) {
             return 0;

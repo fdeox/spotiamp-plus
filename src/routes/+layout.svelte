@@ -52,6 +52,7 @@
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
     "genexhdrtext", "genexbtn", "genexbtnp",
   ];
+  /** @param {string} skin */
   function applySkin(skin) {
     if (skin === "custom") {
       // a .wsz loaded from disk: override the sprite vars with data-URLs
@@ -111,15 +112,17 @@
     // Winamp has no browser menu: suppress the WebView2 default context menu
     // (Refresh / Save as / Print…) app-wide. Our own right-click menus render
     // themselves and are unaffected.
-    const suppressContextMenu = (e) => e.preventDefault();
+    const suppressContextMenu = (/** @type {MouseEvent} */ e) => e.preventDefault();
     document.addEventListener("contextmenu", suppressContextMenu);
 
     invoke("get_skin").then(applySkin).catch(() => {});
+    /** @type {(() => void) | undefined} */
     let unsub;
     subscribeToWindowEvent("skinChanged", (e) => applySkin(e.skin)).then(
       (u) => (unsub = u),
     );
     // Live UI-scale changes; the size effect above then resizes this window.
+    /** @type {(() => void) | undefined} */
     let unsubScale;
     if (!OWN_SIZE) {
       subscribeToWindowEvent("uiScale", (e) => REACTIVE_WINDOW_SIZE.setZoom(e.scale)).then(

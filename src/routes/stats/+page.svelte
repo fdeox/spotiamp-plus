@@ -57,14 +57,20 @@
     scrollPos = listEl.scrollTop;
   }
 
-  /** Local midnight of the day `at` falls on. */
+  /**
+   * Local midnight of the day `at` falls on.
+   * @param {number} at epoch ms
+   */
   function dayStart(at) {
     const d = new Date(at);
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   }
 
-  /** The start of the period, in epoch ms: whole days, counting today. */
+  /**
+   * The start of the period, in epoch ms: whole days, counting today.
+   * @param {string} id
+   */
   function sinceFor(id) {
     if (id === "rewind") return new Date(YEAR, 0, 1).getTime();
     const p = PERIODS.find((p) => p.id === id);
@@ -103,7 +109,10 @@
     refresh();
   });
 
-  /** "27h 5m", "45m", "0m" */
+  /**
+   * "27h 5m", "45m", "0m"
+   * @param {number} ms
+   */
   function fmtDuration(ms) {
     const mins = Math.round(ms / 60000);
     const h = Math.floor(mins / 60);
@@ -111,6 +120,7 @@
     return h ? `${h}h ${m}m` : `${m}m`;
   }
 
+  /** @param {number} at */
   function fmtDate(at) {
     const d = new Date(at);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -122,6 +132,8 @@
   /**
    * The bar chart for the period: one bar a day for 7 / 30 days, one a month
    * for the year and for all time (one a year past three years).
+   * @param {Stats | null} s
+   * @param {string} id
    * @returns {{label: string, tip: string, ms: number}[]}
    */
   function buckets(s, id) {
@@ -185,7 +197,10 @@
     return out;
   }
 
-  /** Listening time per hour of the day (0-23). */
+  /**
+   * Listening time per hour of the day (0-23).
+   * @param {Stats | null} s
+   */
   function hours(s) {
     const out = new Array(24).fill(0);
     if (s) for (const [at, ms] of s.timeline) out[new Date(at).getHours()] += ms;
@@ -193,7 +208,9 @@
   }
 
   /** Days in a row with some listening, ending today (or yesterday, so the
-   *  streak doesn't read 0 in the morning before the first song). */
+   *  streak doesn't read 0 in the morning before the first song).
+   * @param {[number, number][]} timeline
+   */
   function streak(timeline) {
     const days = new Set(timeline.map(([at]) => dayStart(at)));
     let d = dayStart(Date.now());
@@ -449,11 +466,13 @@
     setTimeout(() => (copyLabel = "COPY"), 1800);
   }
 
+  /** @param {HTMLElement} element */
   function makeStatsDraggable(element) {
     makeDockedDraggable(element, "stats", "statsWindow");
   }
 
   // Resize from the bottom-right corner, like the other plugin windows.
+  /** @param {HTMLElement} element */
   function makeStatsResizable(element) {
     makeSnappingResizer(
       element,

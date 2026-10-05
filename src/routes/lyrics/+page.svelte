@@ -9,7 +9,7 @@
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
 
-  let lines = $state([]);
+  let lines = $state(/** @type {{ time_ms: number, text: string }[]} */ ([]));
   let synced = $state(false);
   let provider = $state("");
   // idle | loading | ok | none
@@ -21,6 +21,7 @@
   let playing = false;
   let anchorMs = 0;
   let anchorAt = 0;
+  /** @type {HTMLElement | undefined} */
   let listEl;
 
   // last line whose start time has passed (only meaningful for synced lyrics)
@@ -42,6 +43,7 @@
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   });
 
+  /** @param {string | null} uri */
   async function loadLyrics(uri) {
     if (!uri) {
       status = "none";
@@ -79,6 +81,7 @@
       if (playing) posMs = anchorMs + (performance.now() - anchorAt);
     }, 150);
 
+    /** @type {(() => void) | undefined} */
     let unsub;
     subscribeToWindowEvent("lyrics", (e) => {
       anchorMs = e.positionMs;
@@ -111,11 +114,13 @@
     posMs = timeMs;
   }
 
+  /** @param {HTMLElement} element */
   function makeLyricsDraggable(element) {
     makeDockedDraggable(element, "lyrics", "lyricsWindow");
   }
 
   // Resize from the bottom-right corner, like the playlist / library / visualizer.
+  /** @param {HTMLElement} element */
   function makeLyricsResizable(element) {
     makeSnappingResizer(
       element,

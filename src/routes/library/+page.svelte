@@ -27,17 +27,23 @@
     };
   });
 
-  let playlists = $state([]);
+  /**
+   * @typedef {{ name: string, uri: string, track_count: number, image: string | null }} UserPlaylist
+   * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null }} LibTrack
+   * @typedef {{ name: string, uris: string[] }} SavedList
+   * @typedef {{ uri: string, added_ms: number | null }} TrackRef
+   */
+  let playlists = $state(/** @type {UserPlaylist[]} */ ([]));
   let loading = $state(true);
   let error = $state("");
   let search = $state("");
 
-  let selectedUri = $state(null);
+  let selectedUri = $state(/** @type {string | null} */ (null));
   // when true the right pane shows Spotify search results instead of a playlist
   let searchMode = $state(false);
   let searchQuery = $state("");
-  let tracks = $state([]);
-  let trackUris = $state([]);
+  let tracks = $state(/** @type {LibTrack[]} */ ([]));
+  let trackUris = $state(/** @type {string[]} */ ([]));
   let tracksLoading = $state(false);
   let tracksError = $state("");
   let loadToken = 0;
@@ -82,13 +88,14 @@
   let expandLocal = $state(true);
   let expandPlaylists = $state(true);
   // which tree item is active: "search" | "liked" | "recent" | "top" | "list:<name>" | a playlist uri
-  /** @type {string | null} */
-  let activeNode = $state(null);
+  // (typed on the value: `$state(null)` alone reads as always-null to the checker)
+  let activeNode = $state(/** @type {string | null} */ (null));
   // selected row in the track list (for the Play / Enqueue buttons)
   let selectedTrack = $state(-1);
   // width of the left tree pane (px), draggable via the splitter
   let treeWidth = $state(150);
 
+  /** @type {HTMLInputElement | undefined} */
   let searchInput;
 
   // Winamp-style scrollbar: the native one is hidden and this input range
@@ -107,6 +114,7 @@
   });
 
   // Drag the splitter between the tree and the content pane.
+  /** @param {HTMLElement} element */
   function makeSplitter(element) {
     element.onpointerdown = (event) => {
       event.preventDefault();
@@ -253,9 +261,9 @@
     return () => window.removeEventListener("keydown", typeToFind);
   });
 
-  const playlistUrl = (uri) =>
+  const playlistUrl = (/** @type {string} */ uri) =>
     `https://open.spotify.com/playlist/${uri.split(":").pop()}`;
-  const trackUrl = (uri) =>
+  const trackUrl = (/** @type {string} */ uri) =>
     `https://open.spotify.com/track/${uri.split(":").pop()}`;
 
   // Resolve names for a list of {uri, added_ms} refs, filling the right pane
@@ -291,6 +299,7 @@
     }
   }
 
+  /** @param {UserPlaylist} pl */
   async function selectPlaylist(pl) {
     searchMode = false;
     selectedUri = pl.uri;
@@ -302,7 +311,7 @@
     tracksLoading = true;
     const token = ++loadToken;
     try {
-      const refs = await invoke("get_track_ids", { uri: pl.uri });
+      const refs = /** @type {TrackRef[]} */ (await invoke("get_track_ids", { uri: pl.uri }));
       if (token !== loadToken) return;
       trackUris = refs.map((r) => r.uri);
       await loadTrackMetas(refs, token);
@@ -325,7 +334,7 @@
     tracksLoading = true;
     const token = ++loadToken;
     try {
-      const ids = await invoke("get_liked_songs");
+      const ids = /** @type {string[]} */ (await invoke("get_liked_songs"));
       if (token !== loadToken) return;
       trackUris = ids;
       await loadTrackMetas(
@@ -343,7 +352,7 @@
   // player (just the uris — no need to wait for names to resolve).
   async function loadLikedIntoMain() {
     try {
-      const ids = await invoke("get_liked_songs");
+      const ids = /** @type {string[]} */ (await invoke("get_liked_songs"));
       if (ids.length) {
         emitWindowEvent("playerWindow", { UrlsDropped: ids.map(trackUrl) });
       }
@@ -368,7 +377,7 @@
     tracksLoading = true;
     const token = ++loadToken;
     try {
-      const ids = await invoke("search", { query: q });
+      const ids = /** @type {string[]} */ (await invoke("search", { query: q }));
       if (token !== loadToken) return;
       trackUris = ids;
       await loadTrackMetas(
@@ -407,12 +416,13 @@
 
   // Reuse the existing "UrlsDropped" event the main playlist window already
   // listens for (clear + load). Works cross-window via Tauri's global emit.
-  const loadPlaylistIntoMain = (pl) =>
+  const loadPlaylistIntoMain = (/** @type {UserPlaylist} */ pl) =>
     emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
 
   // Double-clicking a track in the right pane:
   //  - search results  → append just that one track
   //  - playlist tracks → play it and queue the rest of that playlist
+  /** @param {number} index */
   function loadTrackIntoMain(index) {
     selectedTrack = index;
     const uri = displayTracks[index]?.uri;
@@ -446,7 +456,7 @@
   }
 
   // Add the selected track to an app-local list (kept in Spotiamp+, not Spotify).
-  let savedLists = $state([]);
+  let savedLists = $state(/** @type {SavedList[]} */ ([]));
   let showListMenu = $state(false);
   let newLibListName = $state("");
   async function loadSavedListsLib() {
@@ -463,6 +473,7 @@
   function selectedUriString() {
     return displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri || null;
   }
+  /** @param {string} name */
   async function addSelectedToList(name) {
     const uri = selectedUriString();
     if (!uri) return;
@@ -479,6 +490,7 @@
 
   // Show a saved app-local list's tracks in the right pane (its uris are already
   // concrete tracks, so no expansion needed).
+  /** @param {SavedList} list */
   async function selectSavedList(list) {
     searchMode = false;
     selectedUri = null;
@@ -503,11 +515,13 @@
       if (token === loadToken) tracksLoading = false;
     }
   }
+  /** @param {SavedList} list */
   function loadListIntoMain(list) {
     if (list.uris.length) {
       emitWindowEvent("playerWindow", { UrlsDropped: list.uris.map(trackUrl) });
     }
   }
+  /** @param {string} name */
   async function deleteSavedList(name) {
     await invoke("delete_list", { name }).catch(() => {});
     await loadSavedListsLib();
@@ -616,7 +630,10 @@
     .then((uris) => (pinned = /** @type {string[]} */ (uris)))
     .catch(() => {});
   const pinnedPlaylists = $derived(
-    pinned.map((uri) => playlists.find((p) => p.uri === uri)).filter(Boolean),
+    pinned.flatMap((uri) => {
+      const pl = playlists.find((p) => p.uri === uri);
+      return pl ? [pl] : [];
+    }),
   );
   /** @param {string} uri @param {boolean} on */
   async function setPinned(uri, on) {
@@ -711,6 +728,7 @@
     e.dataTransfer.setData("text/plain", urls.join("\n"));
   }
 
+  /** @param {number} ms */
   function fmt(ms) {
     const s = Math.round(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -720,7 +738,7 @@
   function fmtDate(ms) {
     const d = new Date(ms);
     if (isNaN(d.getTime())) return "";
-    const p = (n) => String(n).padStart(2, "0");
+    const p = (/** @type {number} */ n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 
@@ -751,11 +769,13 @@
   const close = () => invoke("set_library_window_visible", { visible: false });
 
   // Drag the library window, snapping to any other open window.
+  /** @param {HTMLElement} element */
   function makeLibraryDraggable(element) {
     makeDockedDraggable(element, "library", "libraryWindow");
   }
 
   // Resize from the bottom-right corner, like the Winamp playlist.
+  /** @param {HTMLElement} element */
   function makeLibraryResizable(element) {
     makeSnappingResizer(
       element,
@@ -1105,7 +1125,7 @@
         + List
       </button>
       {#if showListMenu}
-        <div class="ml-listbackdrop" onpointerdown={() => (showListMenu = false)}></div>
+        <div class="ml-listbackdrop" role="presentation" onpointerdown={() => (showListMenu = false)}></div>
         <div class="ml-listmenu">
           <div class="ml-listnewrow">
             <input
@@ -1327,15 +1347,6 @@
     border-radius: 1px;
     height: 8px;
     margin-top: 1px;
-  }
-  .ml-ic-audio {
-    background: currentColor;
-    border-radius: 50%;
-    width: 7px;
-    height: 7px;
-    margin-left: 2px;
-    margin-right: 6px;
-    opacity: 0.9;
   }
   .ml-ic-fav {
     background: none;

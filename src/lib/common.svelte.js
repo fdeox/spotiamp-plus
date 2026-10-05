@@ -71,7 +71,7 @@ export function* range(start, end) {
 }
 
 /**
- * @param {Error} e
+ * @param {Error | string} e
  */
 export async function handleError(e) {
     const COPY = "Copy diagnostic info";
@@ -164,7 +164,7 @@ export function handleDrop(urlCallback) {
  */
 
 /**
- * @typedef {{ volume: number, double_size_active: boolean, windowshade_active?: boolean, controller_mode?: boolean, show_playlist: boolean, window_state: WindowState }} PlayerSettings
+ * @typedef {{ volume: number, double_size_active: boolean, windowshade_active?: boolean, controller_mode?: boolean, show_playlist: boolean, show_eq?: boolean, resume?: { uri: string, index: number, position_ms: number } | null, window_state: WindowState }} PlayerSettings
  */
 
 /**

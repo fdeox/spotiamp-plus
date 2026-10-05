@@ -35,7 +35,8 @@
   // saved tracks (each needs session metadata) would only produce errors —
   // the playlist starts empty and the saved URIs stay untouched in settings
   // for when the user returns to Premium mode.
-  const controllerMode = playlistSettings.controller_mode === true;
+  // the settings as the window opened (they're page data; this doesn't change in a run)
+  const controllerMode = untrack(() => playlistSettings.controller_mode === true);
 
   function createInitialPlaylist() {
     return new Playlist(controllerMode ? [] : playlistSettings.uris, !controllerMode);
@@ -147,7 +148,7 @@
   let showLibrary = $state(false);
   let libraryLoading = $state(false);
   let libraryError = $state("");
-  let libraryPlaylists = $state([]);
+  let libraryPlaylists = $state(/** @type {{ name: string, uri: string, track_count: number, image: string | null }[]} */ ([]));
   let librarySearch = $state("");
   const filteredPlaylists = $derived(
     librarySearch.trim()
@@ -162,6 +163,7 @@
     invoke("set_library_window_visible", { visible: true });
 
   // m:ss for the bottom-bar time readouts
+  /** @param {number} ms */
   function fmtTime(ms) {
     const s = Math.floor((ms || 0) / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -615,8 +617,8 @@
   }
 
   // --- audio output device picker ---
-  let audioDevices = $state([]);
-  let currentAudioDevice = $state(null);
+  let audioDevices = $state(/** @type {string[]} */ ([]));
+  let currentAudioDevice = $state(/** @type {string | null} */ (null));
   async function loadAudioDevices() {
     try {
       const info = await invoke("list_audio_devices");
@@ -626,6 +628,7 @@
       audioDevices = [];
     }
   }
+  /** @param {string | null} name null = the system default */
   async function pickAudioDevice(name) {
     currentAudioDevice = name;
     await invoke("set_audio_device", { device: name }).catch(() => {});
@@ -967,6 +970,7 @@
     await invoke("leave_controller_mode").catch(() => {});
     await relaunch().catch(() => {});
   }
+  /** @param {string} skin */
   async function chooseSkin(skin) {
     currentSkin = skin;
     setWorn("");
@@ -987,11 +991,12 @@
   }
 
   // .wsz skins shipped with the app, selectable straight from the menu
-  let bundledSkins = $state([]);
+  let bundledSkins = $state(/** @type {string[]} */ ([]));
   invoke("list_bundled_skins")
     .then((names) => (bundledSkins = names))
     .catch(() => {});
-  const prettySkinName = (name) => name.replaceAll("_", " ");
+  const prettySkinName = (/** @type {string} */ name) => name.replaceAll("_", " ");
+  /** @param {string} name */
   async function chooseBundledSkin(name) {
     try {
       await invoke("load_bundled_skin", { name });
@@ -1017,6 +1022,7 @@
     }
   }
 
+  /** @param {string} uri */
   async function loadPlaylist(uri) {
     showLibrary = false;
     await playlist.clear();
@@ -1407,6 +1413,7 @@
 </script>
 
 <span
+  role="presentation"
   style:--playlist-w={playlist.width}
   style:--playlist-h={playlist.height}
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}

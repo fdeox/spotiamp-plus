@@ -42,7 +42,8 @@
   // Controller ("free") mode: no librespot player exists — the page mirrors
   // and drives the official Spotify app through the smtc_* commands instead.
   // Every player-backend invoke below is guarded on this.
-  const controllerMode = playerSettings.controller_mode === true;
+  // (the settings as the window opened: page data, not live)
+  const controllerMode = untrack(() => playerSettings.controller_mode === true);
 
   function initialVolume() {
     return playerSettings.volume;
@@ -102,7 +103,7 @@
   const openLink = (target) => invoke("open_external", { target }).catch(() => {});
   // the currently-playing track uri (from backend events), broadcast to the
   // lyrics window along with the interpolated position
-  let currentTrackUri = $state(null);
+  let currentTrackUri = $state(/** @type {string | null} */ (null));
   // track's place in the playlist, for Discord's "(N of M)" party
   let playlistPos = $state({ index: 0, length: 0 });
   /** the Spotify song last seen playing, and where (for carrying on after a dropped connection) */
@@ -122,8 +123,8 @@
   // cues that track at launch (see Playlist.maybeCueResume); its first play
   // continues from here.
   /** @type {string | null} */
-  let resumeUri = playerSettings.resume?.uri ?? null;
-  const resumeMs = playerSettings.resume?.position_ms ?? 0;
+  let resumeUri = untrack(() => playerSettings.resume?.uri ?? null);
+  const resumeMs = untrack(() => playerSettings.resume?.position_ms ?? 0);
   let resumeTick = 0;
   let shadeActive = $state(initialWindowshadeActive());
   let shuffle = $state(false);
@@ -1045,8 +1046,8 @@
     });
 
     // Classic Winamp keyboard shortcuts (main window)
-    const onPlayerKeyDown = (e) => {
-      const t = e.target;
+    const onPlayerKeyDown = (/** @type {KeyboardEvent} */ e) => {
+      const t = /** @type {HTMLElement | null} */ (e.target);
       if (
         t &&
         (t.tagName === "INPUT" ||
@@ -1696,19 +1697,6 @@
     cursor: pointer;
     z-index: 3;
   }
-  button.double-size-btn {
-    --sprite-url: var(--skin-titlebar);
-    --sprite-x: 10px;
-    --sprite-y: 48px;
-    width: 8px;
-    height: 8px;
-    background-position: -328px -70px;
-    opacity: 0;
-  }
-  button.double-size-btn.active {
-    opacity: 1;
-  }
-
   button.playlist-btn {
     --sprite-url: var(--skin-shufrep);
     --sprite-x: 242px;

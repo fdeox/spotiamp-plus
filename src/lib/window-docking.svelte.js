@@ -27,6 +27,7 @@ export const DOCKABLE_LABELS = [
  * @returns {Promise<WindowRect[]>}
  */
 export async function collectSnapRects(selfLabel) {
+  /** @type {WindowRect[]} */
   const rects = [];
   await Promise.all(
     DOCKABLE_LABELS.filter((label) => label !== selfLabel).map(async (label) => {
@@ -174,7 +175,7 @@ export function makeSnappingResizer(element, selfLabel, measure, apply, zoom) {
  * broadcasts its drag on `eventName` (drives the native player-anchored dock).
  * @param {HTMLElement} element
  * @param {string} selfLabel
- * @param {string} eventName
+ * @param {import('./events.svelte').DockEventName} eventName
  */
 export function makeDockedDraggable(element, selfLabel, eventName) {
   makeTauriWindowDraggable(element, {

@@ -6,7 +6,38 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  */
 
 /**
- * @typedef { {playlistWindow: {event: {Ready: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, PlayNow: boolean, EndReached: null, DragStarted: null, DragEnded: null, LocalFilesPicked: string[], LocalTrackLoaded: {path: string, name: string, durationMs: number}, StopAfterCurrentChanged: boolean}}, playerWindow: {event: {CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, DragStarted: null, DragEnded: null, AddLocalFiles: string[], JumpRequested: null, JumpToTimeRequested: null, QueueRequested: null, PlayerReady: null, MenuRequested: null, UrlsAppended: string[], ShuffleChanged: boolean, RepeatChanged: number, TrackEnded: null, StopAfterCurrentToggle: null }}, player: { event: { 'Paused': { uri: string, position_ms: number}, 'Playing': { uri: string, position_ms: number}, 'Stopped': {uri: string}, 'EndOfTrack': {uri: string}, 'Unavailable': {uri: string}, 'PositionCorrection': { uri: string, position_ms: number}, 'PositionChanged': { uri: string, position_ms: number}, 'Seeked': { uri: string, position_ms: number}} }, uiScale: { event: { scale: number } }, art: { event: { uri: string | null, playing: boolean, title: string } }, lyricsSeek: { event: { uri: string, positionMs: number } }, seekTo: { event: { positionMs: number } }, skinChanged: { event: { skin: string, from?: string } }, forwardedKey: { event: { key: string, shift: boolean, ctrl: boolean } }} } WindowEventTypes
+ * A docked window being dragged (window-docking.svelte.js sends these as
+ * `<label>Window`).
+ * @typedef {{ DragStarted: null, DragEnded: null }} DockDrag
+ */
+
+/**
+ * The events the windows send each other: name -> the payload's shape. The
+ * enum-like ones carry one `{ Variant: value }` at a time.
+ * @typedef {{
+ *   playlistWindow: { event: DockDrag & { Ready: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, PlayNow: boolean, EndReached: null, LocalFilesPicked: string[], LocalTrackLoaded: { path: string, name: string, durationMs: number }, StopAfterCurrentChanged: boolean } },
+ *   playerWindow: { event: DockDrag & { CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, AddLocalFiles: string[], JumpRequested: null, JumpToTimeRequested: null, QueueRequested: null, PlayerReady: null, MenuRequested: null, UrlsAppended: string[], ShuffleChanged: boolean, RepeatChanged: number, TrackEnded: null, StopAfterCurrentToggle: null } },
+ *   eqWindow: { event: DockDrag & { CloseRequested: null } },
+ *   libraryWindow: { event: DockDrag },
+ *   lyricsWindow: { event: DockDrag },
+ *   statsWindow: { event: DockDrag },
+ *   visualizerWindow: { event: DockDrag },
+ *   artWindow: { event: DockDrag },
+ *   player: { event: { Paused: { uri: string, position_ms: number }, Playing: { uri: string, position_ms: number }, Stopped: { uri: string }, EndOfTrack: { uri: string }, Unavailable: { uri: string }, PositionCorrection: { uri: string, position_ms: number }, PositionChanged: { uri: string, position_ms: number }, Seeked: { uri: string, position_ms: number } } },
+ *   trackPosition: { event: { index: number, length: number } },
+ *   lyrics: { event: { uri: string | null, positionMs: number, playing: boolean } },
+ *   uiScale: { event: { scale: number } },
+ *   art: { event: { uri: string | null, playing: boolean, title: string } },
+ *   lyricsSeek: { event: { uri: string, positionMs: number } },
+ *   seekTo: { event: { positionMs: number } },
+ *   skinChanged: { event: { skin: string, from?: string } },
+ *   forwardedKey: { event: { key: string, shift: boolean, ctrl: boolean } },
+ * }} WindowEventTypes
+ */
+
+/**
+ * The windows that dock, by their drag event's name.
+ * @typedef {"playerWindow" | "playlistWindow" | "eqWindow" | "libraryWindow" | "lyricsWindow" | "statsWindow" | "visualizerWindow" | "artWindow"} DockEventName
  */
 
 /**

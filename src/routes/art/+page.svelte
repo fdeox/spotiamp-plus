@@ -15,8 +15,10 @@
   let title = $state("");
   let artist = $state("");
 
+  /** @type {string | null} */
   let curUri = null;
 
+  /** @param {string | null} uri */
   async function loadArt(uri) {
     if (!uri) {
       status = "none";
@@ -50,6 +52,7 @@
       })
       .catch(() => {});
 
+    /** @type {(() => void) | undefined} */
     let unsub;
     subscribeToWindowEvent("art", (e) => {
       if (e.uri !== curUri) {
@@ -63,11 +66,13 @@
 
   const close = () => invoke("set_art_window_visible", { visible: false });
 
+  /** @param {HTMLElement} element */
   function makeArtDraggable(element) {
     makeDockedDraggable(element, "art", "artWindow");
   }
 
   // Resize from the bottom-right corner, like the lyrics / library / visualizer.
+  /** @param {HTMLElement} element */
   function makeArtResizable(element) {
     makeSnappingResizer(
       element,

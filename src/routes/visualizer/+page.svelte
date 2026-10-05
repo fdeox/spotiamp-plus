@@ -13,6 +13,7 @@
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
 
+  /** @type {HTMLCanvasElement} (bound below before anything draws) */
   let canvas;
   const MODE_NAMES_A = [
     "tunnel",
@@ -90,12 +91,14 @@
   const appWindow = getCurrentWindow();
   let fullscreen = $state(false);
   let idle = $state(false);
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let idleTimer;
   function wake() {
     idle = false;
     clearTimeout(idleTimer);
     if (fullscreen) idleTimer = setTimeout(() => (idle = true), 2500);
   }
+  /** @param {boolean} on */
   async function setFullscreen(on) {
     if (on === fullscreen) return;
     fullscreen = on;
@@ -111,7 +114,9 @@
 
   // The first click of a double-click has already stepped the pattern; the
   // double-click puts it back, so going fullscreen keeps what you were watching.
+  /** @type {number | null} */
   let modeBeforeClick = null;
+  /** @param {MouseEvent} e */
   function onCanvasClick(e) {
     if (e.detail > 1) return;
     modeBeforeClick = mode;
@@ -123,6 +128,7 @@
     setFullscreen(!fullscreen);
   }
 
+  /** @param {KeyboardEvent} e */
   function onKey(e) {
     if (e.key === "Escape" && fullscreen) {
       e.preventDefault();
@@ -138,6 +144,7 @@
   let songTitle = "";
   let titleShown = $state("");
   let titleSeq = $state(0);
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let titleTimer;
   function flashTitle() {
     if (!songTitle) return;
@@ -774,8 +781,14 @@
 
   const VERT = `attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
 
+  /**
+   * @param {WebGLRenderingContext} gl
+   * @param {number} type
+   * @param {string} src
+   */
   function compile(gl, type, src) {
-    const s = gl.createShader(type);
+    // (null only with a lost context)
+    const s = /** @type {WebGLShader} */ (gl.createShader(type));
     gl.shaderSource(s, src);
     gl.compileShader(s);
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
@@ -804,11 +817,13 @@
       })
       .catch(() => {});
 
-    const gl = canvas.getContext("webgl", { antialias: false });
-    if (!gl) {
+    const context = canvas.getContext("webgl", { antialias: false });
+    if (!context) {
       console.error("WebGL unavailable");
       return;
     }
+    // a const after the check, so the functions below know it's there
+    const gl = context;
 
     // One small program per pattern, built the first time it's shown (see
     // shader-split.js: compiling all the patterns as one shader froze the
@@ -827,10 +842,11 @@
     function patternProgram(i) {
       let p = programs.get(i);
       if (!p) {
-        const frag = gl.createShader(gl.FRAGMENT_SHADER);
+        // (null only with a lost context)
+        const frag = /** @type {WebGLShader} */ (gl.createShader(gl.FRAGMENT_SHADER));
         gl.shaderSource(frag, i < BANK_A ? sourceA(i) : sourceB(i - BANK_A));
         gl.compileShader(frag);
-        const prog = gl.createProgram();
+        const prog = /** @type {WebGLProgram} */ (gl.createProgram());
         gl.attachShader(prog, vert);
         gl.attachShader(prog, frag);
         gl.bindAttribLocation(prog, 0, "p");
@@ -934,7 +950,7 @@
           if (Array.isArray(data) && data.length) {
             const v = data.map((pr) => Math.min(Math.max(pr[1] ?? 0, 0), 1));
             const n = v.length;
-            const band = (lo, hi) => {
+            const band = (/** @type {number} */ lo, /** @type {number} */ hi) => {
               let s = 0,
                 c = 0;
               for (let i = lo; i < hi && i < n; i++) (s += v[i]), c++;
@@ -1068,6 +1084,7 @@
       if (!pinned) nextMode();
     }, 45000);
     let lastUri = "";
+    /** @type {(() => void) | undefined} */
     let unsub;
     subscribeToWindowEvent("player", (event) => {
       const p = event.Playing;
@@ -1077,6 +1094,7 @@
       }
     }).then((u2) => (unsub = u2));
 
+    /** @type {(() => void) | undefined} */
     let unsubShown;
     appWindow
       .listen("vizVisible", (e) => {
@@ -1086,6 +1104,7 @@
       .then((u) => (unsubShown = u));
 
     // The player sends the current track once a second on the art channel.
+    /** @type {(() => void) | undefined} */
     let unsubArt;
     subscribeToWindowEvent("art", (e) => {
       const t = e.title || "";
@@ -1097,6 +1116,7 @@
 
     // Fullscreen can also end from outside (hidden from the player's menu,
     // Win+Down): follow the real window state so the frame comes back.
+    /** @type {(() => void) | undefined} */
     let unsubResized;
     appWindow
       .onResized(() => {
@@ -1126,10 +1146,12 @@
     };
   });
 
+  /** @param {HTMLElement} element */
   function makeVizDraggable(element) {
     makeDockedDraggable(element, "visualizer", "visualizerWindow");
   }
 
+  /** @param {HTMLElement} element */
   function makeVizResizable(element) {
     makeSnappingResizer(
       element,

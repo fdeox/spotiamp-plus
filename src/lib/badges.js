@@ -81,7 +81,15 @@ export function badgeList(/** @type {Stats | null} */ all, /** @type {number} */
   const local = all?.local_plays ?? 0;
   /** @type {string} */
   let group = "";
-  /** @returns {Badge} */
+  /**
+   * @param {string} glyph
+   * @param {string} name
+   * @param {string} desc
+   * @param {number} value
+   * @param {number} goal
+   * @param {string} [unit]
+   * @returns {Badge}
+   */
   const b = (glyph, name, desc, value, goal, unit = "") => ({
     group, glyph, name, desc, value: Math.min(value, goal), goal, unit, done: value >= goal,
   });
