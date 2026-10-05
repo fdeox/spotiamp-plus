@@ -276,6 +276,14 @@ export class LocalRow extends PlaylistRow {
     }
 }
 
+/**
+ * A row's length in ms (0 while it isn't known yet).
+ * @param {Row} r
+ */
+function rowMs(r) {
+    return r instanceof LocalRow ? (r.durationMs ?? 0) : (r.track?.durationInMs ?? 0);
+}
+
 export class Playlist {
     width = $derived(Math.ceil(REACTIVE_WINDOW_SIZE.width / 25));
     height = $derived(Math.ceil(REACTIVE_WINDOW_SIZE.height / 29));
@@ -353,16 +361,9 @@ export class Playlist {
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
     /** Total time of all loaded tracks in ms (for the bottom-bar readout). */
-    totalDurationMs = $derived(
-        this.rows.reduce(
-            (sum, r) =>
-                sum +
-                (r instanceof LocalRow
-                    ? (r.durationMs ?? 0)
-                    : (r.track?.durationInMs ?? 0)),
-            0,
-        ),
-    );
+    totalDurationMs = $derived(this.rows.reduce((sum, r) => sum + rowMs(r), 0));
+    /** ...and of the selected ones (Winamp shows both: selected/total). */
+    selectedDurationMs = $derived(this.selectedRows.reduce((sum, r) => sum + rowMs(r), 0));
 
     /**
      * @argument {string[]} uris

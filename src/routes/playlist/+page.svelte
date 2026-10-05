@@ -13,6 +13,8 @@
   import { onMount, tick, untrack } from "svelte";
   import { getCurrentWindow, Window } from "@tauri-apps/api/window";
   import { Playlist } from "$lib/playlist.svelte";
+  import TextTicker from "../../TextTicker.svelte";
+  import MiniTime from "../../MiniTime.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
   import { check } from "@tauri-apps/plugin-updater";
@@ -168,6 +170,20 @@
     const s = Math.floor((ms || 0) / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
+  // Winamp's running time: m:ss, or h:mm:ss from an hour on
+  /** @param {number} ms */
+  function fmtRunning(ms) {
+    const s = Math.floor((ms || 0) / 1000);
+    const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
+    return s >= 3600
+      ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
+      : `${Math.floor(s / 60)}:${pad(s % 60)}`;
+  }
+  const runningTime = $derived(`${fmtRunning(playlist.selectedDurationMs)}/${fmtRunning(playlist.totalDurationMs)}`);
+  const songTime = $derived.by(() => {
+    const s = Math.floor((playlist.positionMs || 0) / 1000);
+    return { m: String(Math.min(99, Math.floor(s / 60))), s: String(s % 60) };
+  });
 
   // --- right-click menu ---
   let currentSkin = $state("classic");
@@ -1650,10 +1666,13 @@
     title="library and list options"
   ></button>
 
-  <!-- bottom-right LCD readouts over the two black areas:
-       total playlist time (wide, upper) + current track elapsed (small row) -->
-  <div class="pl-time pl-time-total">{fmtTime(playlist.totalDurationMs)}</div>
-  <div class="pl-time pl-time-elapsed">{fmtTime(playlist.positionMs)}</div>
+  <!-- the corner's two black areas, in the skin's TEXT.BMP letters as Winamp
+       draws them: the running time (selected/total) above, the song's time
+       below, around the colon the skin paints there -->
+  <div class="pl-corner">
+    <TextTicker unavailable={false} text={runningTime} textOverride={undefined} x={7} y={10} chars={17} />
+    <MiniTime minutes={songTime.m} seconds={songTime.s} x={66} y={23} />
+  </div>
 
   <div class="draggable-corner" use:makeResizable></div>
 
@@ -2041,11 +2060,11 @@
     z-index: 60;
   }
 
-  /* bottom-right LCD time readouts (green seven-seg-ish) */
+  /* LIST OPTS: a clear button over the one PLEDIT.BMP draws */
   .pl-listopts {
     position: absolute;
     right: calc(22px * var(--zoom));
-    bottom: calc(8px * var(--zoom));
+    bottom: calc(12px * var(--zoom));
     width: calc(22px * var(--zoom));
     height: calc(18px * var(--zoom));
     background: transparent;
@@ -2055,30 +2074,16 @@
     z-index: 60;
   }
 
-  .pl-time {
+  /* PLEDIT.BMP's bottom-right corner piece (150 x 38): the readouts are
+     placed in it as in Winamp */
+  .pl-corner {
     position: absolute;
-    text-align: right;
-    font-family: monospace;
-    font-size: calc(7px * var(--zoom));
-    line-height: 1;
-    /* the skin's TEXT.BMP letter colour (what Winamp draws this in) */
-    color: var(--skin-textcolor, #14e614);
-    white-space: nowrap;
-    overflow: hidden;
+    right: 0;
+    bottom: 0;
+    width: calc(150px * var(--zoom));
+    height: calc(38px * var(--zoom));
     pointer-events: none;
     z-index: 55;
-  }
-  /* positioned from the window's bottom-right corner (plain px = easy to tweak
-     in devtools; stays put on resize). Adjust right / bottom / width. */
-  .pl-time-elapsed {
-    right: calc(58px * var(--zoom));
-    width: calc(26px * var(--zoom));
-    bottom: calc(7px * var(--zoom));
-  }
-  .pl-time-total {
-    right: calc(120px * var(--zoom));
-    width: calc(76px * var(--zoom));
-    bottom: calc(21px * var(--zoom));
   }
 
 

@@ -16,6 +16,7 @@
     SpotifyTrack,
   } from "$lib/spotify.svelte.js";
   import TextTicker from "../../TextTicker.svelte";
+  import MiniTime from "../../MiniTime.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
   import { onMount, untrack } from "svelte";
   import { emit, listen } from "@tauri-apps/api/event";
@@ -1324,10 +1325,11 @@
       playerState != "unavailable"}
   ></div>
 
-  <!-- kbps / kHz readouts (Spotify streams ~320kbps ogg @ 44.1kHz) -->
+  <!-- kbps / kHz readouts (Spotify streams ~320kbps ogg @ 44.1kHz), in the
+       skin's TEXT.BMP letters inside MAIN.BMP's two boxes, where Winamp puts them -->
   {#if playerState != "stopped" && playerState != "unavailable"}
-    <div class="lcd-info lcd-bitrate">320</div>
-    <div class="lcd-info lcd-samplerate">44</div>
+    <TextTicker unavailable={false} text="320" textOverride={undefined} x={111} y={43} chars={3} />
+    <TextTicker unavailable={false} text="44" textOverride={undefined} x={156} y={43} chars={2} />
   {/if}
 
   <button
@@ -1508,14 +1510,7 @@
         chars={9}
       />
       <div class:hidden={timeDisplayHidden}>
-        <TextTicker
-          unavailable={false}
-          text=""
-          textOverride={`${currentTime.m}:${currentTime.s.toString().padStart(2, "0")}`}
-          x={127}
-          y={4}
-          chars={6}
-        />
+        <MiniTime minutes={currentTime.m} seconds={currentTime.s} x={127} y={4} />
       </div>
       <!--
         The shade bar sprite has the transport icons drawn into it, spaced ~10px
@@ -1899,27 +1894,6 @@
 
   .stereo-mono-sprite-enabled {
     background-position-y: 0px;
-  }
-
-  /* kbps / kHz LCD readouts (positioned to the left of the MAIN.BMP labels) */
-  .lcd-info {
-    position: absolute;
-    top: calc(43px * var(--zoom));
-    color: #14e614;
-    font-family: monospace;
-    font-size: calc(6px * var(--zoom));
-    line-height: calc(6px * var(--zoom));
-    text-align: right;
-    text-shadow: 0 0 calc(2px * var(--zoom)) rgba(20, 230, 20, 0.6);
-    pointer-events: none;
-  }
-  .lcd-bitrate {
-    left: calc(105px * var(--zoom));
-    width: calc(15px * var(--zoom));
-  }
-  .lcd-samplerate {
-    left: calc(147px * var(--zoom));
-    width: calc(11px * var(--zoom));
   }
 
   /* ------ SEEK POSITION ------ */
