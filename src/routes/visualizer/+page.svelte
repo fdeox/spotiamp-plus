@@ -1,6 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
@@ -81,7 +81,99 @@
   // favourite one stays up. Clicking the canvas still changes it by hand — pin
   // only silences the automatic changes, and re-locks onto whatever you pick.
   let pinned = $state(false);
-  const togglePin = () => (pinned = !pinned);
+  const togglePin = () => {
+    pinned = !pinned;
+    if (milk) invoke("milkdrop_lock", { locked: pinned }).catch(() => {});
+  };
+
+  // --- MilkDrop ------------------------------------------------------------
+  // Real MilkDrop presets, drawn by projectM in a native window laid over the
+  // canvas (milkdrop.rs). HTML can't draw on top of that window, so out of
+  // fullscreen it leaves a strip at the bottom for the preset name and PIN.
+  const MILK_STRIP = 15;
+  let milk = $state(false);
+  /** presets found, or null while unknown / when MilkDrop can't run here */
+  let milkPresets = $state(/** @type {number | null} */ (null));
+  let milkUnavailable = $state("");
+  let milkPreset = $state("");
+  let milkNote = $state("");
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let milkNoteTimer;
+  /** @param {string} text */
+  function noteMilk(text) {
+    milkNote = text;
+    clearTimeout(milkNoteTimer);
+    milkNoteTimer = setTimeout(() => (milkNote = ""), 6000);
+  }
+  /** set in onMount: restart the canvas drawing after MilkDrop */
+  let restartDrawing = () => {};
+
+  // the canvas, in the window's device pixels, less the strip
+  function milkRect() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const strip = fullscreen ? 0 : MILK_STRIP * (REACTIVE_WINDOW_SIZE.zoom || 1);
+    return {
+      x: Math.round(r.left * dpr),
+      y: Math.round(r.top * dpr),
+      width: Math.max(1, Math.round(r.width * dpr)),
+      height: Math.max(1, Math.round((r.height - strip) * dpr)),
+    };
+  }
+
+  /** @param {boolean} on */
+  async function setMilk(on) {
+    if (on === milk) return;
+    try {
+      localStorage.setItem("viz-milk", on ? "1" : "");
+    } catch {}
+    if (!on) {
+      milk = false;
+      milkPreset = "";
+      await invoke("milkdrop_stop").catch(() => {});
+      restartDrawing();
+      return;
+    }
+    if (milkPresets === null) {
+      noteMilk(milkUnavailable ? `MilkDrop isn't available: ${milkUnavailable}` : "MilkDrop is still starting");
+      return;
+    }
+    milk = true;
+    await tick(); // the strip is laid out first
+    try {
+      await invoke("milkdrop_start", { rect: milkRect() });
+      if (pinned) await invoke("milkdrop_lock", { locked: true });
+      if (!milkPresets) noteMilk("No presets yet: put .milk files in the milkdrop folder");
+    } catch (e) {
+      milk = false;
+      restartDrawing();
+      noteMilk(`MilkDrop couldn't start: ${e}`);
+    }
+  }
+  function resizeMilk() {
+    if (milk) invoke("milkdrop_resize", { rect: milkRect() }).catch(() => {});
+  }
+  // the pointer hides over the picture too, in fullscreen at rest
+  $effect(() => {
+    const hide = milk && fullscreen && idle;
+    invoke("milkdrop_cursor", { hidden: hide }).catch(() => {});
+  });
+  // A click there is the next preset, but it may be the first half of a
+  // double-click (fullscreen): wait that long before acting on it.
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let milkClickTimer;
+  /** @param {string} what */
+  function onMilkMouse(what) {
+    if (what === "move") {
+      wake();
+    } else if (what === "click") {
+      clearTimeout(milkClickTimer);
+      milkClickTimer = setTimeout(() => invoke("milkdrop_step", { forward: true }).catch(() => {}), 250);
+    } else if (what === "dblclick") {
+      clearTimeout(milkClickTimer);
+      setFullscreen(!fullscreen);
+    }
+  }
 
   const close = () => invoke("set_visualizer_window_visible", { visible: false });
 
@@ -130,7 +222,10 @@
 
   /** @param {KeyboardEvent} e */
   function onKey(e) {
-    if (e.key === "Escape" && fullscreen) {
+    if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      setMilk(!milk);
+    } else if (e.key === "Escape" && fullscreen) {
       e.preventDefault();
       setFullscreen(false);
     } else if (e.key === "F11" || (e.key === "Enter" && e.altKey)) {
@@ -941,7 +1036,7 @@
     let shown = true;
     let pollTimer = setTimeout(function poll() {
       if (!running) return;
-      if (!shown) {
+      if (!shown || milk) {
         pollTimer = setTimeout(poll, 250);
         return;
       }
@@ -1018,7 +1113,8 @@
     let quietSince = performance.now();
     function frame() {
       if (!running) return;
-      if (!shown) {
+      // hidden, or MilkDrop is drawing instead
+      if (!shown || milk) {
         raf = 0;
         return;
       }
@@ -1076,6 +1172,38 @@
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
+    restartDrawing = () => {
+      if (running && shown && !raf) raf = requestAnimationFrame(frame);
+    };
+
+    // MilkDrop: can it run here, and how many presets are there; on again if
+    // it was on when the window last closed
+    invoke("milkdrop_available")
+      .then((n) => {
+        milkPresets = /** @type {number} */ (n);
+        let wasOn = false;
+        try {
+          wasOn = localStorage.getItem("viz-milk") === "1";
+        } catch {}
+        if (wasOn) setMilk(true);
+      })
+      .catch((e) => (milkUnavailable = String(e)));
+    /** @type {(() => void)[]} */
+    const milkOffs = [];
+    appWindow.listen("milkdropMouse", (e) => onMilkMouse(String(e.payload))).then((u) => milkOffs.push(u));
+    appWindow.listen("milkdropPreset", (e) => (milkPreset = String(e.payload))).then((u) => milkOffs.push(u));
+    appWindow
+      .listen("milkdropError", (e) => {
+        milk = false;
+        restartDrawing();
+        noteMilk(`MilkDrop stopped: ${e.payload}`);
+      })
+      .then((u) => milkOffs.push(u));
+    // the native picture follows the canvas: window resizes, fullscreen, zoom
+    // and a move to a screen with another scale
+    const milkObserver = new ResizeObserver(resizeMilk);
+    milkObserver.observe(canvas);
+    window.addEventListener("resize", resizeMilk);
 
     // Auto-cycle presets (unless pinned), and switch on every track change for
     // variety. 45s, not 25 — the older ones went by before you could enjoy
@@ -1136,6 +1264,12 @@
       running = false;
       cancelAnimationFrame(raf);
       clearTimeout(pollTimer);
+      milkObserver.disconnect();
+      window.removeEventListener("resize", resizeMilk);
+      for (const off of milkOffs) off();
+      clearTimeout(milkClickTimer);
+      clearTimeout(milkNoteTimer);
+      if (milk) invoke("milkdrop_stop").catch(() => {});
       clearInterval(cycle);
       clearTimeout(idleTimer);
       clearTimeout(titleTimer);
@@ -1179,7 +1313,7 @@
     ></button>
   </div>
 
-  <div class="viz-stage">
+  <div class="viz-stage" class:milk>
     <canvas
       bind:this={canvas}
       class="viz-canvas"
@@ -1195,7 +1329,25 @@
         <div class="viz-songtitle">{titleShown}</div>
       {/if}
     {/key}
-    <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
+    {#if milkNote}
+      <span class="viz-preset viz-note">{milkNote}</span>
+    {:else if milk}
+      <span class="viz-preset">MilkDrop · {milkPreset || (milkPresets ? "loading…" : "no presets")}</span>
+    {:else}
+      <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
+    {/if}
+    <button
+      class="viz-milk"
+      class:on={milk}
+      data-no-drag
+      onclick={() => setMilk(!milk)}
+      title={milkPresets === null
+        ? `MilkDrop isn't available${milkUnavailable ? `: ${milkUnavailable}` : ""}`
+        : milk
+          ? "Back to the visualizer's own patterns (M)"
+          : "MilkDrop presets (M)"}
+      aria-label="MilkDrop"
+    >{milk ? "◆ MILKDROP" : "◇ MILKDROP"}</button>
     <button
       class="viz-pin"
       class:pinned
@@ -1358,6 +1510,46 @@
   .viz-pin:hover {
     opacity: 0.9;
   }
+  /* MilkDrop toggle, left of PIN */
+  .viz-milk {
+    position: absolute;
+    right: 62px;
+    bottom: 3px;
+    background: none;
+    border: none;
+    padding: 1px 3px;
+    font-family: monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: #6effa0;
+    text-shadow: 0 0 3px #000, 0 0 2px #000;
+    opacity: 0.5;
+    cursor: pointer;
+    z-index: 3;
+  }
+  .viz-milk:hover {
+    opacity: 0.9;
+  }
+  .viz-milk.on {
+    color: #ffd24a;
+    opacity: 0.95;
+  }
+  /* MilkDrop draws over the canvas (a native window); the strip under it is
+     plain black behind the preset name */
+  .milk .viz-canvas {
+    visibility: hidden;
+  }
+  .milk {
+    background: #000;
+  }
+  .viz-note {
+    color: #ffd24a;
+    opacity: 0.95;
+    max-width: calc(100% - 150px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .viz-pin.pinned {
     color: #ffd24a;
     opacity: 0.95;
@@ -1393,9 +1585,13 @@
     cursor: default;
   }
   .fs .viz-preset,
-  .fs .viz-pin {
+  .fs .viz-pin,
+  .fs .viz-milk {
     font-size: 12px;
     transition: opacity 0.4s;
+  }
+  .fs .viz-milk {
+    right: 84px;
   }
   /* mouse at rest: hide the cursor and the overlays */
   .idle,
@@ -1404,6 +1600,7 @@
   }
   .idle .viz-preset,
   .idle .viz-pin,
+  .idle .viz-milk,
   .idle .viz-fshint {
     opacity: 0;
     pointer-events: none;

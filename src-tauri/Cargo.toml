@@ -87,7 +87,13 @@ windows = { version = "0.61", features = [
     # Copy diagnostic info: the Windows build (registry) and the clipboard.
     "Win32_System_Registry",
     "Win32_System_DataExchange",
+    # MilkDrop: projectM draws with OpenGL into a child window
+    "Win32_Graphics_OpenGL",
+    "Win32_System_LibraryLoader",
 ] }
+# MilkDrop: projectM-4.dll / glew32.dll are loaded at runtime, so the app still
+# runs (without MilkDrop) if they're missing
+libloading = "0.8"
 # Same version wry/tauri already build, so the WebView2 types line up: used to
 # catch a crashed renderer and reload it (app_window::watch_for_renderer_crash).
 webview2-com = "0.38"

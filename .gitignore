@@ -13,6 +13,9 @@ ROADMAP.md
 # local installer archive (published via GitHub Releases)
 /releases
 
+# MilkDrop engine, built by scripts/build-projectm.mjs
+/src-tauri/milkdrop/
+
 # updater signing keys — these must never be committed. The real key lives
 # outside the repo (~/.tauri); this is a guard against an accidental copy.
 *.key

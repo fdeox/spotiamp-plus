@@ -703,6 +703,11 @@ pub fn register_dock_window(window: &WebviewWindow) {
         window.clone().on_window_event(move |event| {
             if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
                 crate::mascot::host_moved(&app, &host);
+                // the MilkDrop picture sits over the visualizer in a window of its own
+                #[cfg(target_os = "windows")]
+                if host == "visualizer" {
+                    crate::milkdrop::follow();
+                }
             }
         });
     }

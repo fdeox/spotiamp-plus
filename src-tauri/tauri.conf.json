@@ -4,9 +4,9 @@
   "version": "0.7.5",
   "identifier": "app.spotiamp",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/build-projectm.mjs && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/build-projectm.mjs && npm run build",
     "frontendDist": "../build"
   },
   "app": {
@@ -28,6 +28,13 @@
     "copyright": "Copyright (c) 2026 fdeox. Based on Spotiamp, (c) 2025 Ted Steen. MIT License.",
     "createUpdaterArtifacts": true,
     "targets": ["nsis"],
+    "resources": {
+      "milkdrop/projectM-4.dll": "projectM-4.dll",
+      "milkdrop/glew32.dll": "glew32.dll",
+      "milkdrop/LICENSE-projectM.txt": "licenses/LICENSE-projectM.txt",
+      "milkdrop/LICENSE-GLEW.txt": "licenses/LICENSE-GLEW.txt",
+      "milkdrop/VERSIONS.txt": "licenses/MILKDROP-VERSIONS.txt"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

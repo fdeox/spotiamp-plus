@@ -37,6 +37,9 @@ pub async fn set_visualizer_window_visible(
             if window.is_fullscreen().unwrap_or(false) {
                 let _ = window.set_fullscreen(false);
             }
+            // MilkDrop draws into a child of it: stop that first
+            #[cfg(target_os = "windows")]
+            crate::milkdrop::stop_on_main(&app_handle);
             app_window::close_dock_window(&window);
         }
         crate::settings::Settings::current_mut().set_window_visible("visualizer", false);

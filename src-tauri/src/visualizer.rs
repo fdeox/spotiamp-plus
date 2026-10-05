@@ -61,6 +61,8 @@ impl Visualizer {
         }
     }
     pub fn push_samples(&mut self, samples: &[f32]) {
+        #[cfg(target_os = "windows")]
+        crate::milkdrop::feed_stereo(crate::milkdrop::Source::Player, samples);
         for frame in samples.chunks_exact(2) {
             self.push_wave(frame[0], frame[1]);
         }
@@ -72,6 +74,8 @@ impl Visualizer {
     /// output device can have any channel count). Its waveform is the same on
     /// both sides.
     pub fn push_mono(&mut self, mono: Vec<f32>) {
+        #[cfg(target_os = "windows")]
+        crate::milkdrop::feed_mono(crate::milkdrop::Source::Loopback, &mono);
         for &s in &mono {
             self.push_wave(s, s);
         }

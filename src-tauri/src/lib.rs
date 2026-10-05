@@ -18,6 +18,8 @@ mod library_window;
 mod art_window;
 mod m3u;
 mod osd;
+#[cfg(target_os = "windows")]
+mod milkdrop;
 mod mascot;
 mod stats_window;
 mod taskbar;
@@ -712,6 +714,15 @@ pub fn run() {
             mascot::mascot_room,
             mascot::mascot_hosts,
             mascot::mascot_visit,
+            milkdrop::milkdrop_available,
+            milkdrop::milkdrop_start,
+            milkdrop::milkdrop_resize,
+            milkdrop::milkdrop_stop,
+            milkdrop::milkdrop_step,
+            milkdrop::milkdrop_status,
+            milkdrop::milkdrop_snapshot,
+            milkdrop::milkdrop_cursor,
+            milkdrop::milkdrop_lock,
             capture::capture_window_png,
             discord::set_discord_activity,
             discord::clear_discord_activity,
