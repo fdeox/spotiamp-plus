@@ -93,10 +93,10 @@ fn read_plays_full() -> Vec<Play> {
         if let Ok(p) = serde_json::from_str::<Play>(line) {
             by_at.insert(p.at, plays.len());
             plays.push(p);
-        } else if let Ok(e) = serde_json::from_str::<Extend>(line) {
-            if let Some(&i) = by_at.get(&e.id) {
-                plays[i].ms = plays[i].ms.max(e.ms);
-            }
+        } else if let Ok(e) = serde_json::from_str::<Extend>(line)
+            && let Some(&i) = by_at.get(&e.id)
+        {
+            plays[i].ms = plays[i].ms.max(e.ms);
         }
     }
     plays
@@ -275,10 +275,10 @@ pub fn history_top(limit: usize) -> Vec<HistoryItem> {
 
 #[tauri::command(async)]
 pub fn history_clear() -> Result<(), String> {
-    if let Some(path) = path() {
-        if path.exists() {
-            std::fs::remove_file(path).map_err(|e| e.to_string())?;
-        }
+    if let Some(path) = path()
+        && path.exists()
+    {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

@@ -429,7 +429,7 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                 let stuck = FORCE_RECONNECT.swap(false, std::sync::atomic::Ordering::SeqCst)
                     && last_forced.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(60));
                 // the dropped-session check stays every 10 s, as before
-                let dropped = ticks % 5 == 0 && player.lock().await.is_session_invalid();
+                let dropped = ticks.is_multiple_of(5) && player.lock().await.is_session_invalid();
                 if !stuck && !dropped {
                     continue;
                 }

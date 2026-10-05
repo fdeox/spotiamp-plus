@@ -57,23 +57,25 @@ fn locate_title_plate(sheet: &image::DynamicImage) -> Option<u32> {
     central.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let threshold = central[central.len() * 35 / 100] * 3.0 + 2.0;
 
-    let (mut best, mut cur): (Option<(usize, usize)>, Option<(usize, usize)>) = (None, None);
-    for x in lo..hi {
-        if variance[x] <= threshold {
+    // a run of plate columns, first and last
+    type Run = Option<(usize, usize)>;
+    let (mut best, mut cur): (Run, Run) = (None, None);
+    for (x, &v) in variance.iter().enumerate().take(hi).skip(lo) {
+        if v <= threshold {
             cur = Some(match cur {
                 Some((a, _)) => (a, x),
                 None => (x, x),
             });
-        } else if let Some(run) = cur.take() {
-            if best.is_none_or(|b| run.1 - run.0 > b.1 - b.0) {
-                best = Some(run);
-            }
-        }
-    }
-    if let Some(run) = cur {
-        if best.is_none_or(|b| run.1 - run.0 > b.1 - b.0) {
+        } else if let Some(run) = cur.take()
+            && best.is_none_or(|b| run.1 - run.0 > b.1 - b.0)
+        {
             best = Some(run);
         }
+    }
+    if let Some(run) = cur
+        && best.is_none_or(|b| run.1 - run.0 > b.1 - b.0)
+    {
+        best = Some(run);
     }
 
     let (a, b) = best?;
@@ -412,8 +414,8 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
                     n += 1;
                 }
             }
-            if n > 0 {
-                let (r, g, b) = ((r / n) as u8, (g / n) as u8, (b / n) as u8);
+            let avg = |sum: u64| sum.checked_div(n).map(|v| v as u8);
+            if let (Some(r), Some(g), Some(b)) = (avg(r), avg(g), avg(b)) {
                 sprites.insert("titlebarcolor".into(), format!("#{r:02X}{g:02X}{b:02X}"));
                 let lum = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
                 let text = if lum > 140.0 { "#101014" } else { "#f0f2f8" };

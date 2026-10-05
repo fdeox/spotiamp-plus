@@ -107,8 +107,8 @@ impl EqProcessor {
     /// Recompute coefficients only when the band gains actually change.
     fn refresh(&mut self, state: &EqState) {
         if self.last_gains != state.bands_db {
-            for b in 0..10 {
-                let c = Biquad::peaking(EQ_FREQS[b], state.bands_db[b], Q);
+            for (b, (&freq, &gain)) in EQ_FREQS.iter().zip(&state.bands_db).enumerate() {
+                let c = Biquad::peaking(freq, gain, Q);
                 for ch in 0..2 {
                     let f = &mut self.filters[ch][b];
                     // keep the running state (z1/z2), swap in new coefficients
@@ -140,8 +140,8 @@ impl EqProcessor {
         }
         for frame in samples.chunks_mut(2) {
             let channels = frame.len().min(2);
-            for ch in 0..channels {
-                let mut x = frame[ch] as f32;
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                let mut x = *sample as f32;
                 if apply_eq {
                     x *= self.preamp_lin;
                     for b in 0..10 {
@@ -151,7 +151,7 @@ impl EqProcessor {
                 if channels >= 2 {
                     x *= if ch == 0 { left_gain } else { right_gain };
                 }
-                frame[ch] = (x as f64).clamp(-1.0, 1.0);
+                *sample = (x as f64).clamp(-1.0, 1.0);
             }
         }
     }

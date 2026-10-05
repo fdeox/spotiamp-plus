@@ -791,10 +791,10 @@ pub fn set_dock_visible(window: &WebviewWindow, visible: bool) {
         if visible {
             dock.visible.insert(label.clone(), true);
             // Re-dock to the player if we remembered where it was docked.
-            if let Some((dx, dy)) = dock.hidden_offset.remove(&label) {
-                if let Some(player) = dock.rects.get(MASTER).copied() {
-                    let _ = window.set_position(PhysicalPosition::new(player.x + dx, player.y + dy));
-                }
+            if let Some((dx, dy)) = dock.hidden_offset.remove(&label)
+                && let Some(player) = dock.rects.get(MASTER).copied()
+            {
+                let _ = window.set_position(PhysicalPosition::new(player.x + dx, player.y + dy));
             }
             refresh_all_rects(&mut dock);
         } else {
@@ -803,13 +803,12 @@ pub fn set_dock_visible(window: &WebviewWindow, visible: bool) {
             // same spot when shown again.
             if label != MASTER {
                 let group = connected_group(&dock, MASTER);
-                if group.contains(&label) {
-                    if let (Some(player), Some(rect)) =
+                if group.contains(&label)
+                    && let (Some(player), Some(rect)) =
                         (dock.rects.get(MASTER).copied(), rect_of(&window))
-                    {
-                        dock.hidden_offset
-                            .insert(label.clone(), (rect.x - player.x, rect.y - player.y));
-                    }
+                {
+                    dock.hidden_offset
+                        .insert(label.clone(), (rect.x - player.x, rect.y - player.y));
                 }
             }
             dock.visible.insert(label.clone(), false);

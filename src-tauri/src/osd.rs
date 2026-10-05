@@ -112,10 +112,10 @@ pub async fn osd_show(
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(SHOW_FOR).await;
         let latest = current().lock().ok().and_then(|c| c.as_ref().map(|c| c.seq));
-        if latest == Some(seq) {
-            if let Some(w) = app.get_webview_window("osd") {
-                hide_window(&w);
-            }
+        if latest == Some(seq)
+            && let Some(w) = app.get_webview_window("osd")
+        {
+            hide_window(&w);
         }
     });
     Ok(())

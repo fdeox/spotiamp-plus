@@ -199,10 +199,10 @@ mod imp {
 
     fn with_state(f: impl FnOnce(&mut State)) {
         STATE.with(|cell| {
-            if let Ok(mut guard) = cell.try_borrow_mut() {
-                if let Some(state) = guard.as_mut() {
-                    f(state);
-                }
+            if let Ok(mut guard) = cell.try_borrow_mut()
+                && let Some(state) = guard.as_mut()
+            {
+                f(state);
             }
         });
     }

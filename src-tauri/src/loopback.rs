@@ -9,13 +9,16 @@
 //! The cpal stream is `!Send`, so it's built and parked on a dedicated thread;
 //! the spectrum is shared through an `Arc<Mutex<Visualizer>>` the command reads.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use crate::visualizer::Visualizer;
 
-fn shared() -> &'static Arc<Mutex<Option<Arc<Mutex<Visualizer>>>>> {
-    static VIZ: OnceLock<Arc<Mutex<Option<Arc<Mutex<Visualizer>>>>>> = OnceLock::new();
-    VIZ.get_or_init(|| Arc::new(Mutex::new(None)))
+type SharedViz = Arc<Mutex<Visualizer>>;
+
+/// The capture's visualizer, once it's running.
+fn shared() -> &'static Mutex<Option<SharedViz>> {
+    static VIZ: Mutex<Option<SharedViz>> = Mutex::new(None);
+    &VIZ
 }
 
 /// Start the loopback capture once. Safe to call repeatedly — after the first

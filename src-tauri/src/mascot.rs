@@ -85,7 +85,9 @@ pub fn host_moved(app: &AppHandle, label: &str) {
 #[tauri::command]
 pub fn mascot_hosts(app: AppHandle) -> Vec<String> {
     const OURS: [&str; 8] = ["player", "playlist", "eq", "library", "lyrics", "visualizer", "art", "stats"];
-    let rects: Vec<(&str, (i32, i32, i32, i32), WebviewWindow)> = OURS
+    // x, y, width, height
+    type Rect = (i32, i32, i32, i32);
+    let rects: Vec<(&str, Rect, WebviewWindow)> = OURS
         .iter()
         .filter_map(|label| {
             let window = app.get_webview_window(label)?;
@@ -378,10 +380,10 @@ fn show(app: &AppHandle) -> Result<(), String> {
     let _ = mascot.clone().run_on_main_thread(move || {
         // owned by the player: above it, minimized and restored with it
         #[cfg(target_os = "windows")]
-        if let (Some(player), Ok(own)) = (app.get_webview_window("player"), mascot.hwnd()) {
-            if let Ok(owner) = player.hwnd() {
-                crate::app_window::set_owner(own.0 as isize, owner.0 as isize);
-            }
+        if let (Some(player), Ok(own)) = (app.get_webview_window("player"), mascot.hwnd())
+            && let Ok(owner) = player.hwnd()
+        {
+            crate::app_window::set_owner(own.0 as isize, owner.0 as isize);
         }
         // the size again now that it exists: at creation Windows kept it
         // ~136 px wide whatever was asked; a resize afterwards takes

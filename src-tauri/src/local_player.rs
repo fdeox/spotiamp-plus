@@ -357,12 +357,12 @@ impl Worker {
             .map_err(|e| format!("no decoder: {e}"))?;
 
         // Report duration if the container knows it (for the seek bar).
-        if let (Some(n), tb) = (track.codec_params.n_frames, track.codec_params.time_base) {
-            if let Some(tb) = tb {
-                let t = tb.calc_time(n);
-                let ms = (t.seconds as f64 + t.frac) * 1000.0;
-                self.duration_ms.store(ms as u64, Ordering::Relaxed);
-            }
+        if let (Some(n), tb) = (track.codec_params.n_frames, track.codec_params.time_base)
+            && let Some(tb) = tb
+        {
+            let t = tb.calc_time(n);
+            let ms = (t.seconds as f64 + t.frac) * 1000.0;
+            self.duration_ms.store(ms as u64, Ordering::Relaxed);
         }
 
         let ring: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::with_capacity(1 << 18)));

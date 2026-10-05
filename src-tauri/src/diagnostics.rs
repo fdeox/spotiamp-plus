@@ -92,10 +92,10 @@ fn scrub(text: &str, spotify_user: Option<&str>) -> String {
     if let Ok(profile) = std::env::var("USERPROFILE") {
         text = replace_ignore_case(&text, &profile, "%USERPROFILE%");
     }
-    if let Ok(user) = std::env::var("USERNAME") {
-        if user.len() >= 3 {
-            text = replace_ignore_case(&text, &user, "<user>");
-        }
+    if let Ok(user) = std::env::var("USERNAME")
+        && user.len() >= 3
+    {
+        text = replace_ignore_case(&text, &user, "<user>");
     }
     if let Some(user) = spotify_user.filter(|u| u.len() >= 3) {
         text = replace_ignore_case(&text, user, "<spotify-user>");
