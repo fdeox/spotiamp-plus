@@ -1,6 +1,5 @@
 # Builds the Windows installer from this repository on every change, so each
-# release can be traced back to a commit (and, later, signed through the
-# SignPath Foundation; see CODE_SIGNING.md). The installer is kept as a
+# release can be traced back to a commit. The installer is kept as a
 # downloadable artifact of the run.
 
 name: Build
