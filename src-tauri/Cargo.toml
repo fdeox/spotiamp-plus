@@ -92,6 +92,8 @@ windows = { version = "0.61", features = [
     "Win32_System_LibraryLoader",
     # ...and says when the pointer leaves it
     "Win32_UI_Input_KeyboardAndMouse",
+    # ...and opens texture folders by their short (ASCII) names
+    "Win32_Storage_FileSystem",
 ] }
 # MilkDrop: projectM-4.dll / glew32.dll are loaded at runtime, so the app still
 # runs (without MilkDrop) if they're missing

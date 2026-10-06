@@ -19,7 +19,7 @@
 #![cfg(target_os = "windows")]
 
 use std::cell::Cell;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::{CString, c_char, c_void};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
@@ -42,12 +42,13 @@ use windows::Win32::Graphics::OpenGL::{
     glTexImage2D, glTexParameteri, glVertex2f, glViewport, wglCreateContext, wglDeleteContext, wglGetProcAddress,
     wglMakeCurrent,
 };
+use windows::Win32::Storage::FileSystem::GetShortPathNameW;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CS_OWNDC, CreateWindowExW, DefWindowProcW, DestroyWindow, GW_OWNER, GetCursorPos, GetForegroundWindow,
     GetWindow, HCURSOR, HWND_TOP, IDC_ARROW, IDC_HAND, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, MA_NOACTIVATE, RegisterClassW,
-    SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowPos, ShowWindow,
+    SW_HIDE, SW_SHOWNA, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetForegroundWindow, SetWindowPos, ShowWindow,
     WM_ERASEBKGND, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_RBUTTONUP, WM_SETCURSOR,
     WNDCLASSW, WS_CLIPSIBLINGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
 };
@@ -70,8 +71,11 @@ struct Api {
     set_window_size: unsafe extern "C" fn(Handle, usize, usize),
     set_preset_duration: unsafe extern "C" fn(Handle, f64),
     set_soft_cut_duration: unsafe extern "C" fn(Handle, f64),
+    set_hard_cut_enabled: unsafe extern "C" fn(Handle, bool),
+    set_hard_cut_duration: unsafe extern "C" fn(Handle, f64),
     on_switch_requested: unsafe extern "C" fn(Handle, Option<SwitchRequested>, *mut c_void),
     on_switch_failed: unsafe extern "C" fn(Handle, Option<SwitchFailed>, *mut c_void),
+    set_texture_search_paths: unsafe extern "C" fn(Handle, *const *const c_char, usize),
     // kept loaded for as long as the functions above are used: the process
     _glew: Library,
     _projectm: Library,
@@ -106,8 +110,11 @@ fn load_api(dir: &Path) -> Result<Api, String> {
             set_window_size: sym!(projectm, "projectm_set_window_size"),
             set_preset_duration: sym!(projectm, "projectm_set_preset_duration"),
             set_soft_cut_duration: sym!(projectm, "projectm_set_soft_cut_duration"),
+            set_hard_cut_enabled: sym!(projectm, "projectm_set_hard_cut_enabled"),
+            set_hard_cut_duration: sym!(projectm, "projectm_set_hard_cut_duration"),
             on_switch_requested: sym!(projectm, "projectm_set_preset_switch_requested_event_callback"),
             on_switch_failed: sym!(projectm, "projectm_set_preset_switch_failed_event_callback"),
+            set_texture_search_paths: sym!(projectm, "projectm_set_texture_search_paths"),
             _glew: glew,
             _projectm: projectm,
         })
@@ -187,9 +194,102 @@ fn take_feed(out: &mut Vec<f32>) {
 
 // --- presets ----------------------------------------------------------------------
 
-/// The user's own presets (any folders inside are searched too).
+/// The user's own presets (any folders inside are searched too), and
+/// textures: their own, and the full pack when it's been fetched.
 fn user_presets_dir() -> Option<PathBuf> {
     crate::settings::get_config_dir().map(|d| d.join("milkdrop"))
+}
+
+/// Where presets are found: the user's folder, then the bundled ones.
+fn preset_dirs(app: &AppHandle) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = user_presets_dir().into_iter().collect();
+    if let Ok(dir) = app.path().resource_dir() {
+        dirs.push(dir.join("presets"));
+    }
+    dirs
+}
+
+/// A preset as the page knows it (the list, favourites): its path in its
+/// folder, the user's own under "mine/", so it holds across installs.
+fn preset_key(path: &Path, dirs: &[PathBuf]) -> String {
+    let user = user_presets_dir();
+    for dir in dirs {
+        if let Ok(rel) = path.strip_prefix(dir) {
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            return if user.as_deref() == Some(dir.as_path()) { format!("mine/{rel}") } else { rel };
+        }
+    }
+    path.to_string_lossy().into_owned()
+}
+
+/// Which presets can come next: not broken, not too slow at this size, and
+/// among the chosen ones (favourites) when there's a choice.
+struct Pool {
+    broken: Vec<bool>,
+    /// too slow at this many pixels and more (0: never found so)
+    slow_at: Vec<u64>,
+    only: Option<Vec<bool>>,
+}
+
+impl Pool {
+    fn new(n: usize) -> Pool {
+        Pool { broken: vec![false; n], slow_at: vec![0; n], only: None }
+    }
+
+    /// The ones to pass over in a picture of `area` pixels. The chosen ones
+    /// count only while one of them is left: none usable, any will do.
+    fn skip(&self, area: u64) -> Vec<bool> {
+        let skip: Vec<bool> = (0..self.broken.len())
+            .map(|i| self.broken[i] || (self.slow_at[i] != 0 && area >= self.slow_at[i]))
+            .collect();
+        if let Some(only) = &self.only {
+            let narrowed: Vec<bool> = skip.iter().zip(only).map(|(&s, &o)| s || !o).collect();
+            if narrowed.contains(&false) {
+                return narrowed;
+            }
+        }
+        skip
+    }
+}
+
+/// A preset that was loading when MilkDrop last stopped dead (projectM stuck
+/// in it, or the app gone with it) and the ones found so before, skipped
+/// from then on.
+fn loading_marker() -> Option<PathBuf> {
+    crate::settings::get_config_dir().map(|d| d.join("milkdrop-loading.txt"))
+}
+
+fn stuck_list() -> Option<PathBuf> {
+    crate::settings::get_config_dir().map(|d| d.join("milkdrop-stuck.txt"))
+}
+
+/// The marker goes with a render thread that ends (not one stuck for good).
+struct LoadingMarker(Option<PathBuf>);
+
+impl Drop for LoadingMarker {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// A folder as projectM can open it: it reads paths in the ANSI code page,
+/// so one with other letters in it (a user name like Ömer) goes in its short
+/// 8.3 form, which is plain ASCII. None if it isn't there, or has no such form.
+fn ansi_path(path: &Path) -> Option<CString> {
+    let text = path.to_str()?;
+    if text.is_ascii() {
+        return path.exists().then(|| CString::new(text).ok()).flatten();
+    }
+    let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+    let mut short = vec![0u16; 1024];
+    let n = unsafe { GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(&mut short)) } as usize;
+    if n == 0 || n >= short.len() {
+        return None;
+    }
+    let short = String::from_utf16(&short[..n]).ok()?;
+    short.is_ascii().then(|| CString::new(short).ok()).flatten()
 }
 
 fn find_presets(dirs: &[PathBuf]) -> Vec<PathBuf> {
@@ -256,6 +356,9 @@ static APP: OnceLock<AppHandle> = OnceLock::new();
 /// The pointer hides over the picture when the page says so (fullscreen,
 /// the mouse at rest), as it does over its own canvas.
 static CURSOR_HIDDEN: AtomicBool = AtomicBool::new(false);
+/// The picture put away while the page shows something in its place (the
+/// preset list): it stays hidden through moves and resizes.
+static PICTURE_HIDDEN: AtomicBool = AtomicBool::new(false);
 /// When the last "move" went to the page (ms since the epoch): a few a second
 /// are plenty to wake its idle timer.
 static LAST_MOVE: AtomicU64 = AtomicU64::new(0);
@@ -423,7 +526,7 @@ fn place(picture: HWND, owner: HWND, rect: Rect) {
             at.y,
             rect.width.max(1) as i32,
             rect.height.max(1) as i32,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            SWP_NOACTIVATE | if PICTURE_HIDDEN.load(Ordering::Relaxed) { SWP_HIDEWINDOW } else { SWP_SHOWWINDOW },
         );
     }
 }
@@ -899,6 +1002,12 @@ enum Command {
     ClearOverlays,
     /// the bottom line
     Bar(Bar),
+    /// how long a preset stays, and whether a strong beat may cut to the next
+    Timing(f64, bool),
+    /// this one now (its key)
+    Play(String),
+    /// cycle only through these (keys), or all
+    Only(Option<Vec<String>>),
     Snapshot(PathBuf, Sender<Result<(), String>>),
 }
 
@@ -911,6 +1020,8 @@ pub struct Status {
     frames: u64,
     skipped: u32,
     error: Option<String>,
+    /// the preset's key (the page's list marks it)
+    key: String,
     /// where the bottom line's MILKDROP and PIN are while they show
     buttons: Option<[Area; 2]>,
 }
@@ -977,12 +1088,15 @@ impl Drop for Engine {
 #[derive(Default)]
 struct Signals {
     switch: Cell<bool>,
+    /// the switch is a cut on the beat: no blend
+    hard: Cell<bool>,
     failed: Cell<bool>,
 }
 
-unsafe extern "C" fn switch_requested(_hard_cut: bool, data: *mut c_void) {
+unsafe extern "C" fn switch_requested(hard_cut: bool, data: *mut c_void) {
     if let Some(signals) = unsafe { (data as *const Signals).as_ref() } {
         signals.switch.set(true);
+        signals.hard.set(hard_cut);
     }
 }
 
@@ -1050,6 +1164,7 @@ fn render(
     child: isize,
     (mut width, mut height): (u32, u32),
     preset_dirs: Vec<PathBuf>,
+    texture_dirs: Vec<PathBuf>,
     commands: Receiver<Command>,
     status: Arc<Mutex<Status>>,
 ) -> Result<(), String> {
@@ -1074,18 +1189,48 @@ fn render(
         (api.on_switch_failed)(handle, Some(switch_failed), data);
         (api.set_window_size)(handle, width as usize, height as usize);
         (api.set_preset_duration)(handle, PRESET_SECONDS);
+        // the pictures presets draw with (clouds, lichen, the random ones)
+        let paths: Vec<CString> = texture_dirs.iter().filter_map(|d| ansi_path(d)).collect();
+        let pointers: Vec<*const c_char> = paths.iter().map(|p| p.as_ptr()).collect();
+        (api.set_texture_search_paths)(handle, pointers.as_ptr(), pointers.len());
         (api.set_soft_cut_duration)(handle, BLEND_SECONDS);
     }
 
     // here, not on the main thread: a big collection takes a moment to list
     let mut presets = find_presets(&preset_dirs);
     shuffle(&mut presets);
+    let keys: Vec<String> = presets.iter().map(|p| preset_key(p, &preset_dirs)).collect();
     set_status(&status, |s| {
         s.running = true;
         s.presets = presets.len();
     });
-    // presets that are too slow here, or wouldn't load: skipped from now on
-    let mut bad = vec![false; presets.len()];
+    let mut pool = Pool::new(presets.len());
+    // one that held projectM last time: skipped from now on (and the user told)
+    let marker = loading_marker();
+    let mut stuck: Vec<String> = stuck_list()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| t.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    if let Some(m) = &marker
+        && let Ok(text) = std::fs::read_to_string(m)
+    {
+        let path = text.trim().to_string();
+        if !path.is_empty() && !stuck.contains(&path) {
+            log::warn!("MilkDrop: {path} held projectM last time; skipped from now on");
+            if let Some(list) = stuck_list() {
+                let _ = std::fs::write(&list, format!("{}{path}\n", stuck.iter().map(|p| format!("{p}\n")).collect::<String>()));
+            }
+            let _ = app.emit_to("visualizer", "milkdropStuck", preset_name(Path::new(&path)));
+            stuck.push(path);
+        }
+        let _ = std::fs::remove_file(m);
+    }
+    for (i, p) in presets.iter().enumerate() {
+        pool.broken[i] = stuck.iter().any(|s| Path::new(s) == p);
+    }
+    let _marker = LoadingMarker(marker.clone());
+    // a preset loading and not drawn a frame yet
+    let loading = Cell::new(false);
     let mut loaded_at = Instant::now();
     let mut measured = (Duration::ZERO, 0u32);
     // put preset `i` on: false if it couldn't be read
@@ -1093,18 +1238,26 @@ fn render(
         let Some(text) = presets.get(i).and_then(|p| read_preset(p)) else {
             return false;
         };
+        if let Some(m) = &marker {
+            let _ = std::fs::write(m, presets[i].to_string_lossy().as_bytes());
+            loading.set(true);
+        }
         unsafe { (api.load_preset_data)(engine.handle, text.as_ptr(), smooth) };
         let name = preset_name(&presets[i]);
-        set_status(&status, |s| s.preset = name.clone());
+        set_status(&status, |s| {
+            s.preset = name.clone();
+            s.key = keys[i].clone();
+        });
         let _ = app.emit_to("visualizer", "milkdropPreset", name);
         true
     };
     // on to the next usable preset from `from`, skipping unreadable ones; if
     // none is left, say so and stay (no retrying the same one every frame)
-    let go = |from: usize, forward: bool, smooth: bool, bad: &mut Vec<bool>, index: &mut usize| {
+    let go = |from: usize, forward: bool, smooth: bool, pool: &mut Pool, area: u64, index: &mut usize| {
+        let mut skip = pool.skip(area);
         let mut from = from;
         loop {
-            let Some(i) = next_index(bad, from, forward) else {
+            let Some(i) = next_index(&skip, from, forward) else {
                 set_status(&status, |s| s.preset = String::new());
                 let _ = app.emit_to("visualizer", "milkdropPreset", "none of the presets would load");
                 return;
@@ -1114,15 +1267,17 @@ fn render(
                 return;
             }
             log::warn!("MilkDrop: couldn't read {}", presets[i].display());
-            bad[i] = true;
+            pool.broken[i] = true;
+            skip[i] = true;
             set_status(&status, |s| s.skipped += 1);
             from = i;
         }
     };
+    let area = |w: u32, h: u32| w as u64 * h as u64;
     let mut index = presets.len().saturating_sub(1);
     if !presets.is_empty() {
         // from the last one round to the first
-        go(index, true, false, &mut bad, &mut index);
+        go(index, true, false, &mut pool, area(width, height), &mut index);
     }
 
     let max_chunk = unsafe { (api.pcm_max_samples)() }.max(1) as usize;
@@ -1149,14 +1304,36 @@ fn render(
                     unsafe { (api.set_window_size)(handle, width as usize, height as usize) };
                 }
                 Ok(Command::Next) if !presets.is_empty() => {
-                    go(index, true, true, &mut bad, &mut index);
+                    go(index, true, true, &mut pool, area(width, height), &mut index);
                     loaded_at = Instant::now();
                 }
                 Ok(Command::Previous) if !presets.is_empty() => {
-                    go(index, false, true, &mut bad, &mut index);
+                    go(index, false, true, &mut pool, area(width, height), &mut index);
                     loaded_at = Instant::now();
                 }
                 Ok(Command::Lock(on)) => locked = on,
+                Ok(Command::Timing(seconds, beat_cuts)) => unsafe {
+                    (api.set_preset_duration)(handle, seconds);
+                    // a beat may cut once half its time is up
+                    (api.set_hard_cut_duration)(handle, seconds / 2.0);
+                    (api.set_hard_cut_enabled)(handle, beat_cuts);
+                },
+                Ok(Command::Play(key)) => {
+                    if let Some(i) = keys.iter().position(|k| *k == key) {
+                        if show(i, true) {
+                            index = i;
+                            loaded_at = Instant::now();
+                        } else {
+                            pool.broken[i] = true;
+                        }
+                    }
+                }
+                Ok(Command::Only(chosen)) => {
+                    pool.only = chosen.map(|chosen| {
+                        let chosen: HashSet<String> = chosen.into_iter().collect();
+                        keys.iter().map(|k| chosen.contains(k)).collect()
+                    });
+                }
                 Ok(Command::Overlay(kind, text)) => {
                     overlays.retain(|o| {
                         let same = o.kind == kind;
@@ -1225,8 +1402,12 @@ fn render(
             let avg_ms = measured.0.as_secs_f64() * 1000.0 / measured.1 as f64;
             measured = (Duration::ZERO, 0);
             if avg_ms > SLOW_MS && !presets.is_empty() {
-                log::info!("MilkDrop: {} is too slow here ({avg_ms:.1} ms a frame), skipped", preset_name(&presets[index]));
-                bad[index] = true;
+                log::info!(
+                    "MilkDrop: {} is too slow at {width}x{height} ({avg_ms:.1} ms a frame), skipped at that size",
+                    preset_name(&presets[index])
+                );
+                // a smaller picture (out of fullscreen) may take it again
+                pool.slow_at[index] = area(width, height);
                 set_status(&status, |s| s.skipped += 1);
                 advance = Some(false);
             }
@@ -1236,6 +1417,12 @@ fn render(
         }
         unsafe {
             let _ = SwapBuffers(gl.hdc);
+        }
+        // the new preset drew a frame: it didn't hold projectM
+        if loading.replace(false)
+            && let Some(m) = &marker
+        {
+            let _ = std::fs::remove_file(m);
         }
         let period = if heard.elapsed() > QUIET_AFTER { FRAME_QUIET } else { FRAME_ACTIVE };
         next_frame += period;
@@ -1257,20 +1444,22 @@ fn render(
             second = (Instant::now(), 0);
         }
         // projectM's word: this one wouldn't load, or its time is up
-        if signals.failed.get() && !presets.is_empty() && !bad[index] {
-            bad[index] = true;
+        if signals.failed.get() && !presets.is_empty() && !pool.broken[index] {
+            pool.broken[index] = true;
             set_status(&status, |s| s.skipped += 1);
             advance = Some(false);
         }
         if signals.switch.get() && !locked {
-            advance = advance.or(Some(true));
+            // blended, unless it's a cut on the beat
+            advance = advance.or(Some(!signals.hard.get()));
         }
         signals.switch.set(false);
+        signals.hard.set(false);
         signals.failed.set(false);
         if let Some(smooth) = advance
             && !presets.is_empty()
         {
-            go(index, true, smooth, &mut bad, &mut index);
+            go(index, true, smooth, &mut pool, area(width, height), &mut index);
             loaded_at = Instant::now();
         }
     }
@@ -1303,11 +1492,62 @@ fn save_frame(path: &Path, width: u32, height: u32) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn milkdrop_available(app: AppHandle) -> Result<usize, String> {
     api(&app)?;
-    let mut dirs: Vec<PathBuf> = user_presets_dir().into_iter().collect();
-    if let Ok(dir) = app.path().resource_dir() {
-        dirs.push(dir.join("presets"));
+    Ok(find_presets(&preset_dirs(&app)).len())
+}
+
+/// A preset in the page's list.
+#[derive(serde::Serialize)]
+pub struct PresetEntry {
+    key: String,
+    name: String,
+    /// the folder it's in ("" at the top)
+    folder: String,
+    /// in the user's own folder
+    mine: bool,
+}
+
+/// Every preset there is, the user's own first, by folder and name.
+#[tauri::command(async)]
+pub fn milkdrop_list(app: AppHandle) -> Vec<PresetEntry> {
+    let dirs = preset_dirs(&app);
+    let mut list: Vec<PresetEntry> = find_presets(&dirs)
+        .iter()
+        .map(|p| {
+            let key = preset_key(p, &dirs);
+            let mine = key.starts_with("mine/");
+            let rel = key.strip_prefix("mine/").unwrap_or(&key);
+            let folder = rel.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default();
+            PresetEntry { name: preset_name(p), folder, mine, key }
+        })
+        .collect();
+    list.sort_by_cached_key(|e| (!e.mine, e.folder.to_lowercase(), e.name.to_lowercase()));
+    list
+}
+
+/// Put this preset on now (its key from `milkdrop_list`).
+#[tauri::command]
+pub fn milkdrop_play(key: String) {
+    send(Command::Play(key));
+}
+
+/// Cycle only through these presets (keys), or through all (None).
+#[tauri::command]
+pub fn milkdrop_only(keys: Option<Vec<String>>) {
+    send(Command::Only(keys));
+}
+
+/// How long a preset stays, and whether a strong beat may cut to the next.
+#[tauri::command]
+pub fn milkdrop_timing(seconds: f64, beat_cuts: bool) {
+    send(Command::Timing(seconds.clamp(5.0, 600.0), beat_cuts));
+}
+
+fn send(command: Command) {
+    if let Ok(running) = RUNNING.lock()
+        && let Some(r) = running.as_ref()
+    {
+        let _ = r.commands.send(command);
     }
-    Ok(find_presets(&dirs).len())
 }
 
 /// Start drawing over `rect` of the calling window (or just move there, if
@@ -1329,8 +1569,9 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
     }
 
     register_class()?;
-    // a new window: nothing tracked over it yet, no buttons on it
+    // a new window: nothing tracked over it yet, no buttons on it, shown
     TRACKING.store(false, Ordering::Relaxed);
+    PICTURE_HIDDEN.store(false, Ordering::Relaxed);
     set_hits(None);
     let owner = window.hwnd().map_err(|e| e.to_string())?;
     let child = unsafe {
@@ -1356,13 +1597,16 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
     };
     place(child, owner, rect);
 
-    let mut dirs: Vec<PathBuf> = user_presets_dir().into_iter().collect();
-    if let Some(dir) = dirs.first() {
+    if let Some(dir) = user_presets_dir() {
         let _ = std::fs::create_dir_all(dir);
     }
+    let dirs = preset_dirs(&app);
+    // the bundled textures, then the user's folder (their own)
+    let mut textures: Vec<PathBuf> = Vec::new();
     if let Ok(dir) = app.path().resource_dir() {
-        dirs.push(dir.join("presets"));
+        textures.push(dir.join("textures"));
     }
+    textures.extend(user_presets_dir());
 
     let source = if crate::settings::Settings::current().controller_mode { Source::Loopback } else { Source::Player };
     if let Ok(mut feed) = FEED.lock() {
@@ -1379,7 +1623,7 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
         std::thread::Builder::new()
             .name("milkdrop".into())
             .spawn(move || {
-                let result = render(app.clone(), api, child_id, (rect.width, rect.height), dirs, receiver, status.clone());
+                let result = render(app.clone(), api, child_id, (rect.width, rect.height), dirs, textures, receiver, status.clone());
                 if let Err(e) = &result {
                     log::warn!("MilkDrop stopped: {e}");
                     let _ = app.emit_to("visualizer", "milkdropError", e.clone());
@@ -1428,9 +1672,20 @@ fn stop_locked(running: &mut Option<Running>) {
         // dropping the sender ends its loop; it lets go of the GL context
         // before the window it draws in is destroyed
         drop(r.commands);
-        let _ = r.thread.join();
-        unsafe {
-            let _ = DestroyWindow(child);
+        // A preset can hold projectM for good: then the thread is left to it
+        // (hidden, its window kept for it) rather than the app hanging too;
+        // that preset is skipped from the next start on.
+        let until = Instant::now() + Duration::from_secs(3);
+        while !r.thread.is_finished() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if r.thread.is_finished() {
+            let _ = r.thread.join();
+            unsafe {
+                let _ = DestroyWindow(child);
+            }
+        } else {
+            log::warn!("MilkDrop: its thread is stuck in a preset; left behind");
         }
     }
     if let Ok(mut feed) = FEED.lock() {
@@ -1458,6 +1713,21 @@ pub fn stop_on_main(app: &AppHandle) {
 #[tauri::command]
 pub fn milkdrop_cursor(hidden: bool) {
     CURSOR_HIDDEN.store(hidden, Ordering::Relaxed);
+}
+
+/// Put the picture away (the page shows the preset list there) or back.
+/// While it's away nothing is drawn; a preset picked meanwhile is on when
+/// it's back.
+#[tauri::command]
+pub fn milkdrop_hide(hidden: bool) {
+    PICTURE_HIDDEN.store(hidden, Ordering::Relaxed);
+    if let Ok(running) = RUNNING.lock()
+        && let Some(r) = running.as_ref()
+    {
+        unsafe {
+            let _ = ShowWindow(HWND(r.child as *mut c_void), if hidden { SW_HIDE } else { SW_SHOWNA });
+        }
+    }
 }
 
 /// Next (or previous) preset, blended in.
@@ -1573,6 +1843,43 @@ mod tests {
         let (_, w, _) = text_mask(&"long title ".repeat(40), 40, true, 600, w!("Segoe UI")).expect("a mask");
         assert_eq!(w, 600);
         assert!(text_mask("", 40, true, 600, w!("Segoe UI")).is_none());
+    }
+
+    #[test]
+    fn a_folder_with_any_letters_reaches_projectm_as_plain_ascii() {
+        let dir = std::env::temp_dir().join(format!("spotiamp-doku-Ömer-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // a drive without short names has no such form: then it's left out
+        if let Some(path) = ansi_path(&dir) {
+            let path = path.to_str().unwrap().to_string();
+            assert!(path.is_ascii(), "{path}");
+            assert!(Path::new(&path).is_dir());
+        }
+        assert!(ansi_path(&dir.join("not there")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(ansi_path(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn the_pool_skips_slow_ones_only_at_their_size_and_falls_back_from_favourites() {
+        let mut pool = Pool::new(4);
+        pool.broken[0] = true;
+        pool.slow_at[1] = 1920 * 1080;
+        assert_eq!(pool.skip(1920 * 1080), [true, true, false, false]);
+        // out of fullscreen, a smaller picture: back in
+        assert_eq!(pool.skip(320 * 240), [true, false, false, false]);
+        pool.only = Some(vec![false, false, true, false]);
+        assert_eq!(pool.skip(320 * 240), [true, true, false, true]);
+        // the only favourite broken: any will do
+        pool.only = Some(vec![true, false, false, false]);
+        assert_eq!(pool.skip(320 * 240), [true, false, false, false]);
+    }
+
+    #[test]
+    fn a_preset_is_known_by_its_place_in_its_folder() {
+        let dirs = vec![PathBuf::from(r"C:\bundled\presets")];
+        assert_eq!(preset_key(Path::new(r"C:\bundled\presets\Dancer\x y.milk"), &dirs), "Dancer/x y.milk");
+        assert_eq!(preset_key(Path::new(r"C:\elsewhere\z.milk"), &dirs), r"C:\elsewhere\z.milk");
     }
 
     #[test]

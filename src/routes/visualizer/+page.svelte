@@ -110,6 +110,132 @@
   /** set in onMount: restart the canvas drawing after MilkDrop */
   let restartDrawing = () => {};
 
+  // How presets change (the right-click menu), and favourites (the list).
+  // Kept here, per visualizer, like MilkDrop on/off.
+  /** @param {string} key @param {string} fallback */
+  function stored(key, fallback) {
+    try {
+      return localStorage.getItem(key) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  /** @param {string} key @param {string} value */
+  function store(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  }
+  const MILK_SECONDS = [15, 30, 60, 120];
+  let milkSeconds = $state(MILK_SECONDS.includes(Number(stored("viz-milk-seconds", ""))) ? Number(stored("viz-milk-seconds", "")) : 30);
+  let milkBeatCuts = $state(stored("viz-milk-cuts", "") === "1");
+  /** @type {string[]} */
+  let milkFavs = $state((() => {
+    try {
+      const favs = JSON.parse(stored("viz-milk-favs", "[]"));
+      return Array.isArray(favs) ? favs.filter((f) => typeof f === "string") : [];
+    } catch {
+      return [];
+    }
+  })());
+  let milkOnlyFavs = $state(stored("viz-milk-only", "") === "1");
+  function sendMilkTiming() {
+    invoke("milkdrop_timing", { seconds: milkSeconds, beatCuts: milkBeatCuts }).catch(() => {});
+  }
+  function sendMilkOnly() {
+    invoke("milkdrop_only", { keys: milkOnlyFavs && milkFavs.length ? [...milkFavs] : null }).catch(() => {});
+  }
+  /** @param {number} seconds */
+  function setMilkSeconds(seconds) {
+    milkSeconds = seconds;
+    store("viz-milk-seconds", String(seconds));
+    sendMilkTiming();
+  }
+  function toggleBeatCuts() {
+    milkBeatCuts = !milkBeatCuts;
+    store("viz-milk-cuts", milkBeatCuts ? "1" : "");
+    sendMilkTiming();
+  }
+  /** @param {string} key */
+  function toggleFav(key) {
+    milkFavs = milkFavs.includes(key) ? milkFavs.filter((k) => k !== key) : [...milkFavs, key];
+    store("viz-milk-favs", JSON.stringify(milkFavs));
+    if (milkOnlyFavs) sendMilkOnly();
+  }
+  function toggleOnlyFavs() {
+    milkOnlyFavs = !milkOnlyFavs;
+    store("viz-milk-only", milkOnlyFavs ? "1" : "");
+    sendMilkOnly();
+  }
+
+  // The preset list (L, or the right-click menu), MilkDrop's own: search,
+  // favourites, a click puts one on. It shows where the picture is, which
+  // is put away meanwhile (HTML can't draw over it).
+  /** @typedef {{ key: string, name: string, folder: string, mine: boolean }} MilkEntry */
+  let milkListOpen = $state(false);
+  /** @type {MilkEntry[]} */
+  let milkList = $state([]);
+  let milkQuery = $state("");
+  let milkListFavs = $state(false);
+  let milkCurrentKey = $state("");
+  let milkCursor = $state(0);
+  /** @type {HTMLInputElement | undefined} */
+  let milkSearch = $state();
+  /** @type {HTMLUListElement | undefined} */
+  let milkRows = $state();
+  const milkShown = $derived.by(() => {
+    const words = milkQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    return milkList.filter(
+      (e) =>
+        (!milkListFavs || milkFavs.includes(e.key)) &&
+        words.every((w) => e.name.toLowerCase().includes(w) || e.folder.toLowerCase().includes(w)),
+    );
+  });
+  async function openMilkList() {
+    if (!milkUp || milkListOpen) return;
+    try {
+      milkList = await invoke("milkdrop_list");
+      milkCurrentKey = /** @type {{ key: string }} */ (await invoke("milkdrop_status")).key;
+    } catch {
+      return;
+    }
+    milkQuery = "";
+    milkListOpen = true;
+    invoke("milkdrop_hide", { hidden: true }).catch(() => {});
+    await tick();
+    milkCursor = Math.max(0, milkShown.findIndex((e) => e.key === milkCurrentKey));
+    milkSearch?.focus();
+    milkRows?.children[milkCursor]?.scrollIntoView({ block: "center" });
+  }
+  function closeMilkList() {
+    if (!milkListOpen) return;
+    milkListOpen = false;
+    if (milkUp) invoke("milkdrop_hide", { hidden: false }).catch(() => {});
+  }
+  /** @param {MilkEntry} entry */
+  function playFromList(entry) {
+    invoke("milkdrop_play", { key: entry.key }).catch(() => {});
+    closeMilkList();
+  }
+  /** @param {KeyboardEvent} e */
+  function onMilkListKey(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMilkList();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = milkShown.length;
+      if (!n) return;
+      milkCursor = (milkCursor + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      milkRows?.children[milkCursor]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const entry = milkShown[milkCursor];
+      if (entry) playFromList(entry);
+    }
+  }
+
   // the canvas, in the window's device pixels
   function milkRect() {
     const r = canvas.getBoundingClientRect();
@@ -129,6 +255,7 @@
       localStorage.setItem("viz-milk", on ? "1" : "");
     } catch {}
     if (!on) {
+      milkListOpen = false;
       milk = false;
       milkUp = false;
       milkPreset = "";
@@ -146,6 +273,8 @@
     try {
       await invoke("milkdrop_start", { rect: milkRect() });
       milkUp = true;
+      sendMilkTiming();
+      sendMilkOnly();
       if (pinned) await invoke("milkdrop_lock", { locked: true });
       // switched on in fullscreen: the title over it now
       if (fullscreen) flashTitle();
@@ -200,9 +329,23 @@
       if (old) await old.close().catch(() => {});
       const menu = await Menu.new({
         items: [
+          { text: "Presets…", accelerator: "L", action: () => openMilkList() },
+          { item: "Separator" },
           { text: "Next preset", action: () => invoke("milkdrop_step", { forward: true }).catch(() => {}) },
           { text: "Previous preset", action: () => invoke("milkdrop_step", { forward: false }).catch(() => {}) },
           { text: "Pin this preset", checked: pinned, action: togglePin },
+          {
+            text: "Change presets",
+            items: [
+              ...MILK_SECONDS.map((sec) => ({
+                text: `Every ${sec < 60 ? `${sec} seconds` : sec === 60 ? "minute" : `${sec / 60} minutes`}`,
+                checked: milkSeconds === sec,
+                action: () => setMilkSeconds(sec),
+              })),
+              { item: "Separator" },
+              { text: "Cut on the beat", checked: milkBeatCuts, action: toggleBeatCuts },
+            ],
+          },
           { item: "Separator" },
           { text: "Open the presets folder…", action: () => invoke("milkdrop_open_folder").catch(() => {}) },
           { item: "Separator" },
@@ -315,9 +458,19 @@
 
   /** @param {KeyboardEvent} e */
   function onKey(e) {
-    if ((e.key === "m" || e.key === "M") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // typing in the preset list's search is typing
+    if (e.target instanceof HTMLInputElement) return;
+    const plain = !e.ctrlKey && !e.altKey && !e.metaKey;
+    if ((e.key === "m" || e.key === "M") && plain) {
       e.preventDefault();
       setMilk(!milk);
+    } else if ((e.key === "l" || e.key === "L") && plain && milkUp) {
+      e.preventDefault();
+      if (milkListOpen) closeMilkList();
+      else openMilkList();
+    } else if (e.key === "Escape" && milkListOpen) {
+      e.preventDefault();
+      closeMilkList();
     } else if (e.key === "Escape" && fullscreen) {
       e.preventDefault();
       setFullscreen(false);
@@ -1287,6 +1440,9 @@
     appWindow.listen("milkdropMouse", (e) => onMilkMouse(String(e.payload))).then((u) => milkOffs.push(u));
     appWindow.listen("milkdropPreset", (e) => (milkPreset = String(e.payload))).then((u) => milkOffs.push(u));
     appWindow
+      .listen("milkdropStuck", (e) => noteMilk(`"${e.payload}" got MilkDrop stuck last time: it's skipped now`))
+      .then((u) => milkOffs.push(u));
+    appWindow
       .listen("milkdropError", (e) => {
         milk = false;
         milkUp = false;
@@ -1453,6 +1609,56 @@
         aria-label={pinned ? "Unpin visualizer" : "Pin visualizer"}
       >{pinned ? "● PINNED" : "○ PIN"}</button>
     </div>
+    {#if milkListOpen}
+      <div class="milk-list" role="dialog" aria-label="MilkDrop presets">
+        <div class="milk-list-top">
+          <input
+            bind:this={milkSearch}
+            bind:value={milkQuery}
+            oninput={() => (milkCursor = 0)}
+            onkeydown={onMilkListKey}
+            type="search"
+            placeholder="search {milkList.length} presets"
+            spellcheck="false"
+          />
+          <button
+            class="milk-list-tab"
+            class:on={milkListFavs}
+            onclick={() => ((milkListFavs = !milkListFavs), (milkCursor = 0), milkSearch?.focus())}
+            title="Only your favourites"
+          >♥ {milkFavs.length}</button>
+          <button class="milk-list-tab" onclick={closeMilkList} title="Close (Esc)" aria-label="Close">✕</button>
+        </div>
+        <ul bind:this={milkRows}>
+          {#each milkShown as entry, i (entry.key)}
+            <li
+              class:on={entry.key === milkCurrentKey}
+              class:cursor={i === milkCursor}
+              onclick={() => playFromList(entry)}
+              onmousemove={() => (milkCursor = i)}
+              onkeydown={() => {}}
+              role="option"
+              aria-selected={i === milkCursor}
+            >
+              <button
+                class="milk-fav"
+                class:set={milkFavs.includes(entry.key)}
+                onclick={(e) => (e.stopPropagation(), toggleFav(entry.key))}
+                aria-label="Favourite"
+              >♥</button>
+              <span class="milk-name">{entry.name}</span>
+              <span class="milk-folder">{entry.mine ? "mine" : entry.folder}</span>
+            </li>
+          {:else}
+            <li class="milk-none">{milkListFavs ? "No favourites yet: ♥ the ones you like" : "Nothing by that name"}</li>
+          {/each}
+        </ul>
+        <label class="milk-list-bottom">
+          <input type="checkbox" checked={milkOnlyFavs} onchange={toggleOnlyFavs} disabled={!milkFavs.length} />
+          change only between favourites
+        </label>
+      </div>
+    {/if}
   </div>
 
   <div class="viz-resize" use:makeVizResizable></div>
@@ -1647,6 +1853,117 @@
     color: #ffd24a;
     opacity: 0.95;
   }
+  /* The MilkDrop preset list, where the picture is while it's open */
+  .milk-list {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    background: #05070a;
+    color: #6effa0;
+    font-family: monospace;
+    font-size: 10px;
+  }
+  .milk-list-top {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-bottom: 1px solid #1d3a2a;
+  }
+  .milk-list-top input {
+    flex: 1;
+    min-width: 0;
+    background: #000;
+    color: #ffd24a;
+    border: 1px solid #1d3a2a;
+    font: inherit;
+    padding: 1px 3px;
+    outline: none;
+  }
+  .milk-list-tab {
+    background: none;
+    border: 1px solid #1d3a2a;
+    color: #3f7f5a;
+    font: inherit;
+    padding: 0 4px;
+    cursor: pointer;
+  }
+  .milk-list-tab.on {
+    color: #ff6b8b;
+  }
+  .milk-list ul {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .milk-list ul::-webkit-scrollbar {
+    width: 8px;
+  }
+  .milk-list ul::-webkit-scrollbar-track {
+    background: #05070a;
+  }
+  .milk-list ul::-webkit-scrollbar-thumb {
+    background: #1d3a2a;
+  }
+  .milk-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 1px 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .milk-list li.cursor {
+    background: #12301f;
+  }
+  .milk-list li.on .milk-name {
+    color: #ffd24a;
+  }
+  .milk-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .milk-folder {
+    flex: none;
+    color: #3f7f5a;
+  }
+  .milk-fav {
+    flex: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #24402f;
+    cursor: pointer;
+  }
+  .milk-fav.set {
+    color: #ff6b8b;
+  }
+  .milk-none {
+    color: #3f7f5a;
+    cursor: default;
+  }
+  .milk-list-bottom {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border-top: 1px solid #1d3a2a;
+    color: #3f7f5a;
+  }
+  .milk-list-bottom input {
+    margin: 0;
+  }
+  .fs .milk-list {
+    font-size: 13px;
+  }
+
   /* MilkDrop draws over the canvas (a native window), the bottom line too */
   .milk .viz-canvas,
   .milk .viz-bar {

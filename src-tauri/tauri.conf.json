@@ -34,7 +34,8 @@
       "milkdrop/LICENSE-projectM.txt": "licenses/LICENSE-projectM.txt",
       "milkdrop/LICENSE-GLEW.txt": "licenses/LICENSE-GLEW.txt",
       "milkdrop/VERSIONS.txt": "licenses/MILKDROP-VERSIONS.txt",
-      "presets/": "presets/"
+      "presets/": "presets/",
+      "textures/": "textures/"
     },
     "icon": [
       "icons/32x32.png",
