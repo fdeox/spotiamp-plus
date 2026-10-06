@@ -1,11 +1,11 @@
-MilkDrop presets that come with Spotiamp+ (498)
+MilkDrop presets that come with Spotiamp+ (501)
 
 150 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
 Spotiamp+ by him; among them his MilkDrop takes on Spotiamp+'s own visualizer patterns.
   BeatDrop, his MilkDrop visualizer: https://github.com/OfficialIncubo/BeatDrop-Music-Visualizer
   Support him: https://ko-fi.com/officialincubo_
 
-348 chosen from projectM's "Cream of the Crop" pack (github.com/projectM-visualizer/presets-cream-of-the-crop):
+351 chosen from projectM's "Cream of the Crop" pack (github.com/projectM-visualizer/presets-cream-of-the-crop):
 presets that load cleanly in projectM 4.1 and run light (under 4 ms a frame on a laptop GPU).
 Each is by the author named at the start of its file name. MilkDrop presets were
 released freely, without a specific licence; if you made one and want it out,
@@ -13,55 +13,46 @@ open an issue at github.com/fdeox/spotiamp-plus.
 
 Incubo_/02_MW_new03T4a (Se7enSlasher's Edit).milk
 Incubo_/02_MW_new03T4b (Se7enSlasher's Edit).milk
-Incubo_/Aderrasi + Se7enSlasher - Potion of Spirits (rand texture moebius beat mix) (Update 2024).milk
 Incubo_/Aderrasi + Se7enSlasher - Potion of Spirits (rand texture moebius beat mix).milk
 Incubo_/Anandamide - Bee_Back_To_Bassics (Se7enSlasher's Composition Fix).milk
 Incubo_/Anandamide - Bee_Back_To_Bassics - rand tex (Se7enSlasher's Composition Fix).milk
-Incubo_/Anandamide - Capitalist_Cathedral_Esper (Se7enSlasher's Composition Fix).milk
-Incubo_/Andy + Se7enSlasher - Digital Rebel (Ruby Gillman Trippy Beats_CodeFX_LaserEyesSupernova Mix).milk
 Incubo_/Cope + Se7enSlasher - julia set (looking glass mix) (Random Texture Edit).milk
 Incubo_/Cynos + Se7enSlasher - Glowing Viscous Sustance (Reflected Random Texture Mix).milk
 Incubo_/DeepSeek + Se7enSlasher - Colorful Ripple Wave.milk
 Incubo_/EVET + martin + Se7enSlasher - Cathedral Gates (rotated random texture edit).milk
 Incubo_/Eo.S. + Geiss + Se7enSlasher - glowsticks v2 02 (Music Reactive + Relief Mix).milk
 Incubo_/Eo.S. + Geiss + Se7enSlasher - glowsticks v2 04 music minimal (Relief Mix).milk
-Incubo_/Eo.S. + Geiss + Se7enSlasher - glowsticks v2 04 music minimal (liquid copper sense rand tex mix).milk
 Incubo_/EvilJim - Ice Drops (Se7enSlasher's darken center off edit).milk
 Incubo_/Flexi + Geiss + Se7enSlasher - antagonizing beat detection codes (random texture + Reactive Blur Mix).milk
 Incubo_/Flexi + Se7enSlasher - Milkdrop 3D hack [random tex edit].milk
 Incubo_/Flexi + Se7enSlasher - fractal remix rand tex.milk
-Incubo_/Flexi, martin + geiss & Se7enSlasher - dedicated to the sherwin maxawow (Dynamic Rainbow color palette mod).milk
+Incubo_/Flexi, martin + geiss & Se7enSlasher - dedicated to the sherwin maxawow (Trailing Colorful Laser Dots mod).milk
 Incubo_/Flexi, martin + geiss & Se7enSlasher - dedicated to the sherwin maxawow (mrange's Mercury River color palette mod).milk
+Incubo_/Geiss + Se7enSlasher - Drempels (Let Op!) (full random texture mix).milk
+Incubo_/Geiss + Se7enSlasher - Game of Life (reactive random texture mix).milk
 Incubo_/Geiss + Se7enSlasher - High Dynamic Range (Lights in Smoke Shader Remix) (Update 2024).milk
 Incubo_/Geiss + Se7enSlasher - High Dynamic Range (Lights in Smoke Shader Remix).milk
 Incubo_/Geiss + Se7enSlasher - Mega Swirl 3 (color dodge random texture composite mix).milk
-Incubo_/Geiss - Cruzin' (Se7enSlasher's CoNfUsIoN effect edit).milk
-Incubo_/Geiss - Drop Shadow 2 (Se7enSlasher's full random texture mix).milk
 Incubo_/Hexcollie - Hexcollie actually tryin funky version (Se7enSlasher's per-vertex fix).milk
 Incubo_/Hexcollie - Hexcollie actually tryin funky version - mash0000 - fertilize (Se7enSlasher's per-vertex fix).milk
 Incubo_/Incubo - DeepSeek - Flowing Color Waves MilkDrop2077rmx1.milk
 Incubo_/Incubo - DeepSeek - Flowing Color Waves MilkDrop2077rmx2.milk
+Incubo_/Incubo_'s DeepMash Series #22.milk
 Incubo_/Incubo_'s DeepMash Series #38.milk
-Incubo_/Incubo_'s DeepMash Series #39.milk
 Incubo_/Jian Simanjuntak + Se7enSlasher - Trippy Interactive Spiral.milk
 Incubo_/MilkDrop2077 (serge000) + Se7enSlasher - My Life as a Vivid Colored Ink Painting.milk
-Incubo_/ORB + Se7enSlasher - Nerissa wants to throw a big wave of water on you.milk
 Incubo_/ORB + Se7enSlasher - Nova Sunrise (random texture mix).milk
-Incubo_/ORB + Se7enSlasher - The Cross of Octobella's Crisis.milk
+Incubo_/Ondras + Se7enSlasher - VisualPlayer 2.0 for DOS (different beat detection random texture reaction).milk
 Incubo_/RLP + martin - funky illusions (Random Texture Mix) (Se7enSlasher Edit).milk
-Incubo_/Rovastar + Se7enSlasher - Altars Of Madness 2 (Cold Snap Edit) (Update 2023).milk
-Incubo_/Rovastar + Se7enSlasher - Altars Of Madness 2 (Cold Snap Edit).milk
 Incubo_/SAMPLER-Tripgnosis - The Atomsplit (MAX) RANDOM Se7enSlasher Full Rand Tex Edit.milk
+Incubo_/Se7enSlasher + Bing AI - Halfway Sinage.milk
+Incubo_/Se7enSlasher + Claude AI - Our Memories Inside The Cube.milk
+Incubo_/Se7enSlasher + DeepSeek + XorDev - Bitdumb 2 (Music Reactive Edit).milk
 Incubo_/Se7enSlasher + DeepSeek + XorDev - Bitdumb 2.milk
-Incubo_/Se7enSlasher + DeepSeek + XorDev - Bitdumb 4.milk
 Incubo_/Se7enSlasher + DeepSeek + XorDev - HOME (Music Reactive Edit).milk
 Incubo_/Se7enSlasher + DeepSeek + XorDev - HOME.milk
-Incubo_/Se7enSlasher + Flexi - Spinny Random Texture.milk
-Incubo_/Se7enSlasher + Geiss + fiShbRaiN - the machine that sends people to party.milk
-Incubo_/Se7enSlasher + Geiss + yin - Van Gogh's nightmare (Chelsea's Turbulent Pulsing Water Mix).milk
 Incubo_/Se7enSlasher + Goody + martin + flexi + ShadowHarlequin - Stu's Lucious Light Spirits (water mix).milk
 Incubo_/Se7enSlasher + Goody + martin + flexi + ShadowHarlequin - Stu's Lucious Light Spirits.milk
-Incubo_/Se7enSlasher + Jian Simanjuntak + flexi + Geiss + martin - Sweet Light Lines of Maari.milk
 Incubo_/Se7enSlasher + Kai Blaschke - Abstract Blue (Time of Beat Remix).milk
 Incubo_/Se7enSlasher + Krash + Geiss - Dynamic Swirling Beat Indecision.milk
 Incubo_/Se7enSlasher + Martijn Steinrucken - Space GIF.milk
@@ -86,76 +77,85 @@ Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Tri-Meter.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - VU Meter.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Wireframe Cube.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Zebra.milk
-Incubo_/Se7enSlasher + martin + Geiss + Claude AI + DeepSeek + serge000 + Rovastar + Krash - Abbie's Blasting Love (The Crazy Kaleidoscope Remix).milk
-Incubo_/Se7enSlasher + martin + Geiss + Claude AI + DeepSeek + serge000 - Abbie's Blasting Love.milk
-Incubo_/Se7enSlasher + martin + shifter - flashburn (da flashing mirror lights mix).milk
 Incubo_/Se7enSlasher + martin - BPM Code Test [ChatGPT's Average Code Edition].milk
+Incubo_/Se7enSlasher + martin - BPM Code Test.milk
 Incubo_/Se7enSlasher + martin - Digital Beat Ripple (Glassy Ripple Remix).milk
 Incubo_/Se7enSlasher + martin - code implementation training #5 - BPM Alternative Jump Tech.milk
 Incubo_/Se7enSlasher + mojovideotech - ContinuaVariation.milk
+Incubo_/Se7enSlasher + suksma - Colorful Texture Pinwheel.milk
 Incubo_/Se7enSlasher - 45 degrees maniac but degressed as a red and blue.milk
+Incubo_/Se7enSlasher - A Cool Reactor I Made.milk
+Incubo_/Se7enSlasher - Accidental Mashup #1.milk
 Incubo_/Se7enSlasher - Accidental Mashup #2.milk
 Incubo_/Se7enSlasher - Blue Mirror Perspective 8-Bit Scope.milk
 Incubo_/Se7enSlasher - Border Experiment (Alternate Way of Morphing Borders).milk
+Incubo_/Se7enSlasher - Border Experiment (cos).milk
 Incubo_/Se7enSlasher - Bouncing Balls with the Purple Pixel.milk
 Incubo_/Se7enSlasher - Bubble Moristein.milk
 Incubo_/Se7enSlasher - Chaotic Illusion (Update 2024).milk
 Incubo_/Se7enSlasher - Claude AI's 3D Slow Inside-Looking Rotating Gradient Cube.milk
 Incubo_/Se7enSlasher - DEMO - Wave Shader Functions.milk
-Incubo_/Se7enSlasher - Dancing Grid Shapes.milk
 Incubo_/Se7enSlasher - Dancing Swirling Magic Watercolor (Solarized Moving Four Way Mirror Beat Random Texture Mix).milk
+Incubo_/Se7enSlasher - Dancing Swirling Magic Watercolor.milk
 Incubo_/Se7enSlasher - Dazzling Spectrum.milk
 Incubo_/Se7enSlasher - Digital Beat Ripple.milk
 Incubo_/Se7enSlasher - Distort-flecting Sensation (with Geiss's Motion Blur warp shader code + my beat code edit).milk
 Incubo_/Se7enSlasher - Distort-flecting Sensation (with Geiss's Motion Blur warp shader code).milk
 Incubo_/Se7enSlasher - Fragile Reaction (Update 2025).milk
+Incubo_/Se7enSlasher - Fragile Reaction (shaded random texture mix).milk
 Incubo_/Se7enSlasher - Frozen Fiasco.milk
-Incubo_/Se7enSlasher - Grizelda's Pirouette - gonskin.milk
 Incubo_/Se7enSlasher - Grizelda's Pirouette_untitled_mix (Update 2023).milk
 Incubo_/Se7enSlasher - Grizelda's Pirouette_untitled_mix.milk
 Incubo_/Se7enSlasher - Hazardous Texture Beat Detection Clipping (Original Milkdrop2 Version).milk
 Incubo_/Se7enSlasher - Hazardous Texture Beat Detection Clipping.milk
 Incubo_/Se7enSlasher - Kaleidoscopic Lasers, Disco Balls and rand tex wot (Update 2024).milk
 Incubo_/Se7enSlasher - Kaleidoscopic Lasers, Disco Balls and rand tex wot.milk
-Incubo_/Se7enSlasher - MilkDropLM Generated Preset #3.milk
+Incubo_/Se7enSlasher - MilkDropLM Generated Preset #16.milk
 Incubo_/Se7enSlasher - MilkDropLM Generated Preset #7.milk
+Incubo_/Se7enSlasher - Mix to the mix.milk
+Incubo_/Se7enSlasher - Neon Cyber-Lattice.milk
+Incubo_/Se7enSlasher - Our Glowing Dream.milk
 Incubo_/Se7enSlasher - Rainbow Galaxy.milk
 Incubo_/Se7enSlasher - Ravy Lissajous Experiment.milk
-Incubo_/Se7enSlasher - Rhythmic Black Square.milk
 Incubo_/Se7enSlasher - Rhythmic Circuit-Tech (Update 2024).milk
 Incubo_/Se7enSlasher - Rippling Colorful Borders.milk
 Incubo_/Se7enSlasher - Simple Zoom Slice Effect.milk
 Incubo_/Se7enSlasher - Spiral Spectrum Analyzer.milk
+Incubo_/Se7enSlasher - Texture Distortion 2000 (Treble Reacted Warp Version) nz.milk
+Incubo_/Se7enSlasher - Texture Distortion 2000 (Treble Reacted Warp Version).milk
 Incubo_/Se7enSlasher - The Stem Player (The Sparkling Tunnel Mix).milk
 Incubo_/Se7enSlasher - The Sun (Update 2023).milk
 Incubo_/Se7enSlasher - The Sun.milk
 Incubo_/Se7enSlasher - Unable to Peacock them....milk
 Incubo_/Se7enSlasher - Unified Drag Revised.milk
-Incubo_/Se7enSlasher - Voosh!.milk
+Incubo_/Se7enSlasher - Wave Ride (random texture edit + blurry composition).milk
+Incubo_/Se7enSlasher - Wave Ride.milk
 Incubo_/Se7enSlasher - a modulo composition.milk
 Incubo_/Se7enSlasher's Boring Mashup #2.milk
 Incubo_/Se7enSlasher's Boring Mashup #3.milk
 Incubo_/Stahlregen & Geiss + TobiasWolfBoi + Se7enSlasher - Space Gelatin (random texture edit).milk
-Incubo_/Stahlregen & fishbrain + geiss + martin + Se7enSlasher  - Flowercraft (random texture edit + perfectly centered + aspect ratio fix).milk
+Incubo_/Stahlregen & fishbrain + geiss + martin + Se7enSlasher  - Flowercraft (random texture edit + aprox. centered).milk
 Incubo_/Stahlregen & fishbrain + geiss + martin + Se7enSlasher  - Flowercraft (random texture edit).milk
 Incubo_/Zylot + Se7enSlasher - The Infection Spreads (Infected Random Texture Mix).milk
+Incubo_/amandio c + Se7enSlasher - clock 2 new var edit.milk
 Incubo_/channelizing emotions you're not able to show your family and nearest friends 2 (Se7enSlasher's Fix).milk
 Incubo_/fed - slowfast microedition_1_rand_tex_edition.milk
 Incubo_/fiShbRaiN + Flexi + Se7enSlasher - witchcraft 2.0 (Flexi's Double Textured Mix).milk
 Incubo_/flexi - predator-prey seminar paper visualization [geiss drempels (let op)] (Se7enSlasher's full random texture edit).milk
-Incubo_/martin + RLP + Se7enSlasher - neon space ps3 (party club with random texture).milk
-Incubo_/martin + Se7enSlasher - city of shadows (Ruby Gillman's Lost Steps Remix).milk
 Incubo_/martin + Se7enSlasher - double chase (random texture edit).milk
+Incubo_/martin + Se7enSlasher - hardcore mix 1 (random texture edit).milk
+Incubo_/martin + Se7enSlasher - hardcore mix 2 (random texture edit).milk
+Incubo_/martin + Se7enSlasher - journey into space (random texture edit + non-warp).milk
 Incubo_/martin + Se7enSlasher - journey into space (random texture edit).milk
 Incubo_/martin + Se7enSlasher - lightning (random texture edit).milk
-Incubo_/martin + Se7enSlasher - liquid arrows (Octobella Mix) (Update 2023).milk
+Incubo_/martin + Se7enSlasher - night cathedral (random texture edit).milk
 Incubo_/martin + Se7enSlasher - rainbow spectrum in the mix10.milk
-Incubo_/martin + Se7enSlasher - rainbow spectrum in the mix11.milk
-Incubo_/martin + Se7enSlasher - the sewers (random texture edit).milk
+Incubo_/martin + Se7enSlasher - rainbow spectrum in the mix8.milk
 Incubo_/martin - city of shadows why r u mad at all.milk
-Incubo_/nil - Disco Comet it got too quiet (Se7enSlasher Per-Frame Code Remix 2 - Electric Boogaloo).milk
 Incubo_/nil - Disco Comet it got too quiet (Se7enSlasher Per-Frame Code Remix).milk
 Incubo_/scanner (@ztec)2 (Se7enSlasher's CoNfUsIoN effect edit).milk
+Incubo_/sensorial random texture in the lightwater v2.milk
+Incubo_/sensorial random texture in the lightwater.milk
 Incubo_/suksma - Hexcollie - Hexcollie actually tryin funky version - mash0000 - fertilize (Se7enSlasher's per-vertex fix).milk
 Incubo_/windows glass xp tex maraqueze.milk
 Incubo_/xemantic - twisting color rose (Se7enSlasher's MilkDrop Version + My RGB Splitting Effect + Music Reactive).milk
@@ -167,12 +167,15 @@ Dancer/$$$ Royal - Mashup (430).milk
 Dancer/AdamFX 2 Geiss - Mash-Up Sphere Xibit Graffiti Warp me Oval Interprise3.milk
 Dancer/AdamFX 2 Geiss - Mash-Up Sphere Xibit Graffiti Warp me Oval Interprise4.milk
 Dancer/AdamFX 2 Geiss - Mash-Up Sphere Xibit Graffiti Warp me Tydye2.milk
+Dancer/Blendin to myself AdamFX Twist 2 martin - glassball dance with Cope.milk
 Dancer/EoS + Phat - chasers 14 sentinel 617_beta5_v2.milk
+Dancer/EoS - glowsticks v2 03 music shifter edit b.milk
 Dancer/EoS - glowsticks v2 04 music minimal ab.milk
 Dancer/EoS - more waveforms 8.milk
 Dancer/EoS_Phat_PeterP_Sentinel_Aware_6 EoS edit C2.milk
 Dancer/Flexi, suksma + Martin - the object of the game is also known as eristics and rabulistics.milk
 Dancer/Inside A Black Whole AdamFX 2 martin - another kind of groove (Ati Fix)Ft Raron Flexi and Rovastar (AdamFX Remix)7.milk
+Dancer/Liquid Glowsticks - ATwisted Pre Set Mix By AdamFX 2 martin - disco mix Ft Hexocollie 33.milk
 Dancer/LuxXx - Flame Dance Ii.milk
 Dancer/LuxXx - Ne0n Thai SmokeSticks in the City.milk
 Dancer/LuxXx - Radiation lightShow 2.milk
@@ -183,12 +186,10 @@ Dancer/Mig_004.milk
 Dancer/Milkdrop Mashup Masters ADAMFX 2 raron + flexi  +  ORB 2 - inf fin bnd.milk
 Dancer/NeW Adam Master Mashup FX 2 Geiss - Reaction Diffusion 34 + Swelling Spiral  + Liquid Fire  + Geiss an38.milk
 Dancer/NeW Adam Master Mashup FX 2 Geiss - Reaction Diffusion 34 + Swelling Spiral  + Liquid Fire  + Geiss and Zylot.milk
-Dancer/ORB - Arctic Chill.milk
 Dancer/ORB - Blowtorch chill.milk
 Dancer/ORB - Comic Book Curves 2 fetid glam dicord fed facephirst into love.milk
 Dancer/ORB - Comic Book Curves 2 fetid glam dicord jointed dispathy.milk
 Dancer/ORB - Comic Book Curves 2 fetid glam dicord plastique orthopthalmahl.milk
-Dancer/ORB - Smoke and Fire.milk
 Dancer/Phat+Yin+EoS_Mandala_Chasers_SOULar_Named_Red_Pulse_b - robert verkerk.milk
 Dancer/Stahlregen + Geiss - Ouboros (Jelly 5-55).milk
 Dancer/The NG + LuxXx - Entering The Verse (Circling Curse).milk
@@ -199,7 +200,6 @@ Dancer/suksma - ctp log smell.milk
 Dancer/suksma - formula one stock car engines.milk
 Dancer/suksma - natives.milk
 Dancer/suksma - sphinxtorrid glassphlegmythos.milk
-Dancer/suksma - water god.milk
 Drawing/BEST OF ADAMFX 2 Flexi + Geiss - Bipolar vs reaction diffusion + Another Flexi + Fishbrain  + Swellin12.milk
 Drawing/Flexi - emergencey 2 --- Isosceles edit9a pulse.milk
 Drawing/Flexi - emergencey 2 --- Isosceles edit9b pulse.milk
@@ -236,7 +236,6 @@ Fractal/EoS+Phat - I_v2_Shape_v2.milk
 Fractal/EoS+Phat - I_v2_Shape_v3.milk
 Fractal/Geiss - Flexi - Redi Jedi - Shifter - Phat - Rovastar - 120287110113(457) - orb sth go 4-ret cataclysmi.milk
 Fractal/Geiss - Flexi - Redi Jedi - Shifter - Phat - Rovastar - 120287110113(457) - orb sth go 4-ret cataclysmic sound.milk
-Fractal/Halfbreak - Negative Rainbow.milk
 Fractal/Hexcollie - Personal Mashup6.milk
 Fractal/Hexcollie, Rova n EOS - In or Out (stahlregan shader).milk
 Fractal/LuxXx - Fractal Overlord Overclock ii.milk
@@ -245,6 +244,7 @@ Fractal/MilkTop HDFX Presets  Ft Aderrasi,AdamFX,RovaStar,ShadowHarlequin,Martin
 Fractal/Mstress and Zylot - Trapped Ball (Rainbow Mix).milk
 Fractal/NeW Adam Master Mashup FX 2 Geiss and Zylot - Reaction Diffusion 3 (Overload Mix 2) AMAZING MASUP Various 2+ Shifter .milk
 Fractal/New Creations From Favorite - Milk F - X  Artist  - Martin n Flexi's Run in with AdamFX n Geiss - Willie Wonka n The Milk Factory .milk
+Fractal/ORB - Toy snakes hectic.milk
 Fractal/PieturP - HSL-here-we-go-circles-weird.milk
 Fractal/Stahlregen & EoS + bdrv + flexi + Geiss + vovan - Modern Art Snail (MashUp 39 - Zebra Neon Snail).milk
 Fractal/Stahlregen + martin - Spiral Beats (Spiral City).milk
@@ -264,7 +264,6 @@ Fractal/shifter - orthoganal light CC niobium beta6.milk
 Fractal/shifter - orthoganal light niobium.milk
 Fractal/stahlregen & bdrv + geiss + shifter - hypno swirl (mashup 38 - random tex crawl).milk
 Fractal/stahlregen - splash! (Crystallization).milk
-Geometric/Cope-WIP - Strange Attractor 2 hack3.milk
 Geometric/EVET - Broken Records.milk
 Geometric/EVET- The Ringer.milk
 Geometric/EoS and Zylot - multisphere (A World Dreaming) optimized.milk
@@ -274,6 +273,7 @@ Geometric/Pinbi7&stuttler-trackdown.milk
 Geometric/Serge circles003.milk
 Geometric/Serge circles003b.milk
 Geometric/Serge circles004.milk
+Geometric/The NG + amandio c - The Fourth of the Gardens (A Light Show To Remember).milk
 Geometric/Waltra - Intel.milk
 Geometric/Zylot - new work.milk
 Geometric/amandio c - salty bits - 5 nz+ jealiousea.milk
@@ -282,8 +282,8 @@ Geometric/fed _ [WHO] - chasers in the sky3 [slipped] fingre.milk
 Geometric/fishbrain and flexi - box of tricks 15 polar borders [logarithmic inverse][iterative definition] --- Isosceles edit.milk
 Geometric/fishbrain and flexi - box of tricks 15 polar borders [logarithmic][iterative definition] --- Isosceles edit.milk
 Geometric/fishbrain and flexi - box of tricks 17 [moebius plus spiral mask] --- Isosceles edit.milk
+Geometric/flexi, martin, stahlregan n hexcollie - hexcollie twizt mushmash.milk
 Geometric/martin - glass corridor nz2 disingenius.milk
-Geometric/martin - glass corridor nz2 incline.milk
 Geometric/nicklepenultim nz+.milk
 Geometric/nicklepenultim roam.milk
 Geometric/nicklepenultim.milk
@@ -305,11 +305,12 @@ Hypnotic/TonyMilkdrop - Tricolors [Flexi - techy strain + multiverse] --- Isosce
 Hypnotic/flexi - grind my glitch up [240].milk
 Hypnotic/shifter + flexi - liquid circuitry from the fractalism hive nz+.milk
 Hypnotic/stahlregen + flexi + goody + martin + others - frosted mosaik [moebius'ed].milk
-Particles/A Bitstorm Explosion 2 ShadowHarlequin - Synapse Collapse - v2 - [Geiss - Skin Dots 3]ft Yin (AdamFX Remix)Martins Shiny Tunnel grima.milk
-Particles/A Bitstorm Explosion 2 ShadowHarlequin - Synapse Collapse - v2 - [Geiss - Skin Dots 3]ft Yin (AdamFX Remix)Martins Shiny Tunnel.milk
 Particles/Border-magic.milk
+Particles/Geiss - Artifact 6 --- Isosceles edit.milk
 Particles/Geiss - Artifact 6.milk
+Particles/Martin - QBikal - Surface Turbulence II hakanh mash-up k2.milk
 Particles/Martin - QBikal - Surface Turbulence IIe3 (by hakanh mash-up).milk
+Particles/Rovastar + Geiss - Hyperspace - kaleidoscope.milk
 Particles/Rovastar - Solarized Space --- Isosceles edit.milk
 Particles/Rovastar - Space (Twisted Dimension Mix).milk
 Particles/Rovastar - Space.milk
@@ -325,7 +326,6 @@ Reaction/EoS_Phat technicolor E breather B - couldn't not.milk
 Reaction/Flexi + Geiss - rorschach bomb (Heavy Oil Mix).milk
 Reaction/Flexi + Geiss - rorschach bomb (Jelly 5-5).milk
 Reaction/Flexi + Geiss - rorschach bomb (bccn Jelly V4).milk
-Reaction/Flexi + bdrv - ultramix #46 test [all your base].milk
 Reaction/Flexi + orb + geiss - the computer is your friend trust the computer.milk
 Reaction/Flexi - collapse theory nz.milk
 Reaction/Flexi - splatter effects 21.milk
@@ -372,7 +372,6 @@ Reaction/cope - ferrofluid.milk
 Reaction/cortex meat - equiping the farmers with permacult roam.milk
 Reaction/f wen blew my wallet - hooray for fed.milk
 Reaction/f wen blew my wallet - my thoughts are not.milk
-Reaction/fanciful bratwurst engine.milk
 Reaction/flexi + nitorami - beat explorer (cn bc jelly 4).milk
 Reaction/flexi - undercurrents 3 [geiss bipolar 1 mix] (Jelly 5-5).milk
 Reaction/flexi, bdrv + geiss - aftermath.milk
@@ -388,10 +387,12 @@ Reaction/pork blouse lafertion.milk
 Reaction/pork blouse.milk
 Reaction/rce-ordinary - want (nevermore mix) nz+2 finding a balance.milk
 Reaction/shell robot --- Isosceles edit.milk
+Reaction/shifter + flexi - liquid circuitry from the fractalism hive nz+ --- Isosceles edit1.milk
 Reaction/shifter + flexi - liquid circuitry from the fractalism hive nz+ --- Isosceles edit4.milk
 Reaction/stahlregen + flexi + goody + martin + others - frosted mosaik.milk
 Reaction/various artists - 120093365065(40) --- Isosceles edit.milk
 Reaction/white lace curtains drenched in biohazard of tiger.milk
+Reaction/xtramartin (242).milk
 Sparkle/$$$ Royal - Mashup (255) --- Isosceles edit.milk
 Sparkle/Compelling Vision.milk
 Sparkle/Did It Again-  Stahlregen & Aderrasi + EoS + Geiss + Unchained + Zylot - Slowflowers Ft Martin (AdamFXRemix)6.milk
@@ -465,6 +466,7 @@ Waveform/Halfbreak - Chemical Artistry 1.milk
 Waveform/Halfbreak - Dancing Times.milk
 Waveform/Halfbreak - Yellow Sepia.milk
 Waveform/Hexcollie - Cell division.milk
+Waveform/Illusion & Krash - Rainbow Waves bennett.milk
 Waveform/Jc - Flow with the Go nz+.milk
 Waveform/Jc - Flow with the Go.milk
 Waveform/Krash and Rovastar - Rainbow Orb 2 Peacock (Sumpkin Tweak).milk
@@ -481,14 +483,15 @@ Waveform/Stahlregen & Aderrasi + Geiss + Rovastar - Dahlia (MashUp 31).milk
 Waveform/Stahlregen & Che + Geiss + Illusion + Unchained - Shifty (Border)_2.milk
 Waveform/Stahlregen & Che + Geiss + Illusion + Unchained - Shifty (Trailscape)_2.milk
 Waveform/Stahlregen & Esotic + Idiot24-7 + Rozzer + Zylot - Digital Heartbeat (Reverse Jelly V3) ___.milk
+Waveform/Stahlregen & Geiss + TobiasWolfBoi - Space Gelatin (Color Xplosion).milk
 Waveform/Stahlregen & Geiss + TobiasWolfBoi - Space Gelatin (Reverse Jelly V5).milk
-Waveform/The NG + MindJourney - Lake of Dreams (The Monster Inside).milk
 Waveform/Tripgnosis - Hypesurrealism nz+.milk
 Waveform/Unchained-liquardoblitz [shifter's esc shader] --- Isosceles edit2.milk
 Waveform/Unchained-liquardoblitz [shifter's esc shader].milk
 Waveform/Vovan - Bass With Flover remix a.milk
 Waveform/Zylot - Soup.milk
 Waveform/Zylot - True Visionary (Blossom Mix).milk
+Waveform/beta106i - Burning Form (Seething Mass) - mash0000 - fire paint easter egg internals.milk
 Waveform/blastofftek - Aether generator.milk
 Waveform/byeball --- Isosceles edit.milk
 Waveform/byeball.milk
