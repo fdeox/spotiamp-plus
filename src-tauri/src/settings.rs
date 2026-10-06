@@ -28,6 +28,21 @@ fn get_settings_file_path() -> PathBuf {
         .join("settings.yaml")
 }
 
+/// A line in the log on the first save and then at most every ten minutes,
+/// with the count: a session that saved nothing (seen once, cause unknown)
+/// shows as one without these.
+fn note_saved() {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static NOTED: Mutex<(Option<Instant>, u32)> = Mutex::new((None, 0));
+    let Ok(mut noted) = NOTED.lock() else { return };
+    noted.1 += 1;
+    if noted.0.is_none_or(|at| at.elapsed() >= Duration::from_secs(600)) {
+        log::info!("Settings saved ({} times so far)", noted.1);
+        noted.0 = Some(Instant::now());
+    }
+}
+
 pub struct AutoSavingSettings<'a> {
     inner: RwLockWriteGuard<'a, Settings>,
     hash_before: u64,
@@ -406,6 +421,7 @@ impl Settings {
             log::error!("Failed to save settings: {:?}", e);
         } else {
             log::debug!("Settings saved");
+            note_saved();
         }
     }
 
