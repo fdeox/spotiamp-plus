@@ -17,7 +17,7 @@
       "The <b>Library</b> opens on <i>Recently played</i>, shows when each song was added or last played (a <i>Date</i> column, where there's a date to show), puts Title before Album, and its columns can be sized by dragging the lines between them.",
       "A skin of our own: <b>Spotiamp+</b>, the classic look in the logo's orange and amber, with its own titles and media library frame. Pick it under <i>Skins</i>; Winamp Classic stays the default.",
       "The <b>volume</b> slider is gentler at the bottom: its lowest quarter was next to silent, with <i>Normalize volume</i> on above all. Your volume moves to where it sounds the same as before.",
-      "The kbps and kHz readouts and the playlist's times are in the skin's own letters, where Winamp puts them, and the playlist's corner shows the selected and total time, as Winamp's does.",
+      "The kbps and kHz readouts and the playlist's times are in the skin's own letters, where Winamp puts them, and the playlist's corner shows the selected and total time, as Winamp's does. A local file's kbps and kHz are its own now, not Spotify's 320 and 44.",
       "Local <b>.wav</b> files play: they could be picked but wouldn't open. Apple Lossless .m4a files play too.",
     ],
     "0.7.5": [

@@ -5,7 +5,7 @@
 [![Discord](https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/8Rq5Xycny4)
 
 A Winamp-style desktop player for **Spotify** — the classic skinned windows, real
-skins, a Milkdrop-style visualizer, and full keyboard control, playing your
+skins, a real MilkDrop visualizer, and full keyboard control, playing your
 Spotify Premium account natively (no browser) — and **your own local files**
 right in the same playlist.
 
@@ -35,19 +35,21 @@ docking windows that snap together like classic Winamp.
   then (a fact about the song, your listening streak, a tip) and wanders over to
   your other windows when she's bored. Drag her along the edge, double-click her
   for a stroll, right-click her for her size, to quiet her or to hide her.
-- 💿 **Local file playback** — play your own MP3, FLAC, M4A/AAC, WAV or OGG
-  files right alongside Spotify. Add files or a whole folder from the playlist
+- 💿 **Local file playback** — play your own MP3, FLAC, M4A (AAC or Apple
+  Lossless), WAV or OGG files right alongside Spotify. Add files or a whole folder from the playlist
   menu (or press **O** / **Shift+O**); they land in the playlist as normal rows,
   mixed with Spotify tracks, with next/previous walking the lot. Name, artist and
-  length come from the file's own tags, and the EQ and visualizer work on them too.
-  In Free Mode too.
+  length come from the file's own tags, the kbps and kHz readouts show the file's
+  own, and the EQ and visualizer work on them too. In Free Mode too.
 - 📂 **Playlist browser & Library window** — browse your Spotify playlists, open
   a two-pane Library (playlists + tracks), load or queue anything. In the
   **Library window**, just start typing a song or artist name and the selection
   jumps to it (what you typed shows in the header). **Pin** your favourite
   playlists to the top (right-click one), and **drag** songs or whole playlists
   from the Library onto the playlist. The playlist's **List** button (bottom
-  right) opens it, with the list commands.
+  right) opens it, with the list commands. It opens on *Recently played*, with a
+  *Date* column (added or last played), and the columns size by dragging the
+  lines between them.
 - 🕘 **Recently played & Most played** — two lists in the Library, kept on your
   own computer by Spotiamp+ (nothing is sent anywhere).
 - 📊 **Listening stats** — time listened, top songs and artists, your streak and
@@ -92,7 +94,8 @@ docking windows that snap together like classic Winamp.
   **Cherry**, **Amber**, **Emerald**, plus **six bundled classic Winamp skins**
   right in the menu — the *Classified* series by
   [Victhor](https://victhor.deviantart.com/) and the Sony/Nucleo hardware-style
-  skins (all rights remain with their original authors). Open the
+  skins (all rights remain with their original authors), and **Spotiamp+**, our
+  own, in the logo's orange and amber. Open the
   **Skin Museum** right inside Spotiamp+ (*Skins → Skin Museum…*) to browse
   thousands of classic skins from the
   [Winamp Skin Museum](https://skins.webamp.org/) and put one on with a click
@@ -105,6 +108,16 @@ docking windows that snap together like classic Winamp.
   feedback modes, synthwave, a spinning record and more, cycling on click, on
   a timer, and on every track change. **Double-click it for fullscreen**
   (**Esc** to come back).
+- 🎆 **MilkDrop** — real MilkDrop presets in the visualizer, drawn by
+  [projectM](https://github.com/projectM-visualizer/projectm) and moving with
+  the music: press **M** there (or its MILKDROP button). About **500 presets**
+  come with it, 150 of them by **Incubo_** (Se7enSlasher), among them his
+  MilkDrop takes on Spotiamp+'s own patterns, and MilkDrop's own textures.
+  **L** opens the preset list: search it, ♥ your favourites and change only
+  between them. A click is the next preset, PIN keeps one, double-click goes
+  fullscreen (with the song's title over it); right-click to choose how often
+  presets change (or to cut on the beat) and for the folder for your own
+  `.milk` files and textures.
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
   line in time with playback; **click a line to jump the song there**
   (right-click → *Windows → Lyrics*).
@@ -134,7 +147,8 @@ docking windows that snap together like classic Winamp.
 - 🪟 **Remembers your layout** — the library, visualizer, lyrics and album art
   windows reopen where and how you left them on the next launch.
 - 🔀 **Shuffle & 3-state repeat** — off → repeat-all → repeat-one.
-- ⏱️ **Playlist time readouts** — current elapsed + total playlist time.
+- ⏱️ **Playlist time readouts** — the selected and total time, and the song's
+  time, in the skin's own letters, where Winamp has them.
 - 🔌 **Auto-reconnect** — recovers automatically if Spotify drops the session,
   and the song carries on where it was. A moment offline won't sign you out.
 - 🔄 **Built-in updater** — Spotiamp+ flags a new version on launch, and
@@ -233,7 +247,8 @@ it, `Esc` closes.
 | start typing | jump to the first track whose title (or artist) matches |
 
 **Visualizer:** double-click the main window's spectrum to open it; click it to
-cycle patterns, double-click it for fullscreen, `Esc` to come back.
+cycle patterns, double-click it for fullscreen, `Esc` to come back. `M` switches
+MilkDrop on and off; with it on, `L` opens the preset list.
 
 **In the Library, double-click…**
 
@@ -259,4 +274,4 @@ npm run tauri build    # produce a release installer (src-tauri/target/release/b
 
 ---
 
-<sub>[MIT License](LICENSE) (Lala's art and animations: © fdeox, all rights reserved, see [their license](src/lib/mascot/LICENSE.md)) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · not affiliated with Winamp or Spotify</sub>
+<sub>[MIT License](LICENSE) (Lala's art and animations: © fdeox, all rights reserved, see [their license](src/lib/mascot/LICENSE.md)) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · MilkDrop by [projectM](https://github.com/projectM-visualizer/projectm) (LGPL-2.1), presets and textures by their authors ([credits](src-tauri/presets/CREDITS.txt)) · not affiliated with Winamp or Spotify</sub>
