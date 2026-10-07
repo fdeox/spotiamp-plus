@@ -28,7 +28,7 @@ const GLEW = {
   sha256: "ea6b14a1c6c968d0034e61ff6cb242cff2ce0ede79267a0f2b47b1b0b652c164",
 };
 const STAMP = join(OUT, "VERSIONS.txt");
-const STAMP_TEXT = `projectM ${PROJECTM.version}\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
+const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime)\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
 const OUTPUTS = ["projectM-4.dll", "glew32.dll", "LICENSE-projectM.txt", "LICENSE-GLEW.txt", "VERSIONS.txt"];
 
 if (process.platform !== "win32") {
@@ -84,6 +84,9 @@ run(TAR, ["-xf", glewZip]);
 run(CMAKE, [
   "-S", src, "-B", "b", "-A", "x64",
   "-DBUILD_SHARED_LIBS=ON",
+  // the C/C++ runtime inside the DLL: no MSVCP140.dll needed, which a fresh
+  // Windows without the Visual C++ Redistributable doesn't have
+  "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
   "-DENABLE_PLAYLIST=OFF",
   // the copies vendored in the tarball, not system packages
   "-DENABLE_SYSTEM_PROJECTM_EVAL=OFF",
