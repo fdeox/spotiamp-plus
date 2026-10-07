@@ -252,6 +252,40 @@ impl Pool {
     }
 }
 
+/// The pin. projectM asks for the next preset once, when the time's up;
+/// asked while pinned and ignored, it never asked again, so after unpinning
+/// the preset stayed for good (Incubo's find; projectM's own Android app does
+/// the same). Asked while pinned, the change waits for the unpinning.
+#[derive(Default)]
+struct Pin {
+    on: bool,
+    /// its time came while pinned
+    due: bool,
+}
+
+impl Pin {
+    /// projectM says the time's up: true if the next one goes now
+    fn time_up(&mut self) -> bool {
+        self.due = self.on;
+        !self.on
+    }
+
+    /// Pin or unpin: true if a change that came due meanwhile goes now.
+    fn set(&mut self, on: bool) -> bool {
+        self.on = on;
+        let now = !on && self.due;
+        if now {
+            self.due = false;
+        }
+        now
+    }
+
+    /// a preset put on: its own time starts
+    fn loaded(&mut self) {
+        self.due = false;
+    }
+}
+
 /// A preset that was loading when MilkDrop last stopped dead (projectM stuck
 /// in it, or the app gone with it) and the ones found so before, skipped
 /// from then on.
@@ -1284,7 +1318,9 @@ fn render(
     let mut pcm = Vec::new();
     let mut frames = 0u64;
     let mut second = (Instant::now(), 0u32);
-    let mut locked = false;
+    let mut pin = Pin::default();
+    // the next preset, now (a change due while pinned, unpinned)
+    let mut unpinned_due = false;
     let calls = gl_calls();
     let mut overlays: Vec<Overlay> = Vec::new();
     let mut bar = BarState::new();
@@ -1306,12 +1342,14 @@ fn render(
                 Ok(Command::Next) if !presets.is_empty() => {
                     go(index, true, true, &mut pool, area(width, height), &mut index);
                     loaded_at = Instant::now();
+                    pin.loaded();
                 }
                 Ok(Command::Previous) if !presets.is_empty() => {
                     go(index, false, true, &mut pool, area(width, height), &mut index);
                     loaded_at = Instant::now();
+                    pin.loaded();
                 }
-                Ok(Command::Lock(on)) => locked = on,
+                Ok(Command::Lock(on)) => unpinned_due |= pin.set(on),
                 Ok(Command::Timing(seconds, beat_cuts)) => unsafe {
                     (api.set_preset_duration)(handle, seconds);
                     // a beat may cut once half its time is up
@@ -1323,6 +1361,7 @@ fn render(
                         if show(i, true) {
                             index = i;
                             loaded_at = Instant::now();
+                            pin.loaded();
                         } else {
                             pool.broken[i] = true;
                         }
@@ -1449,9 +1488,12 @@ fn render(
             set_status(&status, |s| s.skipped += 1);
             advance = Some(false);
         }
-        if signals.switch.get() && !locked {
+        if signals.switch.get() && pin.time_up() {
             // blended, unless it's a cut on the beat
             advance = advance.or(Some(!signals.hard.get()));
+        }
+        if std::mem::take(&mut unpinned_due) {
+            advance = advance.or(Some(true));
         }
         signals.switch.set(false);
         signals.hard.set(false);
@@ -1461,6 +1503,7 @@ fn render(
         {
             go(index, true, smooth, &mut pool, area(width, height), &mut index);
             loaded_at = Instant::now();
+            pin.loaded();
         }
     }
 }
@@ -1858,6 +1901,25 @@ mod tests {
         assert!(ansi_path(&dir.join("not there")).is_none());
         let _ = std::fs::remove_dir_all(&dir);
         assert!(ansi_path(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn a_change_due_while_pinned_goes_when_unpinned() {
+        let mut pin = Pin::default();
+        assert!(pin.time_up(), "not pinned: the next one goes");
+        assert!(!pin.set(true));
+        assert!(!pin.time_up(), "pinned: it stays");
+        assert!(pin.set(false), "unpinned: now the next one");
+        assert!(!pin.set(false), "only once");
+        // pinned, its time up, then another one put on by hand: nothing due
+        pin.set(true);
+        pin.time_up();
+        pin.loaded();
+        assert!(!pin.set(false));
+        // pinned and unpinned before its time: the clock goes on as it was
+        pin.set(true);
+        assert!(!pin.set(false));
+        assert!(pin.time_up());
     }
 
     #[test]
