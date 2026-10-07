@@ -66,7 +66,7 @@
    * The loaded track is normally a Spotify track; local files reuse the same
    * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
    * transport routes on `isLocal`), so the type carries those as optional.
-   * @type {(SpotifyTrack & { isLocal?: boolean, path?: string }) | undefined}
+   * @type {(SpotifyTrack & { isLocal?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -145,6 +145,14 @@
   // shows a leading minus, which only fits the 2-digit field for single-digit
   // minutes, so longer remainders just drop the minus.
   let showRemaining = $state(false);
+  // The readouts' room: three places for kbps (a lossless file's 1411 shows
+  // as 1k4), two for kHz, right-aligned like Winamp's; nothing if unknown.
+  /** @param {number | undefined} kbps */
+  const lcdKbps = (kbps) =>
+    !kbps ? "" : (kbps < 1000 ? String(kbps) : `${Math.floor(kbps / 1000)}k${Math.floor((kbps % 1000) / 100)}`).padStart(3, " ");
+  /** @param {number | undefined} hz */
+  const lcdKhz = (hz) => (!hz ? "" : String(Math.round(hz / 1000)).slice(0, 2).padStart(2, " "));
+
   const currentTime = $derived.by(() => {
     const dur = loadedTrack?.durationInMs ?? 0;
     if (showRemaining && dur > 0) {
@@ -546,6 +554,8 @@
       album: meta?.album ?? "",
       albumArt: null,
       durationInMs: meta?.durationInMs ?? 0,
+      sampleRate: meta?.sampleRate ?? 0,
+      kbps: meta?.kbps ?? 0,
       displayName: meta?.displayName ?? base,
       displayDuration: durationToString(meta?.durationInMs ?? 0),
       unavailable: false,
@@ -939,6 +949,8 @@
             name: l.name,
             displayName: l.name,
             durationInMs: l.durationMs,
+            sampleRate: l.sampleRate ?? 0,
+            kbps: l.kbps ?? 0,
           });
         } else if (event.Ready !== undefined) {
           // the playlist came up after us: repeat the resume handshake
@@ -1325,11 +1337,12 @@
       playerState != "unavailable"}
   ></div>
 
-  <!-- kbps / kHz readouts (Spotify streams ~320kbps ogg @ 44.1kHz), in the
-       skin's TEXT.BMP letters inside MAIN.BMP's two boxes, where Winamp puts them -->
+  <!-- kbps / kHz readouts (Spotify streams 320 kbps at 44.1 kHz; a local file
+       its own), in the skin's TEXT.BMP letters inside MAIN.BMP's two boxes,
+       where Winamp puts them -->
   {#if playerState != "stopped" && playerState != "unavailable"}
-    <TextTicker unavailable={false} text="320" textOverride={undefined} x={111} y={43} chars={3} />
-    <TextTicker unavailable={false} text="44" textOverride={undefined} x={156} y={43} chars={2} />
+    <TextTicker unavailable={false} text={lcdKbps(loadedTrack?.isLocal ? loadedTrack.kbps : 320)} textOverride={undefined} x={111} y={43} chars={3} />
+    <TextTicker unavailable={false} text={lcdKhz(loadedTrack?.isLocal ? loadedTrack.sampleRate : 44100)} textOverride={undefined} x={156} y={43} chars={2} />
   {/if}
 
   <button

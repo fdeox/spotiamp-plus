@@ -230,7 +230,7 @@ export class LocalRow extends PlaylistRow {
     /**
      * @param {string} path
      * @param {Playlist} playlist
-     * @param {{name?: string, artist?: string, durationMs?: number}} [meta]
+     * @param {{name?: string, artist?: string, durationMs?: number, sampleRate?: number, kbps?: number}} [meta]
      */
     constructor(path, playlist, meta) {
         // PlaylistRow expects a Spotify uri; a local file has none, so pass a
@@ -243,6 +243,8 @@ export class LocalRow extends PlaylistRow {
         this.displayName = meta?.artist ? `${meta.artist} - ${name}` : name;
         this.durationMs = meta?.durationMs ?? 0;
         this.displayDuration = this.durationMs ? durationToString(this.durationMs) : "";
+        this.sampleRate = meta?.sampleRate ?? 0;
+        this.kbps = meta?.kbps ?? 0;
     }
 
     async loadTrack() {
@@ -252,6 +254,8 @@ export class LocalRow extends PlaylistRow {
                 path: this.path,
                 name: this.displayName,
                 durationMs: this.durationMs,
+                sampleRate: this.sampleRate,
+                kbps: this.kbps,
             },
         });
         const rows = this.playlist.rows;
@@ -812,6 +816,8 @@ export class Playlist {
                 name: m?.title || undefined,
                 artist: m?.artist || undefined,
                 durationMs: m?.duration_ms || 0,
+                sampleRate: m?.sample_rate || 0,
+                kbps: m?.kbps || 0,
             };
         } catch {
             meta = undefined;

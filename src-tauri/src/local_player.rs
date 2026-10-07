@@ -748,6 +748,10 @@ pub struct LocalMeta {
     pub artist: String,
     pub album: String,
     pub duration_ms: u32,
+    /// for the kHz readout (0 if unknown)
+    pub sample_rate: u32,
+    /// the average, for the kbps readout (0 if unknown)
+    pub kbps: u32,
 }
 
 /// Probe a single file for its tags + duration. Separate from the playback
@@ -778,6 +782,15 @@ fn apply_tags(rev: &symphonia::core::meta::MetadataRevision, meta: &mut LocalMet
     }
 }
 
+/// The file's average bitrate (what Winamp shows for a file): all of it,
+/// tags and cover included, over its length.
+fn average_kbps(bytes: u64, duration_ms: u32) -> u32 {
+    if duration_ms == 0 {
+        return 0;
+    }
+    (bytes * 8 / duration_ms as u64) as u32
+}
+
 fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
     let file = std::fs::File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -806,6 +819,10 @@ fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
         let t = tb.calc_time(n);
         meta.duration_ms = ((t.seconds as f64 + t.frac) * 1000.0) as u32;
     }
+    if let Some(track) = probed.format.tracks().iter().find(|t| t.codec_params.sample_rate.is_some()) {
+        meta.sample_rate = track.codec_params.sample_rate.unwrap_or(0);
+    }
+    meta.kbps = average_kbps(std::fs::metadata(path).map(|m| m.len()).unwrap_or(0), meta.duration_ms);
 
     // Tags the probe collected up front (ID3v2 on MP3 usually lands here)...
     if let Some(rev) = probed.metadata.get().as_ref().and_then(|m| m.current()) {
@@ -821,6 +838,14 @@ fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
 #[cfg(test)]
 mod format_tests {
     use super::*;
+
+    #[test]
+    fn the_average_bitrate_is_size_over_length() {
+        // a 3-minute CD-quality WAV: 1411 kbps; an empty length: unknown
+        assert_eq!(average_kbps(44_100 * 4 * 180, 180_000), 1411);
+        assert_eq!(average_kbps(7_200_000, 180_000), 320);
+        assert_eq!(average_kbps(1000, 0), 0);
+    }
 
     /// What the picker offers has to open: WAV was offered (AUDIO_EXTS) with
     /// no WAV reader built in, so every .wav failed to play.
