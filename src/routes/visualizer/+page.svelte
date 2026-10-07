@@ -295,7 +295,7 @@
     const scale = (window.devicePixelRatio || 1) * (REACTIVE_WINDOW_SIZE.zoom || 1);
     invoke("milkdrop_bar", {
       bar: {
-        text: milkNote || `MilkDrop · ${milkPreset || (milkPresets ? "loading…" : "no presets")}`,
+        text: milkNote || milkPreset || (milkPresets ? "loading…" : "no presets"),
         note: !!milkNote,
         shown: !rest && !(fullscreen && idle),
         pinned,
@@ -1587,7 +1587,7 @@
       {#if milkNote}
         <span class="viz-preset viz-note">{milkNote}</span>
       {:else if milk}
-        <span class="viz-preset">MilkDrop · {milkPreset || (milkPresets ? "loading…" : "no presets")}</span>
+        <span class="viz-preset">{milkPreset || (milkPresets ? "loading…" : "no presets")}</span>
       {:else}
         <span class="viz-preset">{mode + 1}/{MODE_COUNT} · {MODE_NAMES[mode]}</span>
       {/if}

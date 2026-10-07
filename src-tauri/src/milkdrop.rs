@@ -380,8 +380,11 @@ fn next_index(bad: &[bool], from: usize, forward: bool) -> Option<usize> {
         .find(|&i| !bad[i])
 }
 
+/// A preset's name as shown: its file name (the author, then the title),
+/// underscores as spaces.
 fn preset_name(path: &Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    stem.replace('_', " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 // --- the child window ---------------------------------------------------------------
@@ -1901,6 +1904,12 @@ mod tests {
         assert!(ansi_path(&dir.join("not there")).is_none());
         let _ = std::fs::remove_dir_all(&dir);
         assert!(ansi_path(&std::env::temp_dir()).is_some());
+    }
+
+    #[test]
+    fn a_preset_is_shown_by_its_file_name_cleaned_up() {
+        assert_eq!(preset_name(Path::new(r"C:\p\Geiss - Reaction Diffusion 2.milk")), "Geiss - Reaction Diffusion 2");
+        assert_eq!(preset_name(Path::new(r"C:\p\EoS_Phat_PeterP__Sentinel.milk")), "EoS Phat PeterP Sentinel");
     }
 
     #[test]
