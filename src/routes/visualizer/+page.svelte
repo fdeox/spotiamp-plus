@@ -4,15 +4,17 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Menu } from "@tauri-apps/api/menu";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
-  import { subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { SHADER_COMMON } from "./shader-common.js";
   import { FRAG_B, MODE_NAMES_B, FEEDBACK_B } from "./shaders-b.js";
   import { patternSources } from "./shader-split.js";
-  import { forwardShortcuts } from "$lib/shortcuts.js";
+  import { forwardShortcuts, MAIN_WINDOW_KEYS } from "$lib/shortcuts.js";
 
   // The main window's keys work here too (lib/shortcuts.js).
-  onMount(() => forwardShortcuts());
+  // L is MilkDrop's preset list here while it's on (the Library otherwise:
+  // passed on below)
+  onMount(() => forwardShortcuts({ keys: new Set([...MAIN_WINDOW_KEYS].filter((k) => k !== "l")) }));
 
   /** @type {HTMLCanvasElement} (bound below before anything draws) */
   let canvas;
@@ -464,9 +466,10 @@
     if ((e.key === "m" || e.key === "M") && plain) {
       e.preventDefault();
       setMilk(!milk);
-    } else if ((e.key === "l" || e.key === "L") && plain && milkUp) {
+    } else if ((e.key === "l" || e.key === "L") && plain) {
       e.preventDefault();
-      if (milkListOpen) closeMilkList();
+      if (!milkUp) emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: false });
+      else if (milkListOpen) closeMilkList();
       else openMilkList();
     } else if (e.key === "Escape" && milkListOpen) {
       e.preventDefault();
