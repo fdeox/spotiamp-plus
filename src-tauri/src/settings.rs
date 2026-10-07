@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 use tauri::LogicalPosition;
 
 pub fn get_config_dir() -> Option<PathBuf> {
-    let path =
-        ProjectDirs::from("org.darkbits", "", "spotiamp").map(|pd| pd.config_dir().to_path_buf());
+    // A folder of its own instead (the smoke test's copy): a test run then
+    // never touches the user's settings, history or skin.
+    let path = std::env::var_os("SPOTIAMP_CONFIG_DIR").map(PathBuf::from).or_else(|| {
+        ProjectDirs::from("org.darkbits", "", "spotiamp").map(|pd| pd.config_dir().to_path_buf())
+    });
     if let Some(path) = path.clone()
         && let Err(e) = create_dir_all(path)
     {
@@ -29,8 +32,7 @@ fn get_settings_file_path() -> PathBuf {
 }
 
 /// A line in the log on the first save and then at most every ten minutes,
-/// with the count: a session that saved nothing (seen once, cause unknown)
-/// shows as one without these.
+/// with the count: the log shows the settings being kept.
 fn note_saved() {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
