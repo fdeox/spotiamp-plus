@@ -454,6 +454,26 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
                     sprites.insert("gentitle".to_string(), format!("data:image/png;base64,{b64}"));
                 }
             }
+            // no GEN.BMP: a plain plate made from the playlist's titlebar
+            // tile, so the title doesn't sit on its pattern
+            None if !from_gen => match pledit_title_plate(&sheet) {
+                Some((plate, band)) => {
+                    let mut png = Vec::new();
+                    if image::DynamicImage::ImageRgb8(plate)
+                        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                        .is_ok()
+                    {
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+                        sprites.insert("gentitle".to_string(), format!("data:image/png;base64,{b64}"));
+                        let lum = 0.299 * band[0] as f32 + 0.587 * band[1] as f32 + 0.114 * band[2] as f32;
+                        let text = if lum > 140.0 { "#101014" } else { "#f0f2f8" };
+                        sprites.insert("titletext".into(), text.into());
+                    }
+                }
+                None => {
+                    sprites.insert("gentitle".to_string(), "transparent".to_string());
+                }
+            },
             None => {
                 sprites.insert("gentitle".to_string(), "transparent".to_string());
             }
@@ -465,8 +485,13 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     // of the title, the fills between them, and the title in the skin's own
     // letters. Only for a sheet whose titlebar row is really drawn; the
     // letters only when they're there (some skins leave the cells blank).
+    // One of the bundled skins reads it from the app's own copy, so a fix to
+    // it (Spotiamp+'s letters, in 0.7.7) reaches a skin unpacked before.
     if let Some(sheet) = files
-        .read("GEN.BMP")
+        .read("MAIN.BMP")
+        .and_then(|main| bundled_twin(&main))
+        .and_then(|twin| zip_file(twin, "GEN.BMP"))
+        .or_else(|| files.read("GEN.BMP"))
         .and_then(|b| image::load_from_memory(&b).ok())
         .map(|img| img.to_rgb8())
         && gen_titlebar_drawn(&sheet)
@@ -683,6 +708,37 @@ fn button_label_colour(frame: [u8; 3], own: Option<[u8; 3]>) -> [u8; 3] {
     }
 }
 
+/// The plate the window titles sit on in a skin without GEN.BMP, 1x20: a
+/// column of PLEDIT.BMP's titlebar tile (127..151) with its frame rows kept
+/// (each row's commonest colour) and the rows the title covers (3..14) in the
+/// tile's commonest colour there, so the title isn't drawn over the tile's
+/// pattern (grip lines, a circuit board…). Also gives that colour.
+fn pledit_title_plate(sheet: &image::DynamicImage) -> Option<(image::RgbImage, [u8; 3])> {
+    use image::GenericImageView;
+    if sheet.width() < 152 || sheet.height() < 20 {
+        return None;
+    }
+    let commonest = |rows: std::ops::Range<u32>| -> [u8; 3] {
+        let mut counts: HashMap<[u8; 3], u32> = HashMap::new();
+        for y in rows {
+            for x in 127..152 {
+                let p = sheet.get_pixel(x, y).0;
+                *counts.entry([p[0], p[1], p[2]]).or_default() += 1;
+            }
+        }
+        // ties go to the same colour every time
+        counts.into_iter().max_by_key(|&(c, n)| (n, c)).map(|(c, _)| c).unwrap_or([0, 0, 0])
+    };
+    const BAND: std::ops::Range<u32> = 3..15;
+    let band = commonest(BAND);
+    let mut plate = image::RgbImage::new(1, 20);
+    for y in 0..20 {
+        let c = if BAND.contains(&y) { band } else { commonest(y..y + 1) };
+        plate.put_pixel(0, y, image::Rgb(c));
+    }
+    Some((plate, band))
+}
+
 /// Whether GEN.BMP's titlebar pieces (the top 20 rows, 155 wide) are really
 /// drawn and the pressed close button (148,42 9x9) is on the sheet. A sheet
 /// left in its background colour up there would draw an empty bar.
@@ -786,6 +842,41 @@ mod gen_tests {
         let bento = sheet_of("Bento");
         assert!(gen_titlebar_drawn(&bento));
         assert_eq!(gen_letters(&bento, 88), None);
+    }
+
+    #[test]
+    fn spotiamp_letters_are_whole() {
+        // its letters were scrambled below row 91 (cyan lines under them)
+        let sheet = sheet_of("Spotiamp+");
+        let letters = gen_letters(&sheet, 88).unwrap();
+        for cell in letters.split(' ') {
+            let (x, w) = cell.split_once(':').unwrap();
+            let (x, w): (u32, u32) = (x.parse().unwrap(), w.parse().unwrap());
+            for y in [88u32, 96] {
+                for yy in y..y + 7 {
+                    for xx in x..x + w {
+                        assert_ne!(sheet.get_pixel(xx, yy).0, [0, 198, 255], "{cell} row {yy}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_plain_plate_from_the_playlist_tile() {
+        // a tile of grip lines (rows 6 and 10 bright) on navy, a frame row on top
+        let mut sheet = image::RgbImage::from_pixel(280, 186, image::Rgb([40, 40, 90]));
+        for x in 127..152 {
+            sheet.put_pixel(x, 0, image::Rgb([200, 200, 200]));
+            sheet.put_pixel(x, 6, image::Rgb([230, 230, 240]));
+            sheet.put_pixel(x, 10, image::Rgb([230, 230, 240]));
+        }
+        let (plate, band) = pledit_title_plate(&image::DynamicImage::ImageRgb8(sheet)).unwrap();
+        assert_eq!(band, [40, 40, 90]);
+        assert_eq!(plate.get_pixel(0, 0).0, [200, 200, 200]); // the frame row stays
+        assert_eq!(plate.get_pixel(0, 6).0, [40, 40, 90]); // the grip lines don't
+        assert_eq!(plate.get_pixel(0, 10).0, [40, 40, 90]);
+        assert!(pledit_title_plate(&image::DynamicImage::new_rgb8(100, 20)).is_none());
     }
 
     #[test]
