@@ -28,7 +28,9 @@ const GLEW = {
   sha256: "ea6b14a1c6c968d0034e61ff6cb242cff2ce0ede79267a0f2b47b1b0b652c164",
 };
 const STAMP = join(OUT, "VERSIONS.txt");
-const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime) + Spotiamp+'s get_fft (scripts/projectm)\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
+// the additions' code is in the stamp too (its hash), so a change to it builds again
+const ADDITIONS = createHash("sha256").update(readFileSync(join(ROOT, "scripts", "projectm", "SpotiampFft.hpp"))).digest("hex").slice(0, 12);
+const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime) + Spotiamp+'s get_fft / get_wave (scripts/projectm, ${ADDITIONS})\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
 const OUTPUTS = ["projectM-4.dll", "glew32.dll", "LICENSE-projectM.txt", "LICENSE-GLEW.txt", "VERSIONS.txt"];
 
 if (process.platform !== "win32") {
@@ -90,7 +92,9 @@ function patchProjectM(lib) {
       "    auto GetSampler(const std::string& fullName) -> std::shared_ptr<class Sampler>;\n",
       "    auto GetSampler(const std::string& fullName) -> std::shared_ptr<class Sampler>;\n\n" +
         "    //! Spotiamp+: get_fft()'s spectrum texture (SpotiampFft.hpp), one per projectM instance.\n" +
-        "    std::shared_ptr<class Texture> spotiampFft;\n",
+        "    std::shared_ptr<class Texture> spotiampFft;\n" +
+        "    //! Spotiamp+: get_wave()'s waveform texture (SpotiampFft.hpp), one per projectM instance.\n" +
+        "    std::shared_ptr<class Texture> spotiampWave;\n",
     ],
   ]);
   edit("MilkdropPreset/PresetState.hpp", [
@@ -126,6 +130,14 @@ function patchProjectM(lib) {
         "            m_textureSamplerDescriptors.emplace_back(SpotiampFft::Get().FftTexture(*presetState.renderContext.textureManager),\n" +
         '                                                      presetState.renderContext.textureManager->GetSampler("fc_fft"),\n' +
         '                                                      name, "fft");\n' +
+        "            continue;\n" +
+        "        }\n" +
+        "        // Spotiamp+: get_wave()'s waveform texture\n" +
+        '        if (lowerCaseName == "wave")\n' +
+        "        {\n" +
+        "            m_textureSamplerDescriptors.emplace_back(SpotiampFft::Get().WaveTexture(*presetState.renderContext.textureManager),\n" +
+        '                                                      presetState.renderContext.textureManager->GetSampler("fc_wave"),\n' +
+        '                                                      name, "wave");\n' +
         "            continue;\n" +
         "        }\n\n" +
         "        // Random textures need special treatment.\n",
