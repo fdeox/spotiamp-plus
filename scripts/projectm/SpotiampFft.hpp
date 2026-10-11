@@ -51,26 +51,55 @@ public:
         "float get_wave(float pos) { return (get_wave_left(pos) + get_wave_right(pos)) * 0.5; }\n";
 
     //! A preset's shader, ready for projectM: the helpers it calls in front
-    //! (only those, so no preset gets a texture it doesn't use), and its
+    //! (only those, so no preset gets a texture it doesn't use), its
     //! HAS_FFT_PEAK checks settled, since projectM's preprocessor only takes
-    //! "#if <number>" (no defined(), no #ifdef).
+    //! "#if <number>" (no names, no defined(), no #ifdef), and any local
+    //! variable named like a built-in value given a name of its own.
     static auto Prepare(const std::string& code) -> std::string
     {
-        bool const fft = code.find("get_fft") != std::string::npos || code.find("HAS_FFT_PEAK") != std::string::npos;
-        bool const wave = code.find("get_wave") != std::string::npos;
+        std::string out = Unshadow(code);
+        bool const fft = out.find("get_fft") != std::string::npos || out.find("HAS_FFT_PEAK") != std::string::npos;
+        bool const wave = out.find("get_wave") != std::string::npos;
         if (!fft && !wave)
         {
-            return code;
+            return out;
         }
-        std::string out = code;
         if (fft)
         {
             out = std::regex_replace(out, std::regex(R"(#[ \t]*if[ \t]*!+[ \t]*defined[ \t]*\(?[ \t]*HAS_FFT_PEAK[ \t]*\)?)"), "#if 0");
             out = std::regex_replace(out, std::regex(R"(#[ \t]*if[ \t]+defined[ \t]*\(?[ \t]*HAS_FFT_PEAK[ \t]*\)?)"), "#if 1");
             out = std::regex_replace(out, std::regex(R"(#[ \t]*ifndef[ \t]+HAS_FFT_PEAK)"), "#if 0");
             out = std::regex_replace(out, std::regex(R"(#[ \t]*ifdef[ \t]+HAS_FFT_PEAK)"), "#if 1");
+            // and plainly "#if HAS_FFT_PEAK" / "#if !HAS_FFT_PEAK"
+            out = std::regex_replace(out, std::regex(R"(#[ \t]*if[ \t]*!+[ \t]*HAS_FFT_PEAK\b)"), "#if 0");
+            out = std::regex_replace(out, std::regex(R"(#[ \t]*if[ \t]+HAS_FFT_PEAK\b)"), "#if 1");
         }
         return std::string(fft ? FftHelpers : "") + (wave ? WaveHelpers : "") + out;
+    }
+
+    //! MilkDrop's built-in values (aspect, time, bass, q1…) are uniforms in
+    //! DirectX, so a shader can declare a local of the same name and it just
+    //! shadows the uniform ("float aspect = texsize.x / texsize.y;", as some
+    //! BeatDrop presets do). In projectM they're #defines of packed uniforms,
+    //! and such a declaration doesn't compile. From its declaration on, the
+    //! local gets a name of its own.
+    static auto Unshadow(const std::string& code) -> std::string
+    {
+        static const std::regex declaration(
+            R"(\b(?:float[234]?|half[234]?|int[234]?|uint|bool)[ \t]+)"
+            R"((aspect|texsize|time|fps|frame|progress|bass|mid|treb|vol|bass_att|mid_att|treb_att|vol_att|)"
+            R"(q[1-9]|q[12][0-9]|q3[0-2]|roam_cos|roam_sin|slow_roam_cos|slow_roam_sin|)"
+            R"(mip_x|mip_y|mip_xy|mip_avg|blur[123]_min|blur[123]_max)[ \t]*(?=[=;,\[]))");
+        std::string out = code;
+        std::smatch match;
+        // each pass renames one, so the same declaration doesn't match again
+        for (int guard = 0; guard < 64 && std::regex_search(out, match, declaration); guard++)
+        {
+            std::string const name = match[1].str();
+            auto const at = static_cast<size_t>(match.position(0));
+            out = out.substr(0, at) + std::regex_replace(out.substr(at), std::regex("\\b" + name + "\\b"), "spotiamp_" + name);
+        }
+        return out;
     }
 
     static auto Get() -> SpotiampFft&
