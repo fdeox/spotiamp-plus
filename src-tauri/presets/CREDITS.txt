@@ -1,8 +1,8 @@
-MilkDrop presets that come with Spotiamp+ (527)
+MilkDrop presets that come with Spotiamp+ (534)
 
-176 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
+183 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
 Spotiamp+ by him; among them his MilkDrop takes on Spotiamp+'s own visualizer patterns.
-  Those call get_fft() as his BeatDrop defines it, which Spotiamp+ adds to projectM
+  Those call get_fft() and get_wave() as his BeatDrop defines them, which Spotiamp+ adds to projectM
   (scripts/projectm/SpotiampFft.hpp).
   BeatDrop, his MilkDrop visualizer: https://github.com/OfficialIncubo/BeatDrop-Music-Visualizer
   Support him: https://ko-fi.com/officialincubo_
@@ -122,6 +122,7 @@ Incubo_/Se7enSlasher - Bouncing Balls with the Purple Pixel.milk
 Incubo_/Se7enSlasher - Bubble Moristein.milk
 Incubo_/Se7enSlasher - Chaotic Illusion (Update 2024).milk
 Incubo_/Se7enSlasher - Claude AI's 3D Slow Inside-Looking Rotating Gradient Cube.milk
+Incubo_/Se7enSlasher - Cosmic Iris EQ.milk
 Incubo_/Se7enSlasher - DEMO - Wave Shader Functions.milk
 Incubo_/Se7enSlasher - Dancing Swirling Magic Watercolor (Solarized Moving Four Way Mirror Beat Random Texture Mix).milk
 Incubo_/Se7enSlasher - Dancing Swirling Magic Watercolor.milk
@@ -143,7 +144,9 @@ Incubo_/Se7enSlasher - MilkDropLM Generated Preset #7.milk
 Incubo_/Se7enSlasher - Mix to the mix.milk
 Incubo_/Se7enSlasher - Neon Cyber-Lattice.milk
 Incubo_/Se7enSlasher - Our Glowing Dream.milk
+Incubo_/Se7enSlasher - PolarSpectrumEX.milk
 Incubo_/Se7enSlasher - Rainbow Galaxy.milk
+Incubo_/Se7enSlasher - Rainbow Random Texture EQ.milk
 Incubo_/Se7enSlasher - Ravy Lissajous Experiment.milk
 Incubo_/Se7enSlasher - Rhythmic Circuit-Tech (Update 2024).milk
 Incubo_/Se7enSlasher - Rippling Colorful Borders.milk
@@ -151,6 +154,10 @@ Incubo_/Se7enSlasher - Simple Zoom Slice Effect.milk
 Incubo_/Se7enSlasher - Spiral Spectrum Analyzer.milk
 Incubo_/Se7enSlasher - Texture Distortion 2000 (Treble Reacted Warp Version) nz.milk
 Incubo_/Se7enSlasher - Texture Distortion 2000 (Treble Reacted Warp Version).milk
+Incubo_/Se7enSlasher - The Spectrum Analyzer is our Proeminence (Non-Overglow Edition).milk
+Incubo_/Se7enSlasher - The Spectrum Analyzer is our Proeminence (Rainbow + Non-Overglow Edition).milk
+Incubo_/Se7enSlasher - The Spectrum Analyzer is our Proeminence (Rainbow Edition).milk
+Incubo_/Se7enSlasher - The Spectrum Analyzer is our Proeminence.milk
 Incubo_/Se7enSlasher - The Stem Player (The Sparkling Tunnel Mix).milk
 Incubo_/Se7enSlasher - The Sun (Update 2023).milk
 Incubo_/Se7enSlasher - The Sun.milk
