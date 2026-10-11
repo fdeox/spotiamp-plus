@@ -1772,7 +1772,7 @@
   .ml-listinput {
     flex: 1;
     min-width: 0;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     background: #0c0d12;
     color: #d8d8e8;
     border: 1px solid #3a3d4a;
@@ -1792,7 +1792,7 @@
     background: none;
     border: none;
     color: var(--skin-plnormal, #c8c8d4);
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     padding: 2px 5px;
     cursor: pointer;
     white-space: nowrap;
@@ -1805,7 +1805,7 @@
   }
   .ml-listempty {
     color: #808080;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     padding: 2px 5px;
     font-style: italic;
   }
@@ -1817,7 +1817,7 @@
   }
   .ml-listcount {
     margin-left: 4px;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: color-mix(in srgb, currentColor 50%, transparent);
   }
   .ml-listdel {
