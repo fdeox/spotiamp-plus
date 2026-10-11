@@ -1053,30 +1053,39 @@
       stop();
       if (!cell) return;
       const step = 1 / (window.devicePixelRatio || 1); // one screen pixel
-      let offset = 0;
+      // by the clock, not by ticks: a window in the background gets its
+      // timers slowed right down
+      let phase = "wait";
+      let since = performance.now();
       let end = 0;
-      let wait = 0;
       const measure = () => {
         cell.classList.remove("marquee");
         node.style.transform = "";
         end = Math.ceil((cell.scrollWidth - cell.clientWidth) / step) * step;
         if (end > 0) cell.classList.add("marquee");
-        wait = 30; // 1.2 s
-        offset = 0;
+        phase = "wait";
+        since = performance.now();
       };
       measure();
       timer = setInterval(() => {
-        if (end <= 0 || wait > 0) {
-          wait--;
-          if (end <= 0 && wait < 0) measure(); // the window may have narrowed since
-          return;
-        }
-        offset = Math.min(offset + step, end);
-        node.style.transform = `translateX(${-offset}px)`;
-        if (offset >= end) {
+        const t = performance.now() - since;
+        if (phase === "wait") {
+          // a moment first (and the window may have narrowed or widened since)
+          if (t < 1200) return;
+          if (end <= 0) return measure();
+          phase = "scroll";
+          since = performance.now();
+        } else if (phase === "scroll") {
+          // a screen pixel every 40 ms
+          const offset = Math.min(Math.floor(t / 40) * step, end);
+          node.style.transform = `translateX(${-offset}px)`;
+          if (offset >= end) {
+            phase = "end";
+            since = performance.now();
+          }
+        } else if (t >= 1600) {
           // a wait at the end, then from the start again
-          wait = 40;
-          setTimeout(() => timer && measure(), 1600);
+          measure();
         }
       }, 40);
     }
