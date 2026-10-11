@@ -512,6 +512,14 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
                 continue;
             };
             let value = value.trim().trim_matches('"');
+            // the playlist's font (Winamp's Font=, usually Arial or Tahoma),
+            // quoted for CSS; only plain font-name characters get through
+            if key.trim().eq_ignore_ascii_case("font") {
+                if let Some(font) = skin_font(value) {
+                    sprites.insert("plfont".to_string(), font);
+                }
+                continue;
+            }
             if !value.starts_with('#') {
                 continue;
             }
@@ -649,6 +657,28 @@ fn library_title(text: &str) -> Option<String> {
         .collect();
     let title = title.trim().to_string();
     (!title.is_empty()).then_some(title)
+}
+
+/// PLEDIT.TXT's Font=, as a quoted CSS font name; None for an empty or odd one.
+fn skin_font(value: &str) -> Option<String> {
+    let name = value.trim();
+    let ok = !name.is_empty()
+        && name.len() <= 40
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'));
+    ok.then(|| format!("\"{name}\""))
+}
+
+#[cfg(test)]
+mod skin_font_tests {
+    use super::*;
+
+    #[test]
+    fn a_plain_font_name_only() {
+        assert_eq!(skin_font(" Arial ").as_deref(), Some("\"Arial\""));
+        assert_eq!(skin_font("MS Sans Serif").as_deref(), Some("\"MS Sans Serif\""));
+        assert_eq!(skin_font("Arial\"; } body { x"), None);
+        assert_eq!(skin_font(""), None);
+    }
 }
 
 /// Winamp's own spectrum colours, for what a skin's VISCOLOR.TXT leaves out.

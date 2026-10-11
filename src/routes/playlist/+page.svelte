@@ -515,6 +515,19 @@
       sep,
       { text: "Load .wsz from disk…", checked: isWorn("file"), action: loadWszSkin },
       { text: "Skin &Museum…", checked: isWorn("museum"), action: openSkinMuseum },
+      sep,
+      {
+        text: "Use the skin's font",
+        checked: skinFont,
+        action: () => {
+          skinFont = !skinFont;
+          try {
+            localStorage.setItem("skin-font", skinFont ? "1" : "0");
+          } catch {}
+          // this window too (the storage event only reaches the others)
+          window.dispatchEvent(new StorageEvent("storage", { key: "skin-font" }));
+        },
+      },
     ];
     const windowItems = [
       ...(controllerMode ? [] : [{ text: "Library", accelerator: "L", action: openLibraryWindow }]),
@@ -1012,6 +1025,16 @@
     .then((names) => (bundledSkins = names))
     .catch(() => {});
   const prettySkinName = (/** @type {string} */ name) => name.replaceAll("_", " ");
+  /** @param {string} name */
+  // "Use the skin's font" (see +layout.svelte)
+  let skinFont = (() => {
+    try {
+      return localStorage.getItem("skin-font") === "1";
+    } catch {
+      return false;
+    }
+  })();
+
   /** @param {string} name */
   async function chooseBundledSkin(name) {
     try {

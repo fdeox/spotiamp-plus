@@ -50,10 +50,25 @@
     "plnormal", "plcurrent", "plbg", "plselbg", "textcolor", "libtitle",
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
-    "genexhdrtext", "genexbtn", "genexbtnp", "viscolor",
+    "genexhdrtext", "genexbtn", "genexbtnp", "viscolor", "plfont",
     // the skin's cursors
     "cur-close", "cur-eqclose", "cur-eqnormal", "cur-eqslid", "cur-eqtitle", "cur-mainmenu", "cur-min", "cur-normal", "cur-pclose", "cur-pnormal", "cur-posbar", "cur-psize", "cur-ptbar", "cur-pvscroll", "cur-pwinbut", "cur-pwsnorm", "cur-pwssize", "cur-songname", "cur-titlebar", "cur-volbal", "cur-volbar", "cur-winbut", "cur-wsclose", "cur-wsmin", "cur-wsnormal", "cur-wsposbar", "cur-wswinbut",
   ];
+  // "Use the skin's font": the playlist and Library lists in the font the
+  // skin names (PLEDIT.TXT Font=) instead of the pixel font. A setting of
+  // this PC, shared by the windows through localStorage.
+  function applySkinFont() {
+    let on = false;
+    try {
+      on = localStorage.getItem("skin-font") === "1";
+    } catch {}
+    const font = getComputedStyle(document.body).getPropertyValue("--skin-plfont").trim();
+    if (on && font) document.body.dataset.skinFont = "";
+    else delete document.body.dataset.skinFont;
+  }
+  window.addEventListener("storage", (e) => e.key === "skin-font" && applySkinFont());
+  window.addEventListener(SKIN_APPLIED, applySkinFont);
+
   /** @param {string} skin */
   function applySkin(skin) {
     if (skin === "custom") {
