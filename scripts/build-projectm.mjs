@@ -29,7 +29,12 @@ const GLEW = {
 };
 const STAMP = join(OUT, "VERSIONS.txt");
 // the additions' code is in the stamp too (its hash), so a change to it builds again
-const ADDITIONS = createHash("sha256").update(readFileSync(join(ROOT, "scripts", "projectm", "SpotiampFft.hpp"))).digest("hex").slice(0, 12);
+const ADDITIONS = createHash("sha256")
+  .update(readFileSync(join(ROOT, "scripts", "projectm", "SpotiampFft.hpp"), "utf8").replaceAll("
+", "
+")) // same on any checkout
+  .digest("hex")
+  .slice(0, 12);
 const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime) + Spotiamp+'s get_fft / get_wave (scripts/projectm, ${ADDITIONS})\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
 const OUTPUTS = ["projectM-4.dll", "glew32.dll", "LICENSE-projectM.txt", "LICENSE-GLEW.txt", "VERSIONS.txt"];
 
