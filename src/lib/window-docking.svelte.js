@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import {
   getCurrentWindow,
   PhysicalPosition,
@@ -535,8 +536,10 @@ export function makeTauriWindowDraggable(element, options = {}) {
       moving = true;
       const position = nextPosition;
       nextPosition = undefined;
-      await currentWindow.setPosition(
-        new PhysicalPosition(position.x, position.y),
+      // moved by the backend: a dragged player takes its group along in the
+      // same move (see app_window::dock_drag_to)
+      await invoke("dock_drag_to", { x: position.x, y: position.y }).catch(() =>
+        currentWindow.setPosition(new PhysicalPosition(position.x, position.y)),
       );
       moving = false;
       await applyNextPosition();

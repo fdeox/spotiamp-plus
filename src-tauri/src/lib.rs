@@ -668,6 +668,7 @@ pub fn run() {
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
             app_window::set_window_inner_size,
+            app_window::dock_drag_to,
             app_window::get_window_inner_size,
             app_window::windows_to_reopen,
             app_window::set_ui_scale,
