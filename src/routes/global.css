@@ -3,7 +3,7 @@
     margin: 0;
     border: 0;
     image-rendering: pixelated;
-    cursor: url(/src/static/assets/skins/base-2.91/MAINMENU.CUR), auto;
+    cursor: var(--skin-cur-normal, url(/src/static/assets/skins/base-2.91/MAINMENU.CUR)), auto;
 }
 
 /* ---- skins ----

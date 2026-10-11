@@ -1,5 +1,5 @@
 <script>
-  import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte";
+  import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED } from "$lib/common.svelte";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
@@ -51,6 +51,8 @@
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
     "genexhdrtext", "genexbtn", "genexbtnp", "viscolor",
+    // the skin's cursors
+    "cur-close", "cur-eqclose", "cur-eqnormal", "cur-eqslid", "cur-eqtitle", "cur-mainmenu", "cur-min", "cur-normal", "cur-pclose", "cur-pnormal", "cur-posbar", "cur-psize", "cur-ptbar", "cur-pvscroll", "cur-pwinbut", "cur-pwsnorm", "cur-pwssize", "cur-songname", "cur-titlebar", "cur-volbal", "cur-volbar", "cur-winbut", "cur-wsclose", "cur-wsmin", "cur-wsnormal", "cur-wsposbar", "cur-wswinbut",
   ];
   /** @param {string} skin */
   function applySkin(skin) {
@@ -72,6 +74,7 @@
               value.startsWith("data:") ? `url("${value}")` : value,
             );
           }
+          window.dispatchEvent(new Event(SKIN_APPLIED));
         })
         .catch(() => {});
       return;
@@ -82,6 +85,7 @@
     }
     if (skin && skin !== "classic") document.body.dataset.skin = skin;
     else delete document.body.dataset.skin;
+    window.dispatchEvent(new Event(SKIN_APPLIED));
   }
   onMount(() => {
     // Report JS failures to the Rust log. A crashed page otherwise just shows a

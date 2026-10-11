@@ -989,7 +989,7 @@
   }
   /* the same handle as the Library's list and the playlist */
   .st-scroll {
-    cursor: url(/src/static/assets/skins/base-2.91/EQSLID.CUR), default;
+    cursor: var(--skin-cur-eqslid, url(/src/static/assets/skins/base-2.91/EQSLID.CUR)), default;
     writing-mode: vertical-lr;
     direction: ltr;
     appearance: none;

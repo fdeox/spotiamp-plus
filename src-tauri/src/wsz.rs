@@ -121,10 +121,18 @@ const BUNDLED_SKINS: &[(&str, &[u8])] = &[
 /// Extra skin files that aren't 1:1 sprite sheets: GEN.BMP is cropped into the
 /// generic-window titlebar tiles (library/visualizer), PLEDIT.TXT carries the
 /// playlist colours, VISCOLOR.TXT the spectrum's.
-const EXTRA_FILES: [&str; 5] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT", "SPOTIAMP.TXT", "VISCOLOR.TXT"];
+const EXTRA_FILES: [&str; 6] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT", "SPOTIAMP.TXT", "VISCOLOR.TXT", "REGION.TXT"];
+
+/// Winamp's cursors, each for its part of a window (NORMAL the main window,
+/// PNORMAL the playlist, EQNORMAL the equalizer, POSBAR the seek bar…). A skin
+/// brings any of them; the base skin's stand in for the rest.
+const CURSORS: [&str; 27] = [
+    "CLOSE", "EQCLOSE", "EQNORMAL", "EQSLID", "EQTITLE", "MAINMENU", "MIN", "NORMAL", "PCLOSE", "PNORMAL",
+    "POSBAR", "PSIZE", "PTBAR", "PVSCROLL", "PWINBUT", "PWSNORM", "PWSSIZE", "SONGNAME", "TITLEBAR", "VOLBAL",
+    "VOLBAR", "WINBUT", "WSCLOSE", "WSMIN", "WSNORMAL", "WSPOSBAR", "WSWINBUT",
+];
 
 /// The sprite sheets we can re-skin, mapped to their CSS variable suffix.
-/// (.CUR cursors keep the base skin for now.)
 const SPRITES: [(&str, &str); 13] = [
     ("MAIN.BMP", "main"),
     ("CBUTTONS.BMP", "cbuttons"),
@@ -232,6 +240,7 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
         if SPRITES.iter().any(|(bmp, _)| *bmp == name)
             || name == "NUMS_EX.BMP"
             || EXTRA_FILES.contains(&name.as_str())
+            || name.strip_suffix(".CUR").is_some_and(|stem| CURSORS.contains(&stem))
         {
             // Real sprite sheets are a few hundred KB at most; refuse anything
             // that would unpack to something huge (skins also come from the
@@ -530,14 +539,20 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     // The spectrum's 24 colours (VISCOLOR.TXT), as "r,g,b r,g,b …" for the
     // main window's visualizer to read. Without the file it keeps the base
     // skin's, as Winamp did.
-    // Skins picked before 0.7.7 were unpacked without the file: for one of
-    // the bundled skins it's read from the app's own copy.
-    let colours = files
-        .read("VISCOLOR.TXT")
-        .and_then(|bytes| viscolor(&String::from_utf8_lossy(&bytes)))
-        .or_else(|| files.read("MAIN.BMP").and_then(|main| bundled_viscolor(&main)));
-    if let Some(colours) = colours {
+    // Skins picked before 0.7.7 were unpacked without it (and before 0.7.8
+    // without their cursors): for one of the bundled skins they're read from
+    // the app's own copy.
+    let twin = files.read("MAIN.BMP").and_then(|main| bundled_twin(&main));
+    let extra = |name: &str| files.read(name).or_else(|| twin.and_then(|bytes| zip_file(bytes, name)));
+    if let Some(colours) = extra("VISCOLOR.TXT").and_then(|bytes| viscolor(&String::from_utf8_lossy(&bytes))) {
         sprites.insert("viscolor".to_string(), colours);
+    }
+    // the skin's cursors, as --skin-cur-<name> (data: URLs, set as url())
+    for cursor in CURSORS {
+        if let Some(bytes) = extra(&format!("{cursor}.CUR")) {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            sprites.insert(format!("cur-{}", cursor.to_lowercase()), format!("data:image/x-icon;base64,{b64}"));
+        }
     }
 
     // Most classic 2.x skins ship no GENEX.BMP (the media-library palette came
@@ -678,13 +693,128 @@ fn zip_file(bytes: &[u8], want: &str) -> Option<Vec<u8>> {
     None
 }
 
-/// The spectrum colours of the bundled skin with this MAIN.BMP, if it's one.
-fn bundled_viscolor(main: &[u8]) -> Option<String> {
+/// REGION.TXT: for a part of a window ([Normal] and [WindowShade] the main
+/// window, [Equalizer] and [EqualizerWS] the EQ) the polygons it keeps, in
+/// skin pixels: NumPoints the point count of each, PointList all the points.
+/// Skins write it loosely (spaces, line breaks, "x,y, x,y"); a polygon of
+/// fewer than 3 points is left out, a list that runs short gives nothing.
+fn region(text: &str, section: &str) -> Option<Vec<Vec<(i32, i32)>>> {
+    let mut current = String::new();
+    let (mut counts, mut points) = (None::<Vec<i32>>, None::<Vec<i32>>);
+    for line in text.lines() {
+        let line = line.split(';').next().unwrap_or("").trim();
+        if line.starts_with('[') {
+            current = line.trim_matches(|c| c == '[' || c == ']').trim().to_ascii_lowercase();
+            continue;
+        }
+        if current != section.to_ascii_lowercase() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let numbers: Option<Vec<i32>> = value
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.parse::<i32>().ok())
+            .collect();
+        match key.trim().to_ascii_lowercase().as_str() {
+            "numpoints" => counts = numbers,
+            "pointlist" => points = numbers,
+            _ => {}
+        }
+    }
+    let (counts, points) = (counts?, points?);
+    let mut polygons = Vec::new();
+    let mut at = 0usize;
+    for n in counts {
+        let n = n.max(0) as usize;
+        let end = at.checked_add(n * 2)?;
+        if end > points.len() {
+            return None;
+        }
+        if n >= 3 {
+            polygons.push(points[at..end].chunks(2).map(|p| (p[0], p[1])).collect());
+        }
+        at = end;
+    }
+    (!polygons.is_empty()).then_some(polygons)
+}
+
+/// Shapes a window to the skin's REGION.TXT section, at the window's scale
+/// (screen pixels per skin pixel). Without one, or with a built-in skin, the
+/// window is a plain rectangle again. Gives whether it has a shape.
+#[tauri::command]
+pub fn apply_skin_region(window: tauri::WebviewWindow, section: String, scale: f64) -> Result<bool, String> {
+    let polygons = if Settings::current().skin == "custom" {
+        let files = SkinFiles::open(custom_skin_dir().ok_or("no config dir")?);
+        files
+            .read("REGION.TXT")
+            .or_else(|| {
+                let main = files.read("MAIN.BMP")?;
+                zip_file(bundled_twin(&main)?, "REGION.TXT")
+            })
+            .and_then(|bytes| region(&String::from_utf8_lossy(&bytes), &section))
+    } else {
+        None
+    };
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::Graphics::Gdi::{CreatePolyPolygonRgn, SetWindowRgn, WINDING};
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        let shape = polygons.as_ref().map(|polygons| {
+            let points: Vec<POINT> = polygons
+                .iter()
+                .flatten()
+                .map(|&(x, y)| POINT { x: (x as f64 * scale).round() as i32, y: (y as f64 * scale).round() as i32 })
+                .collect();
+            let counts: Vec<i32> = polygons.iter().map(|p| p.len() as i32).collect();
+            unsafe { CreatePolyPolygonRgn(points.as_ptr(), &counts, WINDING) }
+        });
+        // the system owns the region from here (and frees the one before)
+        let taken = unsafe { SetWindowRgn(hwnd, shape, true) } != 0;
+        return Ok(polygons.is_some() && taken);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, scale);
+        Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+
+    #[test]
+    fn reads_each_part_of_the_window() {
+        let text = "[Normal]\r\nNumPoints=4, 3\r\nPointList=0,0, 275,0, 275,116, 0,116,  10,10 20,10 15,20\r\n\r\n[WindowShade]\nNumPoints=4\nPointList=0,0,275,0,275,14,0,14\n";
+        let normal = region(text, "normal").unwrap();
+        assert_eq!(normal.len(), 2);
+        assert_eq!(normal[0], vec![(0, 0), (275, 0), (275, 116), (0, 116)]);
+        assert_eq!(normal[1], vec![(10, 10), (20, 10), (15, 20)]);
+        assert_eq!(region(text, "WindowShade").unwrap()[0][2], (275, 14));
+        assert_eq!(region(text, "Equalizer"), None);
+        // the list runs short: nothing rather than a wrong shape
+        assert_eq!(region("[Normal]\nNumPoints=4\nPointList=0,0,1,1", "Normal"), None);
+    }
+
+    #[test]
+    fn the_bundled_skins_with_a_shape_have_one() {
+        let (_, bento) = BUNDLED_SKINS.iter().find(|(name, _)| name.starts_with("Bento")).unwrap();
+        let text = String::from_utf8_lossy(&zip_file(bento, "REGION.TXT").unwrap()).into_owned();
+        assert!(region(&text, "Normal").is_some());
+    }
+}
+
+/// The bundled skin with this MAIN.BMP, if it's one of them.
+fn bundled_twin(main: &[u8]) -> Option<&'static [u8]> {
     BUNDLED_SKINS
         .iter()
         .find(|(_, bytes)| zip_file(bytes, "MAIN.BMP").as_deref() == Some(main))
-        .and_then(|(_, bytes)| zip_file(bytes, "VISCOLOR.TXT"))
-        .and_then(|text| viscolor(&String::from_utf8_lossy(&text)))
+        .map(|(_, bytes)| *bytes)
 }
 
 #[cfg(test)]
@@ -692,11 +822,16 @@ mod viscolor_tests {
     use super::*;
 
     #[test]
-    fn a_bundled_skin_unpacked_before_gets_its_colours_back() {
+    fn a_bundled_skin_unpacked_before_gets_its_colours_and_cursors_back() {
         let (_, spotiamp) = BUNDLED_SKINS.iter().find(|(name, _)| name.starts_with("Spotiamp")).unwrap();
-        let main = zip_file(spotiamp, "MAIN.BMP").unwrap();
-        assert!(bundled_viscolor(&main).unwrap().starts_with("12,12,14 40,40,44 "));
-        assert_eq!(bundled_viscolor(b"not a bundled skin"), None);
+        let twin = bundled_twin(&zip_file(spotiamp, "MAIN.BMP").unwrap()).unwrap();
+        let colours = viscolor(&String::from_utf8_lossy(&zip_file(twin, "VISCOLOR.TXT").unwrap())).unwrap();
+        assert!(colours.starts_with("12,12,14 40,40,44 "));
+        assert!(bundled_twin(b"not a bundled skin").is_none());
+        // a bundled skin with its own cursors
+        let (_, sony) = BUNDLED_SKINS.iter().find(|(name, _)| name.starts_with("Sony CDX")).unwrap();
+        let twin = bundled_twin(&zip_file(sony, "MAIN.BMP").unwrap()).unwrap();
+        assert!(CURSORS.iter().filter(|c| zip_file(twin, &format!("{c}.CUR")).is_some()).count() > 10);
     }
 
     #[test]
