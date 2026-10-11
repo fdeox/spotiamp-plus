@@ -28,7 +28,7 @@ const GLEW = {
   sha256: "ea6b14a1c6c968d0034e61ff6cb242cff2ce0ede79267a0f2b47b1b0b652c164",
 };
 const STAMP = join(OUT, "VERSIONS.txt");
-const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime)\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
+const STAMP_TEXT = `projectM ${PROJECTM.version} (static C runtime) + Spotiamp+'s get_fft (scripts/projectm)\n  source: ${PROJECTM.url}\nGLEW ${GLEW.version}\n  source: ${GLEW.url}\n`;
 const OUTPUTS = ["projectM-4.dll", "glew32.dll", "LICENSE-projectM.txt", "LICENSE-GLEW.txt", "VERSIONS.txt"];
 
 if (process.platform !== "win32") {
@@ -64,6 +64,83 @@ async function fetchPinned(dep, file) {
   return path;
 }
 
+// Spotiamp+'s additions to projectM, made to the fresh source: get_fft() and
+// get_fft_peak() for presets made for BeatDrop / MilkDrop 3 (the code is in
+// scripts/projectm/SpotiampFft.hpp). Each edit has to find its spot exactly
+// once, so a projectM update that moves things stops the build instead of
+// quietly leaving one out.
+/** @param {string} lib src/libprojectM of the source */
+function patchProjectM(lib) {
+  copyFileSync(join(ROOT, "scripts", "projectm", "SpotiampFft.hpp"), join(lib, "MilkdropPreset", "SpotiampFft.hpp"));
+  /** @param {string} file @param {[string, string][]} edits */
+  const edit = (file, edits) => {
+    const path = join(lib, file);
+    let text = readFileSync(path, "utf8");
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    for (const [from, to] of edits) {
+      const [a, b] = [from, to].map((s) => s.replaceAll("\n", eol));
+      const parts = text.split(a);
+      if (parts.length !== 2) throw new Error(`build-projectm: the spot to patch in ${file} isn't there once: ${from.slice(0, 70)}`);
+      text = parts.join(b);
+    }
+    writeFileSync(path, text);
+  };
+  edit("Renderer/TextureManager.hpp", [
+    [
+      "    auto GetSampler(const std::string& fullName) -> std::shared_ptr<class Sampler>;\n",
+      "    auto GetSampler(const std::string& fullName) -> std::shared_ptr<class Sampler>;\n\n" +
+        "    //! Spotiamp+: get_fft()'s spectrum texture (SpotiampFft.hpp), one per projectM instance.\n" +
+        "    std::shared_ptr<class Texture> spotiampFft;\n",
+    ],
+  ]);
+  edit("MilkdropPreset/PresetState.hpp", [
+    [
+      "    libprojectM::Audio::FrameAudioData audioData; //!< Holds audio/spectrum data and values for beat detection.\n",
+      "    libprojectM::Audio::FrameAudioData audioData; //!< Holds audio/spectrum data and values for beat detection.\n" +
+        "    float fftAttack{0.5f}; //!< Spotiamp+: BeatDrop's FFTAttack, how quickly get_fft() rises.\n" +
+        "    float fftDecay{0.7f};  //!< Spotiamp+: BeatDrop's FFTDecay, how slowly it falls.\n",
+    ],
+  ]);
+  edit("MilkdropPreset/PresetState.cpp", [
+    [
+      '    decay = parsedFile.GetFloat("fDecay", decay);\n',
+      '    decay = parsedFile.GetFloat("fDecay", decay);\n' +
+        '    fftAttack = parsedFile.GetFloat("FFTAttack", fftAttack);\n' +
+        '    fftDecay = parsedFile.GetFloat("FFTDecay", fftDecay);\n',
+    ],
+  ]);
+  edit("MilkdropPreset/MilkdropShader.cpp", [
+    ['#include "Utils.hpp"\n', '#include "Utils.hpp"\n#include "SpotiampFft.hpp"\n'],
+    [
+      "    m_fragmentShaderCode = presetShaderCode;\n    m_preprocessedCode = m_fragmentShaderCode;\n",
+      "    m_fragmentShaderCode = presetShaderCode;\n" +
+        "    // Spotiamp+: BeatDrop's get_fft() and friends, for the presets that call them\n" +
+        "    m_fragmentShaderCode = SpotiampFft::Prepare(m_fragmentShaderCode);\n" +
+        "    m_preprocessedCode = m_fragmentShaderCode;\n",
+    ],
+    [
+      "        // Random textures need special treatment.\n",
+      "        // Spotiamp+: get_fft()'s spectrum texture\n" +
+        '        if (lowerCaseName == "fft")\n' +
+        "        {\n" +
+        "            m_textureSamplerDescriptors.emplace_back(SpotiampFft::Get().FftTexture(*presetState.renderContext.textureManager),\n" +
+        '                                                      presetState.renderContext.textureManager->GetSampler("fc_fft"),\n' +
+        '                                                      name, "fft");\n' +
+        "            continue;\n" +
+        "        }\n\n" +
+        "        // Random textures need special treatment.\n",
+    ],
+    [
+      "    m_shader.Bind();\n\n    m_shader.SetUniformMat4x4(\"vertex_transformation\"",
+      "    // Spotiamp+: get_fft()'s spectrum, once a frame\n" +
+        "    SpotiampFft::Get().Update(*presetState.renderContext.textureManager, presetState.audioData,\n" +
+        "                              presetState.renderContext.frame, presetState.renderContext.fps,\n" +
+        "                              presetState.fftAttack, presetState.fftDecay);\n\n" +
+        "    m_shader.Bind();\n\n    m_shader.SetUniformMat4x4(\"vertex_transformation\"",
+    ],
+  ]);
+}
+
 try {
   execFileSync(CMAKE, ["--version"], { stdio: "ignore" });
 } catch {
@@ -80,6 +157,7 @@ const glew = join(WORK, `glew-${GLEW.version}`);
 for (const dir of [src, glew, join(WORK, "b")]) rmSync(dir, { recursive: true, force: true });
 run(TAR, ["-xf", tarball]);
 run(TAR, ["-xf", glewZip]);
+patchProjectM(join(src, "src", "libprojectM"));
 
 run(CMAKE, [
   "-S", src, "-B", "b", "-A", "x64",

@@ -1,7 +1,9 @@
-MilkDrop presets that come with Spotiamp+ (501)
+MilkDrop presets that come with Spotiamp+ (527)
 
-150 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
+176 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
 Spotiamp+ by him; among them his MilkDrop takes on Spotiamp+'s own visualizer patterns.
+  Those call get_fft() as his BeatDrop defines it, which Spotiamp+ adds to projectM
+  (scripts/projectm/SpotiampFft.hpp).
   BeatDrop, his MilkDrop visualizer: https://github.com/OfficialIncubo/BeatDrop-Music-Visualizer
   Support him: https://ko-fi.com/officialincubo_
 
@@ -60,21 +62,47 @@ Incubo_/Se7enSlasher + Martin - infinite pegs are in the tunnel.milk
 Incubo_/Se7enSlasher + ShadowHarlequin + martin - glowing mineral water marbles (Ripple Smoke Mix).milk
 Incubo_/Se7enSlasher + ShadowHarlequin + martin - glowing mineral water marbles.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - 10 PRINT.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Argyle.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Aurora.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Blob Ring.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - CRT.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Caustics.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Cyber Grid.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - D.N.A..milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Dot Matrix.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Dunes.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Eye.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Fire.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Flow.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Flower.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Glitch.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - HexGrid.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - LED Ladder.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Lava Lamp.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Lightning.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Marble.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - MilkDrop.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Mirror Bars.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Nebula.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Pendulum.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Phyllo.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Pixel Rain.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Polygon.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Prism.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Radial.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Ribbon.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Scope.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Skyline.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Smoke.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Spectrum.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Star Poly.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Strings.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Sunrays.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Synthwave.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Tile Flip.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Tri-Meter.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - VU Meter.milk
+Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Voronoi.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Wireframe Cube.milk
 Incubo_/Se7enSlasher + fdeox - Spotiamp+ - Zebra.milk
 Incubo_/Se7enSlasher + martin - BPM Code Test [ChatGPT's Average Code Edition].milk
