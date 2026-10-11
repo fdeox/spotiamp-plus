@@ -636,11 +636,19 @@ fn library_title(text: &str) -> Option<String> {
     (!title.is_empty()).then_some(title)
 }
 
+/// Winamp's own spectrum colours, for what a skin's VISCOLOR.TXT leaves out.
+const BASE_VISCOLOR: [&str; 24] = [
+    "0,0,0", "24,33,41", "239,49,16", "206,41,16", "214,90,0", "214,102,0", "214,115,0", "198,123,8",
+    "222,165,24", "214,181,33", "189,222,41", "148,222,33", "41,206,16", "50,190,16", "57,181,16", "49,156,8",
+    "41,148,0", "24,132,8", "255,255,255", "214,214,222", "181,189,189", "160,170,175", "148,156,165", "150,150,150",
+];
+
 /// VISCOLOR.TXT: a colour a line, "r,g,b," and a comment after it (0 the
 /// background, 1 the dots, 2-17 the bars top to bottom, 18-22 the
 /// oscilloscope, 23 the peaks). Skins write it loosely (spaces, tabs, no
 /// trailing comma, a blank line here and there), so each line gives its first
-/// three numbers. All 24 or nothing.
+/// three numbers. Many older skins stop at 23 (no peak colour): as in Winamp,
+/// the base skin's fill in what's missing. Nothing at all gives None.
 fn viscolor(text: &str) -> Option<String> {
     let mut colours = Vec::with_capacity(24);
     for line in text.lines() {
@@ -655,11 +663,15 @@ fn viscolor(text: &str) -> Option<String> {
             colours.push(format!("{},{},{}", rgb[0], rgb[1], rgb[2]));
         }
         if colours.len() == 24 {
-            // spaces between them: a ";" can't be in a CSS variable
-            return Some(colours.join(" "));
+            break;
         }
     }
-    None
+    if colours.is_empty() {
+        return None;
+    }
+    colours.extend(BASE_VISCOLOR[colours.len()..].iter().map(|c| c.to_string()));
+    // spaces between them: a ";" can't be in a CSS variable
+    Some(colours.join(" "))
 }
 
 /// A file from a skin archive by its name, in whatever folder (as skins nest
@@ -711,8 +723,12 @@ mod viscolor_tests {
         assert_eq!(parts[0], "0,0,0");
         assert_eq!(parts[1], "24,33,41");
         assert_eq!(parts[23], "23,46,255"); // past 255: kept in range
-        // too few: the base skin's stay
-        assert_eq!(viscolor("1,2,3\n4,5,6"), None);
+        // an older skin's 23 (no peak colour), or fewer: Winamp's fill in
+        let few = viscolor("1,2,3\n4,5,6").unwrap();
+        assert!(few.starts_with("1,2,3 4,5,6 239,49,16 "));
+        assert!(few.ends_with(" 150,150,150"));
+        assert_eq!(few.split(' ').count(), 24);
+        assert_eq!(viscolor("// just a comment\n"), None);
     }
 }
 
