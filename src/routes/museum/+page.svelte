@@ -249,7 +249,7 @@
     box-sizing: border-box;
     line-height: 1;
     padding: 0 10px 5px;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     letter-spacing: 1px;
     white-space: nowrap;
     color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));

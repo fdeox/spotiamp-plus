@@ -1520,7 +1520,8 @@
                 <!-- loved (F); in the row's own colour so it suits every skin -->
                 <span class="playlist-track-loved" title="loved">♡&nbsp;</span>
               {/if}
-              <span class="playlist-track-name">{row.displayName}</span>
+              <!-- the full name on hover: a long one is cut off with "…" -->
+              <span class="playlist-track-name" title={row.displayName}>{row.displayName}</span>
             </td>
             <td class="playlist-track-duration">{row.displayDuration}</td>
           </tr>
@@ -1801,11 +1802,11 @@
     color: var(--skin-plnormal, rgb(0, 255, 0));
     border-collapse: collapse;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(7px * var(--zoom));
+    font-size: calc(8px * var(--zoom) * var(--px-crisp, 1));
     font-smooth: never;
     -webkit-font-smoothing: none;
 
-    letter-spacing: calc(0.3px * var(--zoom));
+    letter-spacing: 0;
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
@@ -1862,9 +1863,9 @@
     border: 1px solid var(--skin-plnormal, rgb(0, 255, 0));
     color: var(--skin-plnormal, rgb(0, 255, 0));
     font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(7px * var(--zoom));
+    font-size: calc(8px * var(--zoom) * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
-    letter-spacing: calc(0.3px * var(--zoom));
+    letter-spacing: 0;
   }
   .jump-input {
     flex: 0 0 auto;
@@ -1923,7 +1924,7 @@
     border: 1px solid var(--skin-plnormal, rgb(0, 255, 0));
     color: var(--skin-plcurrent, #fff);
     font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(7px * var(--zoom));
+    font-size: calc(8px * var(--zoom) * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     pointer-events: none;
   }
@@ -2093,13 +2094,16 @@
      without nagging; clicking it runs the normal download/install flow. */
   .update-pill {
     position: absolute;
-    top: calc(4px * var(--zoom));
-    left: calc(12px * var(--zoom));
+    /* on the titlebar (20 px), centred, past its left corner piece; every
+       size scales with the window so it stays put at any zoom */
+    top: calc(3px * var(--zoom));
+    left: calc(26px * var(--zoom));
     z-index: 41;
-    padding: 0 6px;
+    height: calc(14px * var(--zoom));
+    padding: 0 calc(6px * var(--zoom));
     font-family: monospace;
-    font-size: 9px;
-    line-height: 12px;
+    font-size: calc(9px * var(--zoom));
+    line-height: calc(12px * var(--zoom));
     color: #ffe08a;
     background: linear-gradient(#5a4a1a, #2e2510);
     border: 1px solid #000;

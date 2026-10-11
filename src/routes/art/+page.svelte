@@ -71,7 +71,13 @@
     makeDockedDraggable(element, "art", "artWindow");
   }
 
-  // Resize from the bottom-right corner, like the lyrics / library / visualizer.
+  // The cover's box is the window less the 20 px titlebar and the 4 px frame
+  // (1 px border inside it): this much wider and taller than the box.
+  const FRAME_W = 10;
+  const FRAME_H = 26;
+
+  // Resize from the bottom-right corner, like the lyrics / library / visualizer,
+  // keeping the cover's box square: a cover fills it with no gaps at the sides.
   /** @param {HTMLElement} element */
   function makeArtResizable(element) {
     makeSnappingResizer(
@@ -79,10 +85,8 @@
       "art",
       (e) => {
         const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
-        return {
-          width: Math.max(Math.round(e.clientX / zoom) + 3, 120),
-          height: Math.max(Math.round(e.clientY / zoom) + 3, 140),
-        };
+        const side = Math.max(Math.round(e.clientX / zoom) + 3 - FRAME_W, Math.round(e.clientY / zoom) + 3 - FRAME_H, 110);
+        return { width: side + FRAME_W, height: side + FRAME_H };
       },
       ({ width, height }) => REACTIVE_WINDOW_SIZE.setSize(Math.round(width), Math.round(height)),
       () => REACTIVE_WINDOW_SIZE.zoom || 1,
@@ -181,7 +185,7 @@
     line-height: 1;
     padding: 0 10px 5px;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     letter-spacing: 1px;
     color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
@@ -215,10 +219,12 @@
     overflow: hidden;
   }
 
+  /* fills the box: a square box shows all of it; a box left a few px off
+     square (an older saved size) trims a sliver rather than leave bars */
   .art-img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     /* Covers are photos, not pixel art: undo the global pixelated rule so the
        image scales smoothly to the window. */
     image-rendering: auto;

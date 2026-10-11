@@ -12,6 +12,13 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.7": [
+      "<b>Halloween</b> 🎃 From October 24 to November 1 Lala dresses up as a little witch: a hat with a pumpkin on it and a cape, whatever she's up to. Rather not? Right-click her: <i>Dress up on special days</i>.",
+      "The main window's <b>visualizer</b> works like Winamp's: in the skin's own colours (skins bring them, Spotiamp+'s included) over its dotted backdrop. Click it for the oscilloscope or to switch it off; right-click it for the Fire and Line styles, thin bands, peaks and how fast they fall. A double-click still opens the visualizer window.",
+      "<b>Sharper text</b>: the pixel font of the playlist, the Library and the other windows now sits on whole screen pixels, at 125% and 150% display scaling too, so it's crisp instead of blurry.",
+      "A song's full name shows when you hover over it in the playlist and the Library.",
+      "Fixed: the update button on the playlist's titlebar slipping out of place; gaps beside the album art (it fills its window now, and stays square as you resize it); the badges you're still working towards in the listening stats being hard to read.",
+    ],
     "0.7.6": [
       "<b>MilkDrop</b> comes to the visualizer: real MilkDrop presets, drawn by projectM and moving with the music. Press <b>M</b> in the visualizer (or its MILKDROP button). Nearly 500 presets come with it, chosen to run smoothly, 150 of them by <b>Incubo</b> (Se7enSlasher), among them his MilkDrop takes on Spotiamp+'s own patterns. Thank you, Incubo! MilkDrop's own textures come along too. <b>L</b> opens the preset list: search it, ♥ your favourites and change only between them. A click is the next preset, PIN keeps one, double-click goes fullscreen; right-click to choose how often presets change (or to cut on the beat) and for the folder for your own <i>.milk</i> files and textures.",
       "The <b>Library</b> opens on <i>Recently played</i>, shows when each song was added or last played (a <i>Date</i> column, where there's a date to show), puts Title before Album, and its columns can be sized by dragging the lines between them.",
@@ -302,7 +309,7 @@
     line-height: 1;
     padding: 0 10px 5px;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     letter-spacing: 1px;
     white-space: nowrap;

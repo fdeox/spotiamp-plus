@@ -34,9 +34,29 @@ class ReactiveWindowSize {
         // `transform: scale`, which the compositor smooths (blurry at 2x/3x).
         body?.style.setProperty("--zoom", "1");
         body?.style.setProperty("--app-zoom", `${zoom}`);
+        crispPixelFont(zoom);
     }
 }
 export const REACTIVE_WINDOW_SIZE = new ReactiveWindowSize();
+
+/** The pixel font (px sans nouveaux) is drawn on an 8 px grid: it's crisp
+ *  only when each of its pixels lands on whole screen pixels. At 125 % (a
+ *  laptop's usual scale) 8 px is 10 screen pixels, its pixels 1.25 each, and
+ *  Windows smooths them into a blur. --px-crisp sizes it to the nearest
+ *  whole multiple of 8 screen pixels instead (8 at 125 %, 16 at 150-249 %),
+ *  and follows the window to a screen with another scale. */
+let crispWatch = /** @type {MediaQueryList | null} */ (null);
+const crispFollow = () => crispPixelFont(REACTIVE_WINDOW_SIZE.zoom);
+/** @param {number} zoom the window's UI scale */
+function crispPixelFont(zoom) {
+    const body = document.querySelector("body");
+    if (!body) return;
+    const scale = (window.devicePixelRatio || 1) * (zoom || 1);
+    body.style.setProperty("--px-crisp", `${Math.max(1, Math.round(scale)) / scale}`);
+    crispWatch?.removeEventListener("change", crispFollow);
+    crispWatch = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    crispWatch.addEventListener("change", crispFollow);
+}
 
 export const enterExitViewportObserver = new IntersectionObserver(
     (entries) => {

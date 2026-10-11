@@ -117,7 +117,7 @@
   }
   .osd-label {
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     letter-spacing: 1px;
     -webkit-font-smoothing: none;
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 65%, transparent);

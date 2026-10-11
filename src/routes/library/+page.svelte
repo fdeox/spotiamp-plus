@@ -1076,11 +1076,12 @@
               ondblclick={() => loadTrackIntoMain(i)}
               onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
             >
-              <div class="ml-col ml-c-artist">{t.artist}</div>
-              <div class="ml-col ml-c-title">
+              <!-- each cell's full text on hover: long ones are cut off with "…" -->
+              <div class="ml-col ml-c-artist" title={t.artist}>{t.artist}</div>
+              <div class="ml-col ml-c-title" title={t.name}>
                 {#if lovedSet.has(t.uri)}<span class="ml-heart" title="loved">♡</span>{/if}{t.name}
               </div>
-              <div class="ml-col ml-c-album">{t.album}</div>
+              <div class="ml-col ml-c-album" title={t.album}>{t.album}</div>
               {#if showDate}
                 <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
               {/if}
@@ -1195,10 +1196,10 @@
       inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
       inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     font-smooth: never;
-    letter-spacing: 0.3px;
+    letter-spacing: 0;
     color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 255, 0)));
     user-select: none;
   }
@@ -1243,7 +1244,7 @@
     padding: 0 10px 5px;
     /* match the tiny bitmap lettering of the playlist titlebar */
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     letter-spacing: 1px;
     color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
@@ -1467,7 +1468,7 @@
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
     color: var(--skin-genexbtntext, #393942);
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     text-transform: uppercase;
     padding: 1px 5px;
@@ -1484,7 +1485,7 @@
   }
 
   .ml-view-head {
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 200, 0)));
@@ -1511,9 +1512,9 @@
     background: var(--skin-genexhdrbg, #0a0d12);
     border-bottom: 1px solid var(--skin-genexdivider, #1e6b32);
     color: var(--skin-genexhdrtext, rgb(0, 210, 0));
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
   }
   .ml-col {
     /* the header's cells are buttons (border-box); the rows' must size the
@@ -1716,10 +1717,10 @@
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
     color: var(--skin-genexbtntext, var(--skin-genexwndtext, var(--skin-titletext, #dcdce6)));
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
     padding: 1px 7px;
     cursor: pointer;
   }

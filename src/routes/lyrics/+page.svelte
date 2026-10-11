@@ -259,7 +259,7 @@
     line-height: 1;
     padding: 0 10px 5px;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     letter-spacing: 1px;
     color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));

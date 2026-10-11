@@ -782,7 +782,7 @@
       inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
     user-select: none;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
   }
 
@@ -909,8 +909,8 @@
     display: flex;
     flex-wrap: wrap;
     gap: 2px 9px;
-    font-size: 7px;
-    letter-spacing: 0.4px;
+    font-size: calc(8px * var(--px-crisp, 1));
+    letter-spacing: 0;
   }
   .st-nums b {
     font-weight: normal;
@@ -1051,8 +1051,10 @@
     color: var(--hi);
   }
   /* badges: dim until earned */
+  /* a badge still to earn: dimmer than an earned one, but readable over its
+     progress bar */
   .st-badge {
-    color: color-mix(in srgb, var(--fg) 55%, transparent);
+    color: color-mix(in srgb, var(--fg) 78%, transparent);
   }
   .st-badge .st-count {
     color: inherit;
@@ -1068,7 +1070,7 @@
     text-align: center;
   }
   .st-desc {
-    color: color-mix(in srgb, var(--fg) 55%, transparent);
+    color: color-mix(in srgb, var(--fg) 65%, transparent);
   }
   /* a badge group's title, with how many of it are earned */
   .st-group {
@@ -1087,7 +1089,7 @@
     flex: 0 0 auto;
     text-align: center;
     letter-spacing: 0.4px;
-    color: color-mix(in srgb, var(--fg) 45%, transparent);
+    color: color-mix(in srgb, var(--fg) 60%, transparent);
   }
 
   /* bottom-right resize grip */
