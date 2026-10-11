@@ -505,6 +505,8 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
 /// Quit the app. Closing it right after a connect isn't the crash the next
 /// start looks out for, so that mark comes off first.
 pub(crate) fn quit() -> ! {
+    // windows moved in the last moment: their spots aren't saved yet
+    app_window::save_positions(true);
     settings::Settings::current_mut().pending_connect = false;
     std::process::exit(0);
 }

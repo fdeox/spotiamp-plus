@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, Once, OnceLock},
+    time::{Duration, Instant},
 };
 
 use serde::Deserialize;
@@ -338,8 +339,14 @@ pub fn windows_to_reopen() -> Vec<String> {
 pub fn remember_position(
     window: &WebviewWindow,
     scale_factor_context: &'static str,
-    save_position: impl Fn(LogicalPosition<i32>) + Send + 'static,
+    save_position: impl Fn(LogicalPosition<i32>) + Send + Sync + 'static,
 ) {
+    let label = window.label().to_string();
+    position_saves()
+        .lock()
+        .expect("position saves lock")
+        .savers
+        .insert(label.clone(), Arc::new(save_position));
     let window = window.clone();
     window.clone().on_window_event(move |window_event| {
         if let tauri::WindowEvent::Moved(physical_position) = window_event {
@@ -354,7 +361,8 @@ pub fn remember_position(
             if window.is_fullscreen().unwrap_or(false) {
                 return;
             }
-            save_position(
+            queue_position(
+                &label,
                 physical_position.to_logical(
                     window.scale_factor().unwrap_or_else(|_| {
                         panic!("a scale factor for the {scale_factor_context}")
@@ -363,6 +371,68 @@ pub fn remember_position(
             );
         }
     });
+}
+
+/// A window's spot is saved once it has stopped moving, not on every Moved
+/// event: a drag fires dozens a second for each window of the group, and each
+/// one used to write the whole settings file on the main thread, which is
+/// what made dragging catch.
+const SAVE_POSITION_AFTER: Duration = Duration::from_millis(600);
+
+type SavePosition = Arc<dyn Fn(LogicalPosition<i32>) + Send + Sync>;
+
+#[derive(Default)]
+struct PositionSaves {
+    /// how each window saves its spot (remember_position)
+    savers: HashMap<String, SavePosition>,
+    /// where each moved window is now, and when it got there
+    pending: HashMap<String, (LogicalPosition<i32>, Instant)>,
+}
+
+fn position_saves() -> &'static Mutex<PositionSaves> {
+    static SAVES: OnceLock<Mutex<PositionSaves>> = OnceLock::new();
+    SAVES.get_or_init(Default::default)
+}
+
+fn queue_position(label: &str, position: LogicalPosition<i32>) {
+    position_saves()
+        .lock()
+        .expect("position saves lock")
+        .pending
+        .insert(label.to_string(), (position, Instant::now()));
+    static SAVER: Once = Once::new();
+    SAVER.call_once(|| {
+        let _ = std::thread::Builder::new().name("window positions".into()).spawn(|| {
+            loop {
+                std::thread::sleep(Duration::from_millis(200));
+                save_positions(false);
+            }
+        });
+    });
+}
+
+/// Save the spots of the windows that have settled (all of them: quitting).
+pub fn save_positions(all: bool) {
+    let due: Vec<(SavePosition, LogicalPosition<i32>)> = {
+        let mut saves = position_saves().lock().expect("position saves lock");
+        let labels: Vec<String> = saves
+            .pending
+            .iter()
+            .filter(|(_, (_, at))| all || at.elapsed() >= SAVE_POSITION_AFTER)
+            .map(|(label, _)| label.clone())
+            .collect();
+        labels
+            .into_iter()
+            .filter_map(|label| {
+                let (position, _) = saves.pending.remove(&label)?;
+                saves.savers.get(&label).map(|save| (save.clone(), position))
+            })
+            .collect()
+    };
+    // (outside the lock: a save takes the settings lock and writes the file)
+    for (save, position) in due {
+        save(position);
+    }
 }
 
 // ===========================================================================

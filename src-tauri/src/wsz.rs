@@ -1020,6 +1020,11 @@ pub fn apply_skin_region(window: tauri::WebviewWindow, section: String, scale: f
     } else {
         None
     };
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, scale, polygons);
+        return Ok(false);
+    }
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Foundation::POINT;
@@ -1037,12 +1042,7 @@ pub fn apply_skin_region(window: tauri::WebviewWindow, section: String, scale: f
         });
         // the system owns the region from here (and frees the one before)
         let taken = unsafe { SetWindowRgn(hwnd, shape, true) } != 0;
-        return Ok(polygons.is_some() && taken);
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (window, scale);
-        Ok(false)
+        Ok(polygons.is_some() && taken)
     }
 }
 
