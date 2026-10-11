@@ -5,6 +5,7 @@
     handleError,
     handleDrop,
     REACTIVE_WINDOW_SIZE,
+    SKIN_APPLIED,
   } from "$lib/common.svelte.js";
   import {
     emitWindowEvent,
@@ -129,6 +130,24 @@
   const resumeMs = untrack(() => playerSettings.resume?.position_ms ?? 0);
   let resumeTick = 0;
   let shadeActive = $state(initialWindowshadeActive());
+
+  // The skin's shape for this window (REGION.TXT), redone when the skin, the
+  // window's size (shade mode, another screen's scale) or its UI scale changes.
+  let shapeTick = $state(0);
+  onMount(() => {
+    const redo = () => shapeTick++;
+    window.addEventListener(SKIN_APPLIED, redo);
+    window.addEventListener("resize", redo);
+    return () => {
+      window.removeEventListener(SKIN_APPLIED, redo);
+      window.removeEventListener("resize", redo);
+    };
+  });
+  $effect(() => {
+    void shapeTick;
+    const section = shadeActive ? "WindowShade" : "Normal";
+    invoke("apply_skin_region", { section, scale: window.devicePixelRatio * REACTIVE_WINDOW_SIZE.zoom }).catch(() => {});
+  });
   let shuffle = $state(false);
   // 0 = off, 1 = repeat all (restart playlist), 2 = repeat one (loop track)
   let repeat = $state(0);
@@ -1567,8 +1586,12 @@
 </main>
 
 <style>
+  /* Winamp's cursor over the song title, if the skin has one */
+  main :global(.text-container) {
+    cursor: var(--skin-cur-songname, var(--skin-cur-normal, url(/src/static/assets/skins/base-2.91/MAINMENU.CUR))), auto;
+  }
   button.close-btn {
-    cursor: url(/src/static/assets/skins/base-2.91/CLOSE.CUR), default;
+    cursor: var(--skin-cur-close, url(/src/static/assets/skins/base-2.91/CLOSE.CUR)), default;
     --sprite-url: var(--skin-titlebar);
     --sprite-x: 264px;
     --sprite-y: 3px;
@@ -1582,7 +1605,7 @@
   }
 
   button.minimize-btn {
-    cursor: url(/src/static/assets/skins/base-2.91/MAINMENU.CUR), auto;
+    cursor: var(--skin-cur-min, url(/src/static/assets/skins/base-2.91/MAINMENU.CUR)), auto;
     --sprite-url: var(--skin-titlebar);
     --sprite-x: 244px;
     --sprite-y: 3px;
@@ -1909,7 +1932,7 @@
 
   #seek-position {
     appearance: none;
-    cursor: url(/src/static/assets/skins/base-2.91/VOLBAL.CUR), default;
+    cursor: var(--skin-cur-posbar, url(/src/static/assets/skins/base-2.91/POSBAR.CUR)), default;
   }
 
   #seek-position::-webkit-slider-thumb {
@@ -1936,7 +1959,7 @@
     width: 275px;
     height: 14px;
     background-position: -27px 0px;
-    cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
+    cursor: var(--skin-cur-titlebar, url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR)), default;
   }
 
   /* ------ /TITLEBAR ------ */
@@ -1986,7 +2009,7 @@
 
   #volume {
     appearance: none;
-    cursor: url(/src/static/assets/skins/base-2.91/VOLBAL.CUR), default;
+    cursor: var(--skin-cur-volbal, url(/src/static/assets/skins/base-2.91/VOLBAL.CUR)), default;
     background-position-y: calc(var(--volume-row) * -15px);
   }
 
@@ -2020,7 +2043,7 @@
 
   #balance {
     appearance: none;
-    cursor: url(/src/static/assets/skins/base-2.91/VOLBAL.CUR), default;
+    cursor: var(--skin-cur-volbal, url(/src/static/assets/skins/base-2.91/VOLBAL.CUR)), default;
     background-position-y: calc(var(--balance-row) * -15px);
   }
 

@@ -1719,6 +1719,11 @@
 </span>
 
 <style>
+  /* the playlist's own cursor (Winamp's PNORMAL), if the skin has one */
+  :global(body),
+  :global(body *) {
+    cursor: var(--skin-cur-pnormal, var(--skin-cur-normal, url(/src/static/assets/skins/base-2.91/MAINMENU.CUR))), auto;
+  }
   @font-face {
     font-family: px sans nouveaux;
     font-style: normal;
@@ -1729,7 +1734,7 @@
   }
 
   .draggable-corner {
-    cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
+    cursor: var(--skin-cur-psize, url(/src/static/assets/skins/base-2.91/PSIZE.CUR)), default;
     --width: 15px;
     --height: 15px;
     width: calc(var(--width) * var(--zoom));
@@ -1766,7 +1771,7 @@
   }
 
   input.scroll-bar {
-    cursor: url(/src/static/assets/skins/base-2.91/EQSLID.CUR), default;
+    cursor: var(--skin-cur-pvscroll, url(/src/static/assets/skins/base-2.91/EQSLID.CUR)), default;
     writing-mode: vertical-lr;
     direction: ltr;
     appearance: none;
@@ -1962,14 +1967,14 @@
   }
 
   .playlist-tl-sprite {
-    cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
+    cursor: var(--skin-cur-ptbar, url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR)), default;
     --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 20px;
   }
 
   .playlist-t-sprite {
-    cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
+    cursor: var(--skin-cur-ptbar, url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR)), default;
     --sprite-url: var(--skin-pledit);
     width: 25px;
     height: 20px;
@@ -1979,7 +1984,7 @@
   }
 
   .playlist-title-sprite {
-    cursor: url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR), default;
+    cursor: var(--skin-cur-ptbar, url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR)), default;
     --sprite-url: var(--skin-pledit);
     width: 100px;
     height: 20px;

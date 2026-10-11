@@ -39,6 +39,10 @@ class ReactiveWindowSize {
 }
 export const REACTIVE_WINDOW_SIZE = new ReactiveWindowSize();
 
+/** Sent on the window when a skin has been put on (or taken off): pages
+ *  with something of the skin's own to redo (the window's shape) listen. */
+export const SKIN_APPLIED = "spotiamp-skin-applied";
+
 /** The pixel font (px sans nouveaux) is drawn on an 8 px grid: it's crisp
  *  only when each of its pixels lands on whole screen pixels. At 125 % (a
  *  laptop's usual scale) 8 px is 10 screen pixels, its pixels 1.25 each, and

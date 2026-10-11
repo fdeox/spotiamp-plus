@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
-  import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
+  import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
@@ -255,6 +255,23 @@
   function makeEqDraggable(element) {
     makeDockedDraggable(element, "eq", "eqWindow");
   }
+
+  // The skin's shape for this window (REGION.TXT), redone when the skin, the
+  // window's size (shade mode, another screen's scale) or its UI scale changes.
+  let shapeTick = $state(0);
+  onMount(() => {
+    const redo = () => shapeTick++;
+    window.addEventListener(SKIN_APPLIED, redo);
+    window.addEventListener("resize", redo);
+    return () => {
+      window.removeEventListener(SKIN_APPLIED, redo);
+      window.removeEventListener("resize", redo);
+    };
+  });
+  $effect(() => {
+    void shapeTick;
+    invoke("apply_skin_region", { section: "Equalizer", scale: window.devicePixelRatio * REACTIVE_WINDOW_SIZE.zoom }).catch(() => {});
+  });
 </script>
 
 <!-- --zoom stays the body's 1: the UI scale is a CSS zoom on the whole page,
@@ -428,6 +445,21 @@
 </div>
 
 <style>
+  /* the equalizer's own cursors (Winamp's EQNORMAL, EQTITLE, EQCLOSE,
+     EQSLID), if the skin has them */
+  :global(body),
+  :global(body *) {
+    cursor: var(--skin-cur-eqnormal, var(--skin-cur-normal, url(/src/static/assets/skins/base-2.91/MAINMENU.CUR))), auto;
+  }
+  .eq-titlebar {
+    cursor: var(--skin-cur-eqtitle, url(/src/static/assets/skins/base-2.91/EQTITLE.CUR)), default;
+  }
+  .eq-close {
+    cursor: var(--skin-cur-eqclose, var(--skin-cur-close, url(/src/static/assets/skins/base-2.91/CLOSE.CUR))), default;
+  }
+  .fader {
+    cursor: var(--skin-cur-eqslid, url(/src/static/assets/skins/base-2.91/EQSLID.CUR)), default;
+  }
   :global(html),
   :global(body) {
     margin: 0;

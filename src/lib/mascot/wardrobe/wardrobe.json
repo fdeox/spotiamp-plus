@@ -1,0 +1,351 @@
+{
+ "cap": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "shades": {
+  "slot": "face",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "chain": {
+  "slot": "neck",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "hoodie": {
+  "slot": "body",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "sneakers": {
+  "slot": "feet",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "bow": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "heart_shades": {
+  "slot": "face",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "leather": {
+  "slot": "body",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "sweatband": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "guitar": {
+  "slot": "back",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "crown": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "cat_ears": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "bucket_hat": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "star_glasses": {
+  "slot": "face",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "jersey": {
+  "slot": "body",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "tuxedo": {
+  "slot": "body",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "puffer": {
+  "slot": "body",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "backpack": {
+  "slot": "back",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "bandana": {
+  "slot": "neck",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "held",
+   "idle",
+   "love",
+   "sad",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ },
+ "halo": {
+  "slot": "head",
+  "layers": [
+   "celebrate",
+   "dance",
+   "dizzy",
+   "happy",
+   "idle",
+   "love",
+   "sad",
+   "sleep",
+   "stand",
+   "surprised",
+   "walk",
+   "yawn"
+  ]
+ }
+}

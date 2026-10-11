@@ -642,6 +642,7 @@ pub fn run() {
             player_window::set_skin,
             wsz::pick_and_load_skin,
             wsz::get_custom_skin,
+            wsz::apply_skin_region,
             wsz::list_bundled_skins,
             wsz::load_bundled_skin,
             player_window::set_eq,
