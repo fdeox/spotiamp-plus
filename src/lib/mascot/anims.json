@@ -110,6 +110,93 @@
    120
   ]
  },
+ "idle_halloween": {
+  "frames": 6,
+  "ms": [
+   420,
+   420,
+   420,
+   420,
+   420,
+   140
+  ]
+ },
+ "dance_halloween": {
+  "frames": 8,
+  "ms": [
+   120,
+   120,
+   120,
+   120,
+   120,
+   120,
+   120,
+   120
+  ]
+ },
+ "celebrate_halloween": {
+  "frames": 10,
+  "ms": [
+   70,
+   70,
+   70,
+   70,
+   70,
+   70,
+   70,
+   70,
+   70,
+   70
+  ]
+ },
+ "happy_halloween": {
+  "frames": 2,
+  "ms": [
+   500,
+   500
+  ]
+ },
+ "surprised_halloween": {
+  "frames": 2,
+  "ms": [
+   500,
+   500
+  ]
+ },
+ "sad_halloween": {
+  "frames": 2,
+  "ms": [
+   500,
+   500
+  ]
+ },
+ "love_halloween": {
+  "frames": 2,
+  "ms": [
+   500,
+   500
+  ]
+ },
+ "dizzy_halloween": {
+  "frames": 4,
+  "ms": [
+   140,
+   140,
+   140,
+   140
+  ]
+ },
+ "yawn_halloween": {
+  "frames": 6,
+  "ms": [
+   200,
+   220,
+   500,
+   500,
+   220,
+   300
+  ]
+ },
  "sleep": {
   "frames": 4,
   "ms": [
@@ -139,6 +226,37 @@
   "ms": [
    260,
    260
+  ]
+ },
+ "walk_halloween": {
+  "frames": 4,
+  "ms": [
+   150,
+   150,
+   150,
+   150
+  ]
+ },
+ "stand_halloween": {
+  "frames": 1,
+  "ms": [
+   400
+  ]
+ },
+ "held_halloween": {
+  "frames": 2,
+  "ms": [
+   260,
+   260
+  ]
+ },
+ "sleep_halloween": {
+  "frames": 4,
+  "ms": [
+   650,
+   650,
+   650,
+   650
   ]
  },
  "_frame": {

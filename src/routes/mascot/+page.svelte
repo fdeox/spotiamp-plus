@@ -20,13 +20,27 @@
   import walkStrip from "$lib/mascot/walk.png";
   import stand from "$lib/mascot/stand.png";
   import heldStrip from "$lib/mascot/held.png";
+  import idle_halloween from "$lib/mascot/idle_halloween.png";
+  import dance_halloween from "$lib/mascot/dance_halloween.png";
+  import celebrate_halloween from "$lib/mascot/celebrate_halloween.png";
+  import happy_halloween from "$lib/mascot/happy_halloween.png";
+  import surprised_halloween from "$lib/mascot/surprised_halloween.png";
+  import sad_halloween from "$lib/mascot/sad_halloween.png";
+  import love_halloween from "$lib/mascot/love_halloween.png";
+  import dizzy_halloween from "$lib/mascot/dizzy_halloween.png";
+  import yawn_halloween from "$lib/mascot/yawn_halloween.png";
+  import walk_halloween from "$lib/mascot/walk_halloween.png";
+  import stand_halloween from "$lib/mascot/stand_halloween.png";
+  import held_halloween from "$lib/mascot/held_halloween.png";
+  import sleep_halloween from "$lib/mascot/sleep_halloween.png";
 
   // Lala, the llama (mascot.rs owns the window). It dances while music plays,
   // falls asleep a minute after it stops, and reacts: a new badge (a hop), a
   // loved song (a heart), a song that won't load (sad), a click (happy).
   // Everything comes from events the other windows already send.
 
-  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party, walk: walkStrip, stand, held: heldStrip };
+  const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party, walk: walkStrip, stand, held: heldStrip,
+    idle_halloween, dance_halloween, celebrate_halloween, happy_halloween, surprised_halloween, sad_halloween, love_halloween, dizzy_halloween, yawn_halloween, walk_halloween, stand_halloween, held_halloween, sleep_halloween };
   /** reactions that play through once rather than for a while */
   const ONCE = ["celebrate", "yawn"];
   // April 21, Winamp's birthday: a party hat all day
@@ -34,6 +48,16 @@
     const d = new Date();
     return d.getMonth() === 3 && d.getDate() === 21;
   })();
+  // Halloween: a witch hat and a cape from October 24 to November 1
+  const HALLOWEEN = (() => {
+    const d = new Date();
+    return (d.getMonth() === 9 && d.getDate() >= 24) || (d.getMonth() === 10 && d.getDate() === 1);
+  })();
+  // the party hat, if she dresses up on special days (right-click: off)
+  const party = () => PARTY && costumes;
+  /** the strip an animation is drawn from: her costume's, in season */
+  /** @param {string} name */
+  const dressed = (name) => (HALLOWEEN && costumes && images[`${name}_halloween`] ? `${name}_halloween` : name);
   const FRAME_W = ANIMS_JSON._frame.width;
   const FRAME_H = ANIMS_JSON._frame.height;
   /** each animation: its frame count and how long each frame shows */
@@ -85,7 +109,7 @@
       // asked for a walk in her sleep: she's up for it, and stays up after
       awakeUntil = Date.now() + WOKEN_MS;
       yawnedForSleep = false;
-    } else if (reaction || current !== (PARTY ? "idle_party" : "idle")) return;
+    } else if (reaction || current !== (party() ? "idle_party" : "idle")) return;
     const room = /** @type {[number, number]} */ (await invoke("mascot_room").catch(() => [0, 0]));
     const px = window.innerHeight / FRAME_H; // screen px per art px
     const dir = room[0] > room[1] ? -1 : room[1] > room[0] ? 1 : Math.random() < 0.5 ? -1 : 1;
@@ -193,6 +217,11 @@
   let chatty = true;
   try {
     chatty = localStorage.getItem("lala-chatty") !== "0";
+  } catch {}
+  // costumes on special days (Halloween, Winamp's birthday); right-click: off
+  let costumes = true;
+  try {
+    costumes = localStorage.getItem("lala-costumes") !== "0";
   } catch {}
   let lastChat = 0;
   /** @param {number} gap ms since the last line */
@@ -421,7 +450,7 @@
       if (now < walk.standUntil) return "stand";
       walk = null;
     }
-    if (playing) return PARTY ? "dance_party" : "dance";
+    if (playing) return party() ? "dance_party" : "dance";
     if (now - lastPlayingAt > SLEEP_AFTER_MS && now > awakeUntil) {
       // a yawn first, then she lies down
       if (current !== "sleep" && !yawnedForSleep) {
@@ -439,7 +468,7 @@
       return "sleep";
     }
     yawnedForSleep = false;
-    return PARTY ? "idle_party" : "idle";
+    return party() ? "idle_party" : "idle";
   }
 
   // Pixel art drawn at any size without going blurry: blow the frame up by a
@@ -447,7 +476,7 @@
   const big = document.createElement("canvas");
   /** @param {string} name @param {number} i */
   function draw(name, i) {
-    const img = images[name];
+    const img = images[dressed(name)];
     if (!canvas || !img?.complete || !img.naturalWidth) return;
     const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
     const W = canvas.width;
@@ -706,6 +735,17 @@
               try {
                 localStorage.setItem("lala-chatty", chatty ? "1" : "0");
               } catch {}
+            },
+          },
+          {
+            text: "Dress up on special days",
+            checked: costumes,
+            action: () => {
+              costumes = !costumes;
+              try {
+                localStorage.setItem("lala-costumes", costumes ? "1" : "0");
+              } catch {}
+              if (current) draw(current, Math.min(frame, ANIMS[current].frames - 1));
             },
           },
           { item: "Separator" },
