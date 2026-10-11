@@ -5,6 +5,8 @@
   import { onMount } from "svelte";
   import { badgeList } from "$lib/badges.js";
   import ANIMS_JSON from "$lib/mascot/anims.json";
+  import WARDROBE_JSON from "$lib/mascot/wardrobe/wardrobe.json";
+  import { readOutfit, layered, OUTFIT_KEY, STATS_TAB_KEY } from "$lib/wardrobe.js";
   import idle from "$lib/mascot/idle.png";
   import dance from "$lib/mascot/dance.png";
   import sleep from "$lib/mascot/sleep.png";
@@ -68,6 +70,31 @@
   const BADGE_CHECK_MS = 5 * 60_000;
   /** how much the bass has to jump between two looks, against its usual level */
   const BEAT_RISE = 0.2;
+
+  // The wardrobe: a layer per item per animation, drawn over her base strip
+  // (made by Lala/tools/export.py). Loaded when first worn.
+  const LAYER_URLS = /** @type {Record<string, string>} */ (
+    import.meta.glob("/src/lib/mascot/wardrobe/*.png", { eager: true, query: "?url", import: "default" })
+  );
+  const WARDROBE = /** @type {Record<string, {slot: string, layers: string[]}>} */ (WARDROBE_JSON);
+  /** what she wears (the Wardrobe tab in Listening stats sets it) */
+  let outfit = readOutfit();
+  /** @type {Record<string, HTMLImageElement>} */
+  const layers = {};
+  /** an item's layer for an animation, if it has one there @param {string} item @param {string} anim */
+  function layerFor(item, anim) {
+    if (!WARDROBE[item]?.layers.includes(anim)) return null;
+    const key = `${item}.${anim}`;
+    if (!layers[key]) {
+      const url = LAYER_URLS[`/src/lib/mascot/wardrobe/${key}.png`];
+      if (!url) return null;
+      const img = new Image();
+      img.onload = () => current && draw(current, Math.min(frame, ANIMS[current].frames - 1));
+      img.src = url;
+      layers[key] = img;
+    }
+    return layers[key];
+  }
 
   /** @type {Record<string, HTMLImageElement>} */
   const images = {};
@@ -490,6 +517,15 @@
     b.imageSmoothingEnabled = false;
     b.clearRect(0, 0, big.width, big.height);
     b.drawImage(img, i * FRAME_W, 0, FRAME_W, FRAME_H, 0, 0, big.width, big.height);
+    // what she wears, over her (not over a costume or the party hat)
+    if (dressed(name) === name && !name.endsWith("_party")) {
+      for (const item of layered(outfit)) {
+        const layer = layerFor(item, name);
+        if (layer?.complete && layer.naturalWidth) {
+          b.drawImage(layer, i * FRAME_W, 0, FRAME_W, FRAME_H, 0, 0, big.width, big.height);
+        }
+      }
+    }
     ctx.clearRect(0, 0, W, H);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -738,6 +774,15 @@
             },
           },
           {
+            text: "Wardrobe…",
+            action: () => {
+              try {
+                localStorage.setItem(STATS_TAB_KEY, "wardrobe");
+              } catch {}
+              invoke("set_stats_window_visible", { visible: true }).catch(() => {});
+            },
+          },
+          {
             text: "Dress up on special days",
             checked: costumes,
             action: () => {
@@ -760,6 +805,18 @@
       menuBusy = false;
     }
   }
+
+  // the Wardrobe tab changed her outfit: put it on
+  onMount(() => {
+    /** @param {StorageEvent} e */
+    const changed = (e) => {
+      if (e.key !== OUTFIT_KEY) return;
+      outfit = readOutfit();
+      if (current) draw(current, Math.min(frame, ANIMS[current].frames - 1));
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  });
 
   onMount(() => {
     fit();

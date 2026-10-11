@@ -7,6 +7,7 @@
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { badgeList } from "$lib/badges.js";
+  import { ITEMS, readOutfit, toggleItem, undress, OUTFIT_KEY, STATS_TAB_KEY } from "$lib/wardrobe.js";
 
   // Listening stats, from Spotiamp+'s own history (history.rs). Everything is
   // worked out on this computer; nothing is sent anywhere.
@@ -257,6 +258,30 @@
   const topMax = $derived(Math.max(1, ...topList.map((t) => t.plays)));
 
   const badges = $derived(badgeList(allStats, lovedCount));
+
+  // Lala's wardrobe: an item opens with its badge; a click puts it on her
+  // (or takes it off), one per slot.
+  const THUMBS = /** @type {Record<string, string>} */ (
+    import.meta.glob("/src/lib/mascot/wardrobe/*.thumb.png", { eager: true, query: "?url", import: "default" })
+  );
+  let outfit = $state(readOutfit());
+  const wardrobe = $derived(
+    ITEMS.map((item) => {
+      const badge = badges.find((b) => b.name === item.badge);
+      return { ...item, badge, open: !!badge?.done, worn: outfit.includes(item.id), thumb: THUMBS[`/src/lib/mascot/wardrobe/${item.id}.thumb.png`] };
+    }),
+  );
+  const wardrobeOpen = $derived(wardrobe.filter((w) => w.open).length);
+  /** opened from Lala's menu: show the wardrobe */
+  function openRequestedTab() {
+    try {
+      const tab = localStorage.getItem(STATS_TAB_KEY);
+      if (tab) {
+        localStorage.removeItem(STATS_TAB_KEY);
+        listTab = tab;
+      }
+    } catch {}
+  }
   const badgesDone = $derived(badges.filter((x) => x.done).length);
   /** "3.4/10 h", "12/50" */
   function progress(/** @type {import('$lib/badges.js').Badge} */ x) {
@@ -398,15 +423,23 @@
     // every minute while it's up.
     /** @type {() => void} */
     let unlisten = () => {};
+    openRequestedTab();
     getCurrentWindow()
-      .listen("statsShown", () => refresh())
+      .listen("statsShown", () => {
+        openRequestedTab();
+        refresh();
+      })
       .then((u) => (unlisten = u));
+    /** @param {StorageEvent} e */
+    const outfitChanged = (e) => e.key === OUTFIT_KEY && (outfit = readOutfit());
+    window.addEventListener("storage", outfitChanged);
     const timer = setInterval(() => {
       if (!document.hidden) refresh();
     }, 60_000);
     return () => {
       unlisten();
       clearInterval(timer);
+      window.removeEventListener("storage", outfitChanged);
     };
   });
 
@@ -684,6 +717,17 @@
         >
           BADGES {badgesDone}/{badges.length}
         </button>
+        <button
+          class="st-tab"
+          class:on={listTab === "wardrobe"}
+          onclick={() => (listTab = "wardrobe")}
+          title="Lala's outfits: each opens with a badge"
+        >
+          WARDROBE {wardrobeOpen}/{ITEMS.length}
+        </button>
+        {#if listTab === "wardrobe" && outfit.length}
+          <button class="st-play" onclick={() => (outfit = undress())} title="take everything off">UNDRESS</button>
+        {/if}
         {#if listTab === "songs"}
           <button class="st-play" onclick={playTop} title="put these songs in the playlist, most played first">PLAY THESE</button>
         {/if}
@@ -705,6 +749,23 @@
               <span class="st-count">{x.done ? "✓" : progress(x)}</span>
             </div>
           {/each}
+        {:else if listTab === "wardrobe"}
+          <div class="st-wardrobe">
+            {#each wardrobe as w (w.id)}
+              <button
+                class="st-outfit"
+                class:open={w.open}
+                class:worn={w.worn}
+                disabled={!w.open}
+                onclick={() => (outfit = toggleItem(w.id))}
+                title={w.open ? (w.worn ? `Take off the ${w.name.toLowerCase()}` : `Put on the ${w.name.toLowerCase()}`) : `Opens with the ${w.badge?.name} badge: ${w.badge?.desc}`}
+              >
+                <img src={w.thumb} alt="" width="80" height="84" />
+                <span class="st-outfit-name">{w.worn ? "✓ " : ""}{w.name}</span>
+                <span class="st-outfit-badge">{w.open ? w.slot : `${w.badge?.name} · ${w.badge ? progress(w.badge) : ""}`}</span>
+              </button>
+            {/each}
+          </div>
         {:else}
         {#each topList as t, i}
           <div
@@ -1210,5 +1271,54 @@
   }
   .rw-dots {
     letter-spacing: 1px;
+  }
+
+  /* the wardrobe: Lala in each outfit; the ones still to earn are greyed */
+  .st-wardrobe {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 4px;
+    padding: 4px;
+  }
+  .st-outfit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px 2px 4px;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent);
+    color: color-mix(in srgb, var(--fg) 70%, transparent);
+    font: inherit;
+    cursor: pointer;
+  }
+  .st-outfit img {
+    image-rendering: pixelated;
+    filter: grayscale(1) brightness(0.55);
+  }
+  .st-outfit.open img {
+    filter: none;
+  }
+  .st-outfit.open {
+    color: var(--fg);
+  }
+  .st-outfit.worn {
+    border-color: var(--hi);
+    background: color-mix(in srgb, var(--sel) 45%, transparent);
+  }
+  .st-outfit:disabled {
+    cursor: default;
+  }
+  .st-outfit-name {
+    white-space: nowrap;
+  }
+  .st-outfit.worn .st-outfit-name {
+    color: var(--hi);
+  }
+  .st-outfit-badge {
+    color: color-mix(in srgb, var(--fg) 60%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 </style>
