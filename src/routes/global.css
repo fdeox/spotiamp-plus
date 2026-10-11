@@ -172,7 +172,7 @@ body[data-skin-font] #playlist-tracks,
 body[data-skin-font] .jump-box,
 body[data-skin-font] .ml-col,
 body[data-skin-font] .ml-cols {
-    font-family: var(--skin-plfont), "px sans nouveaux", sans-serif;
+    font-family: var(--skin-plfont, Arial), "px sans nouveaux", sans-serif;
     font-size: 10px;
     letter-spacing: 0;
 }

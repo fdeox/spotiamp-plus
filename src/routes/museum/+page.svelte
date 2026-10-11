@@ -88,7 +88,7 @@
       await invoke("museum_apply", { md5: skin.md5, download: skin.download });
       applied = skin.md5;
       status = `Wearing ${skin.name}.`;
-      emitWindowEvent("skinChanged", { skin: "custom", from: "museum" });
+      emitWindowEvent("skinChanged", { skin: "custom", from: "museum", name: skin.name });
     } catch (e) {
       status = `Couldn't put on ${skin.name}: ${e}`;
     } finally {

@@ -191,8 +191,9 @@
     .then((s) => (currentSkin = s || "classic"))
     .catch(() => {});
   // Which .wsz is on: the settings only say "custom", so the menu remembers
-  // the pick itself ("bundled:<name>", "file" or "museum") to tick the right
-  // entry. Only a convenience: without it, nothing custom is ticked.
+  // the pick itself ("bundled:<name>", "file:<name>" or "museum:<name>") to
+  // tick the right entry. Only a convenience: without it, nothing custom is
+  // ticked.
   const WORN_KEY = "spotiamp.wornSkin";
   let wornCustom = $state(readWorn());
   function readWorn() {
@@ -512,9 +513,14 @@
           action: () => chooseSkin(c),
         })),
       },
+      // a skin from the Museum or a file: its name, ticked (the two below
+      // are things to do, not choices, so they're never ticked)
+      ...(currentSkin === "custom" && /^(museum|file):./.test(wornCustom)
+        ? [{ text: menuText(wornCustom.replace(/^(museum|file):/, "")), checked: true, enabled: false }]
+        : []),
       sep,
-      { text: "Load .wsz from disk…", checked: isWorn("file"), action: loadWszSkin },
-      { text: "Skin &Museum…", checked: isWorn("museum"), action: openSkinMuseum },
+      { text: "Load .wsz from disk…", action: loadWszSkin },
+      { text: "Skin &Museum…", action: openSkinMuseum },
       sep,
       {
         text: "Use the skin's font",
@@ -1012,7 +1018,7 @@
       const name = await invoke("pick_and_load_skin");
       if (name === null) return; // cancelled
       currentSkin = "custom";
-      setWorn("file");
+      setWorn(`file:${name}`);
       emitWindowEvent("skinChanged", { skin: "custom" });
     } catch (e) {
       handleError(new Error(`Could not load skin: ${e}`));
@@ -1025,6 +1031,65 @@
     .then((names) => (bundledSkins = names))
     .catch(() => {});
   const prettySkinName = (/** @type {string} */ name) => name.replaceAll("_", " ");
+
+  /**
+   * The selected row's name, when it's cut off, scrolls through like the
+   * main window's title: a moment's wait, along to its end one screen pixel
+   * at a time (so the pixel font stays sharp), a wait, and back to the start.
+   * @param {HTMLElement} node
+   * @param {boolean} on
+   */
+  function marquee(node, on) {
+    /** @type {ReturnType<typeof setInterval> | undefined} */
+    let timer;
+    const cell = node.parentElement;
+    function stop() {
+      clearInterval(timer);
+      timer = undefined;
+      node.style.transform = "";
+      cell?.classList.remove("marquee");
+    }
+    function start() {
+      stop();
+      if (!cell) return;
+      const step = 1 / (window.devicePixelRatio || 1); // one screen pixel
+      let offset = 0;
+      let end = 0;
+      let wait = 0;
+      const measure = () => {
+        cell.classList.remove("marquee");
+        node.style.transform = "";
+        end = Math.ceil((cell.scrollWidth - cell.clientWidth) / step) * step;
+        if (end > 0) cell.classList.add("marquee");
+        wait = 30; // 1.2 s
+        offset = 0;
+      };
+      measure();
+      timer = setInterval(() => {
+        if (end <= 0 || wait > 0) {
+          wait--;
+          if (end <= 0 && wait < 0) measure(); // the window may have narrowed since
+          return;
+        }
+        offset = Math.min(offset + step, end);
+        node.style.transform = `translateX(${-offset}px)`;
+        if (offset >= end) {
+          // a wait at the end, then from the start again
+          wait = 40;
+          setTimeout(() => timer && measure(), 1600);
+        }
+      }, 40);
+    }
+    if (on) start();
+    return {
+      /** @param {boolean} next */
+      update(next) {
+        if (next && !timer) start();
+        else if (!next) stop();
+      },
+      destroy: stop,
+    };
+  }
 
   // "Use the skin's font" (see +layout.svelte)
   let skinFont = (() => {
@@ -1106,7 +1171,7 @@
     subscribeToWindowEvent("skinChanged", (e) => {
       if (e.skin === "custom" && e.from === "museum") {
         currentSkin = "custom";
-        setWorn("museum");
+        setWorn(`museum:${e.name ?? ""}`);
       }
     }).then((u) => (unsubSkin = u));
 
@@ -1544,7 +1609,11 @@
                 <span class="playlist-track-loved" title="loved">♡&nbsp;</span>
               {/if}
               <!-- the full name on hover: a long one is cut off with "…" -->
-              <span class="playlist-track-name" title={row.displayName}>{row.displayName}</span>
+              <span
+                class="playlist-track-name"
+                title={row.displayName}
+                use:marquee={playlist.selectedRows.length === 1 && row.isSelected()}
+              >{row.displayName}</span>
             </td>
             <td class="playlist-track-duration">{row.displayDuration}</td>
           </tr>
@@ -1858,6 +1927,13 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  /* the selected row's name scrolling through (see marquee()) */
+  .playlist-track-main:global(.marquee) {
+    text-overflow: clip;
+  }
+  .playlist-track-main:global(.marquee) .playlist-track-name {
+    display: inline-block;
   }
 
   .playlist-track-number {

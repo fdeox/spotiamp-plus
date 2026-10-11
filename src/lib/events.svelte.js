@@ -30,7 +30,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *   art: { event: { uri: string | null, playing: boolean, title: string } },
  *   lyricsSeek: { event: { uri: string, positionMs: number } },
  *   seekTo: { event: { positionMs: number } },
- *   skinChanged: { event: { skin: string, from?: string } },
+ *   skinChanged: { event: { skin: string, from?: string, name?: string } },
  *   forwardedKey: { event: { key: string, shift: boolean, ctrl: boolean } },
  * }} WindowEventTypes
  */
