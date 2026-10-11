@@ -300,9 +300,9 @@
     padding: 8px 10px;
     text-align: center;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
-    line-height: 1.55;
+    line-height: 1.75;
     scrollbar-width: none;
   }
   .lyr-body::-webkit-scrollbar {
@@ -345,7 +345,7 @@
   }
   .lyr-provider {
     margin-top: 14px;
-    font-size: 8px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 35%, transparent);
   }
 

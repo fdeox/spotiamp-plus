@@ -279,7 +279,7 @@
     flex: 1;
     min-width: 0;
     font: inherit;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     padding: 2px 5px;
     color: var(--hi);
     background: var(--skin-plbg, #000);
@@ -290,7 +290,7 @@
   }
   .mu-btn {
     font: inherit;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     padding: 2px 8px;
     color: var(--skin-titletext, var(--skin-genexbtntext, #fff));
     background: color-mix(in srgb, var(--frame) 88%, #fff);
@@ -371,7 +371,7 @@
     cursor: pointer;
     color: var(--fg);
     font: inherit;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     text-align: left;
   }
   .mu-skin:hover {
@@ -406,7 +406,7 @@
   }
   .mu-msg {
     padding: 14px 4px;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     font-style: italic;
     color: color-mix(in srgb, var(--fg) 65%, transparent);
     text-align: center;
@@ -421,7 +421,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 4px 2px;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
   }
   .mu-status {
@@ -433,7 +433,7 @@
   }
   .mu-link {
     font: inherit;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     background: none;
     border: none;
     padding: 0;

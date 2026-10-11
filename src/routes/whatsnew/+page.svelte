@@ -341,9 +341,9 @@
     border: 1px solid #0c0d12;
     box-shadow: inset 1px 1px 0 #0e0f16, inset -1px -1px 0 #3a3f52;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
-    line-height: 1.45;
+    line-height: 1.5;
     color: var(--skin-plnormal, #00ff41);
     user-select: text;
     scrollbar-width: thin;
@@ -351,16 +351,16 @@
   }
   h1 {
     margin: 0 0 4px;
-    font-size: 13px;
+    font-size: calc(16px * var(--px-crisp, 1));
     font-weight: 700;
     color: var(--skin-plcurrent, #fff);
   }
   h2 {
     margin: 10px 0 3px;
-    font-size: 11px;
+    font-size: calc(8px * var(--px-crisp, 1));
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     color: var(--skin-plcurrent, #fff);
   }
   ul {
@@ -390,7 +390,7 @@
     display: inline-block;
     padding: 0 4px;
     font-family: inherit;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: var(--skin-plcurrent, #fff);
     border: 1px solid color-mix(in srgb, var(--skin-plnormal, #00ff41) 55%, transparent);
     border-radius: 2px;
@@ -408,7 +408,7 @@
   }
   .wn-btn {
     font-family: "px sans nouveaux", sans-serif;
-    font-size: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
     padding: 2px 10px;
     color: var(--skin-titletext, var(--skin-genexbtntext, #fff));
