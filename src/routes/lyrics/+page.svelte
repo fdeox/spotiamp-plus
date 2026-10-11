@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { Menu } from "@tauri-apps/api/menu";
   import { onMount, tick } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
@@ -9,6 +10,40 @@
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
+
+  // Text size, right-click: small (the pixel font's own 8 px, crisp), medium
+  // (0.7.6's size, the default) or large (one whole pixel step up, crisp).
+  const SIZE_KEY = "lyrics-size";
+  const SIZES = /** @type {const} */ (["small", "medium", "large"]);
+  let size = $state(/** @type {(typeof SIZES)[number]} */ ("medium"));
+  try {
+    const saved = localStorage.getItem(SIZE_KEY);
+    if (saved && SIZES.includes(/** @type {any} */ (saved))) size = /** @type {any} */ (saved);
+  } catch {}
+
+  /** @param {MouseEvent} e */
+  async function onMenu(e) {
+    e.preventDefault();
+    /** @param {string} text @param {(typeof SIZES)[number]} value */
+    const pick = (text, value) => ({
+      text,
+      checked: size === value,
+      action: () => {
+        size = value;
+        try {
+          localStorage.setItem(SIZE_KEY, value);
+        } catch {}
+      },
+    });
+    try {
+      const menu = await Menu.new({
+        items: [{ text: "Text size", items: [pick("Small", "small"), pick("Medium", "medium"), pick("Large", "large")] }],
+      });
+      await menu.popup();
+    } catch (err) {
+      invoke("log_frontend_error", { window: "lyrics", message: `lyrics menu: ${err}` }).catch(() => {});
+    }
+  }
 
   let lines = $state(/** @type {{ time_ms: number, text: string }[]} */ ([]));
   let synced = $state(false);
@@ -148,10 +183,12 @@
     <GenTop title="LYRICS" onclose={close} />
   </div>
 
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="lyr-body"
+    class="lyr-body {size}"
     class:unsynced={status === "ok" && !synced}
     bind:this={listEl}
+    oncontextmenu={onMenu}
   >
     {#if status === "idle"}
       <div class="lyr-msg">Waiting for a track…</div>
@@ -302,10 +339,18 @@
     padding: 8px 10px;
     text-align: center;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp-up, 2));
+    font-size: 11px;
     -webkit-font-smoothing: none;
-    line-height: 1.5;
+    line-height: 1.55;
     scrollbar-width: none;
+  }
+  .lyr-body.small {
+    font-size: calc(8px * var(--px-crisp, 1));
+    line-height: 1.75;
+  }
+  .lyr-body.large {
+    font-size: calc(8px * var(--px-crisp-up, 2));
+    line-height: 1.5;
   }
   .lyr-body::-webkit-scrollbar {
     display: none;
