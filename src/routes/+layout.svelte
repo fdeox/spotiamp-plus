@@ -50,7 +50,7 @@
     "plnormal", "plcurrent", "plbg", "plselbg", "textcolor", "libtitle",
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
-    "genexhdrtext", "genexbtn", "genexbtnp",
+    "genexhdrtext", "genexbtn", "genexbtnp", "viscolor",
   ];
   /** @param {string} skin */
   function applySkin(skin) {

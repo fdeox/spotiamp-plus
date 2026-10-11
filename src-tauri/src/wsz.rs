@@ -120,8 +120,8 @@ const BUNDLED_SKINS: &[(&str, &[u8])] = &[
 
 /// Extra skin files that aren't 1:1 sprite sheets: GEN.BMP is cropped into the
 /// generic-window titlebar tiles (library/visualizer), PLEDIT.TXT carries the
-/// playlist colours.
-const EXTRA_FILES: [&str; 4] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT", "SPOTIAMP.TXT"];
+/// playlist colours, VISCOLOR.TXT the spectrum's.
+const EXTRA_FILES: [&str; 5] = ["GEN.BMP", "GENEX.BMP", "PLEDIT.TXT", "SPOTIAMP.TXT", "VISCOLOR.TXT"];
 
 /// The sprite sheets we can re-skin, mapped to their CSS variable suffix.
 /// (.CUR cursors keep the base skin for now.)
@@ -527,6 +527,19 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         }
     }
 
+    // The spectrum's 24 colours (VISCOLOR.TXT), as "r,g,b r,g,b …" for the
+    // main window's visualizer to read. Without the file it keeps the base
+    // skin's, as Winamp did.
+    // Skins picked before 0.7.7 were unpacked without the file: for one of
+    // the bundled skins it's read from the app's own copy.
+    let colours = files
+        .read("VISCOLOR.TXT")
+        .and_then(|bytes| viscolor(&String::from_utf8_lossy(&bytes)))
+        .or_else(|| files.read("MAIN.BMP").and_then(|main| bundled_viscolor(&main)));
+    if let Some(colours) = colours {
+        sprites.insert("viscolor".to_string(), colours);
+    }
+
     // Most classic 2.x skins ship no GENEX.BMP (the media-library palette came
     // later). Without it the library would keep the BASE genex colours, so it
     // wouldn't follow the loaded skin. Derive the library palette from the
@@ -621,6 +634,86 @@ fn library_title(text: &str) -> Option<String> {
         .collect();
     let title = title.trim().to_string();
     (!title.is_empty()).then_some(title)
+}
+
+/// VISCOLOR.TXT: a colour a line, "r,g,b," and a comment after it (0 the
+/// background, 1 the dots, 2-17 the bars top to bottom, 18-22 the
+/// oscilloscope, 23 the peaks). Skins write it loosely (spaces, tabs, no
+/// trailing comma, a blank line here and there), so each line gives its first
+/// three numbers. All 24 or nothing.
+fn viscolor(text: &str) -> Option<String> {
+    let mut colours = Vec::with_capacity(24);
+    for line in text.lines() {
+        let line = line.split("//").next().unwrap_or("");
+        let rgb: Vec<u8> = line
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|t| !t.is_empty())
+            .map_while(|t| t.parse::<u16>().ok().map(|v| v.min(255) as u8))
+            .take(3)
+            .collect();
+        if rgb.len() == 3 {
+            colours.push(format!("{},{},{}", rgb[0], rgb[1], rgb[2]));
+        }
+        if colours.len() == 24 {
+            // spaces between them: a ";" can't be in a CSS variable
+            return Some(colours.join(" "));
+        }
+    }
+    None
+}
+
+/// A file from a skin archive by its name, in whatever folder (as skins nest
+/// them), any case.
+fn zip_file(bytes: &[u8], want: &str) -> Option<Vec<u8>> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).ok()?;
+        let name = entry.name().rsplit(['/', '\\']).next().unwrap_or("").to_uppercase();
+        if name == want {
+            let mut out = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut out).ok()?;
+            return Some(out);
+        }
+    }
+    None
+}
+
+/// The spectrum colours of the bundled skin with this MAIN.BMP, if it's one.
+fn bundled_viscolor(main: &[u8]) -> Option<String> {
+    BUNDLED_SKINS
+        .iter()
+        .find(|(_, bytes)| zip_file(bytes, "MAIN.BMP").as_deref() == Some(main))
+        .and_then(|(_, bytes)| zip_file(bytes, "VISCOLOR.TXT"))
+        .and_then(|text| viscolor(&String::from_utf8_lossy(&text)))
+}
+
+#[cfg(test)]
+mod viscolor_tests {
+    use super::*;
+
+    #[test]
+    fn a_bundled_skin_unpacked_before_gets_its_colours_back() {
+        let (_, spotiamp) = BUNDLED_SKINS.iter().find(|(name, _)| name.starts_with("Spotiamp")).unwrap();
+        let main = zip_file(spotiamp, "MAIN.BMP").unwrap();
+        assert!(bundled_viscolor(&main).unwrap().starts_with("12,12,14 40,40,44 "));
+        assert_eq!(bundled_viscolor(b"not a bundled skin"), None);
+    }
+
+    #[test]
+    fn reads_the_24_colours_however_loosely_written() {
+        let mut text = String::from("0,0,0, // color 0 = black\r\n24, 33 ,41 // dots\r\n\r\n");
+        for i in 2..24 {
+            text.push_str(&format!("\t{i},{},300,\n", i * 2));
+        }
+        let got = viscolor(&text).unwrap();
+        let parts: Vec<&str> = got.split(' ').collect();
+        assert_eq!(parts.len(), 24);
+        assert_eq!(parts[0], "0,0,0");
+        assert_eq!(parts[1], "24,33,41");
+        assert_eq!(parts[23], "23,46,255"); // past 255: kept in range
+        // too few: the base skin's stay
+        assert_eq!(viscolor("1,2,3\n4,5,6"), None);
+    }
 }
 
 #[cfg(test)]

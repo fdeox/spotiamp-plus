@@ -17,6 +17,7 @@
   } from "$lib/spotify.svelte.js";
   import TextTicker from "../../TextTicker.svelte";
   import MiniTime from "../../MiniTime.svelte";
+  import MainVis from "../../MainVis.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
   import { onMount, untrack } from "svelte";
   import { emit, listen } from "@tauri-apps/api/event";
@@ -1417,26 +1418,13 @@
     aria-label="Toggle elapsed or remaining time"
     title="Elapsed / remaining"
   ></button>
-  {#each visualizer.bars as bar}
-    <div
-      class="visualizer-bar"
-      style:--bar-idx={bar.index}
-      style:--height={bar.value}
-    ></div>
-    <div
-      class="visualizer-bar-hat"
-      style:--bar-idx={bar.index}
-      style:--height={bar.hat}
-      class:hidden={bar.hat < 0.01}
-    ></div>
-  {/each}
-  <!-- double-click the spectrum to pop the milkdrop-style visualizer window -->
-  <button
-    class="viz-open-btn"
-    ondblclick={() => invoke("set_visualizer_window_visible", { visible: true })}
-    aria-label="Open visualizer"
-    title="double-click for the visualizer"
-  ></button>
+  <!-- the spectrum / oscilloscope in the skin's colours; double-click opens
+       the visualizer window -->
+  <MainVis
+    {visualizer}
+    waveCommand={controllerMode ? "loopback_waveform" : "take_latest_waveform"}
+    onOpen={() => invoke("set_visualizer_window_visible", { visible: true })}
+  />
   <input
     type="range"
     class="sprite volume-sprite"
@@ -1790,7 +1778,7 @@
     animation: llama-bob 0.9s ease-in-out infinite alternate;
   }
   .llama-version {
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: #6fdc8c;
     text-align: center;
   }
@@ -1804,7 +1792,7 @@
     background: transparent;
     padding: 0;
     font: inherit;
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: #00ff41;
     text-decoration: underline;
     cursor: pointer;
@@ -1826,7 +1814,7 @@
     text-shadow: 0 0 5px rgba(0, 255, 65, 0.6);
   }
   .llama-credits {
-    font-size: 7px;
+    font-size: calc(8px * var(--px-crisp, 1));
     color: #3f9a55;
     text-align: center;
     line-height: 1.6;
@@ -1940,57 +1928,6 @@
   /* ------ /SEEK POSITION ------ */
 
   /* ------ VISUALIZER ------ */
-  .visualizer-bar {
-    position: absolute;
-    left: calc((24px + var(--bar-idx) * 4px) * var(--zoom));
-    width: calc(var(--zoom) * 3px);
-
-    --max-height: 16px;
-    top: calc((59px - var(--max-height) * var(--height)) * var(--zoom));
-    height: calc(var(--max-height) * var(--height) * var(--zoom));
-
-    background: linear-gradient(
-      rgb(213, 76, 0) 0% 6.67%,
-      rgb(213, 89, 0) 6.67% 13.34%,
-      rgb(215, 102, 0) 13.34% 20.009999999999998%,
-      rgb(214, 115, 1) 20.009999999999998% 26.68%,
-      rgb(197, 124, 4) 26.68% 33.35%,
-      rgb(222, 165, 21) 33.35% 40.019999999999996%,
-      rgb(213, 181, 34) 40.019999999999996% 46.69%,
-      rgb(189, 222, 42) 46.69% 53.36%,
-      rgb(148, 221, 34) 53.36% 60.03%,
-      rgb(41, 206, 16) 60.03% 66.7%,
-      rgb(50, 190, 16) 66.7% 73.37%,
-      rgb(56, 181, 17) 73.37% 80.03999999999999%,
-      rgb(49, 156, 6) 80.03999999999999% 86.71%,
-      rgb(40, 148, 1) 86.71% 93.38%,
-      rgb(27, 132, 6) 93.38% 100.05%
-    );
-    background-position: bottom;
-    background-repeat: no-repeat;
-    background-size: 100% calc(var(--max-height) * var(--zoom));
-  }
-  .visualizer-bar-hat {
-    position: absolute;
-    --max-height: 16px;
-    background: rgb(150, 150, 150);
-    top: calc((58px + (1px - var(--height) * var(--max-height))) * var(--zoom));
-    width: calc(var(--zoom) * 3px);
-    height: calc(var(--zoom) * 1px);
-    left: calc((24px + var(--bar-idx) * 4px) * var(--zoom));
-  }
-  .viz-open-btn {
-    position: absolute;
-    left: calc(24px * var(--zoom));
-    top: calc(43px * var(--zoom));
-    width: calc(76px * var(--zoom));
-    height: calc(16px * var(--zoom));
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 30;
-  }
   /* ------ /VISUALIZER ------ */
 
   /* ------ TITLEBAR ------ */
