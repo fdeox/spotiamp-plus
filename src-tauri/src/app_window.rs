@@ -609,12 +609,20 @@ fn update_owners(dock: &mut Dock) {
 /// with WebView2's own subclassing and wedges the UI thread — see git history.
 /// `on_window_event` is the safe, supported path.)
 fn move_group_with_master(pos: PhysicalPosition<i32>) {
+    for (window, position) in group_moves(pos).unwrap_or_default() {
+        let _ = window.set_position(position);
+    }
+}
+
+/// Where each frozen group member goes when the player, mid-drag, is at `pos`
+/// (None outside a player drag, or while a dock handler holds the lock).
+fn group_moves(pos: PhysicalPosition<i32>) -> Option<Vec<(WebviewWindow, PhysicalPosition<i32>)>> {
     let moves: Vec<(WebviewWindow, PhysicalPosition<i32>)> = {
         let Ok(dock) = dock().try_lock() else {
-            return;
+            return None;
         };
         if dock.dragging.as_deref() != Some(MASTER) {
-            return;
+            return None;
         }
         // Dragged onto a screen with another scale, Windows resizes every
         // window by the ratio; the gaps must follow, or the group lands in a
@@ -635,9 +643,51 @@ fn move_group_with_master(pos: PhysicalPosition<i32>) {
             })
             .collect()
     };
-    for (window, position) in moves {
-        let _ = window.set_position(position);
+    Some(moves)
+}
+
+/// The frontend's drag moves its window here instead of setting the position
+/// itself. Dragging the player, it and its whole group move in one batch
+/// (DeferWindowPos): all at once, in one paint, instead of the player first
+/// and each of the others a step behind (which felt like it caught).
+#[tauri::command]
+pub fn dock_drag_to(window: WebviewWindow, x: i32, y: i32) {
+    let pos = PhysicalPosition::new(x, y);
+    #[cfg(target_os = "windows")]
+    if window.label() == MASTER
+        && let Some(moves) = group_moves(pos)
+        && move_together(&window, pos, &moves)
+    {
+        return;
     }
+    let _ = window.set_position(pos);
+}
+
+/// One DeferWindowPos batch; false (nothing moved) if Windows turns it down.
+#[cfg(target_os = "windows")]
+fn move_together(
+    player: &WebviewWindow,
+    pos: PhysicalPosition<i32>,
+    moves: &[(WebviewWindow, PhysicalPosition<i32>)],
+) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BeginDeferWindowPos, DeferWindowPos, EndDeferWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+    let all: Vec<_> = std::iter::once((player, pos))
+        .chain(moves.iter().map(|(w, p)| (w, *p)))
+        .filter_map(|(w, p)| w.hwnd().ok().map(|h| (h, p)))
+        .collect();
+    let Ok(mut batch) = (unsafe { BeginDeferWindowPos(all.len() as i32) }) else {
+        return false;
+    };
+    for (hwnd, p) in all {
+        match unsafe { DeferWindowPos(batch, hwnd, None, p.x, p.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) } {
+            Ok(next) => batch = next,
+            // the batch is gone: move them one by one
+            Err(_) => return false,
+        }
+    }
+    unsafe { EndDeferWindowPos(batch) }.is_ok()
 }
 
 /// Register a frameless window with the docking manager. Call once per window
