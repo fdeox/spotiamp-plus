@@ -5,6 +5,7 @@
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
+  import GenTop from "../../GenTop.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
@@ -100,6 +101,7 @@
     <span class="art-title">ALBUM ART</span>
     <button class="art-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
+    <GenTop title="ALBUM ART" onclose={close} />
   </div>
 
   <div class="art-body">

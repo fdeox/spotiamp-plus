@@ -8,6 +8,7 @@
   import { Menu } from "@tauri-apps/api/menu";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
+  import GenTop from "../../GenTop.svelte";
 
   // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
   // typing letters in the Library searches the list.
@@ -799,6 +800,7 @@
     <span class="ml-title"></span>
     <button class="ml-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
+    <GenTop title="WINAMP LIBRARY" titleVar="libtitle" onclose={close} />
   </div>
 
   <div class="ml-body">
@@ -1459,12 +1461,10 @@
      gets the frame-coloured bevel, like .ml-btn */
   .ml-clear {
     background: color-mix(in srgb, var(--frame) 82%, #fff);
-    border: 4px solid;
-    border-color:
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 72%, #fff);
+    border: var(--skin-genexbtnw, 4px) solid color-mix(in srgb, var(--frame) 35%, #000);
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #fff),
+      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #000);
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
     color: var(--skin-genexbtntext, #393942);
     font-family: "px sans nouveaux", sans-serif;
@@ -1476,11 +1476,9 @@
   }
   .ml-clear:active {
     border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
-    border-color:
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 40%, #000);
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #000),
+      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #fff);
     background: color-mix(in srgb, var(--frame) 72%, #000);
   }
 
@@ -1708,12 +1706,10 @@
        so the buttons are visible and skin-matched instead of an invisible
        transparent border on near-black. */
     background: color-mix(in srgb, var(--frame) 82%, #fff);
-    border: 4px solid;
-    border-color:
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 72%, #fff);
+    border: var(--skin-genexbtnw, 4px) solid color-mix(in srgb, var(--frame) 35%, #000);
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #fff),
+      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #000);
     border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
     color: var(--skin-genexbtntext, var(--skin-genexwndtext, var(--skin-titletext, #dcdce6)));
     font-family: "px sans nouveaux", sans-serif;
@@ -1727,11 +1723,9 @@
   .ml-btn:active {
     border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
     /* pressed fallback (no sprite): invert the bevel and sink the face */
-    border-color:
-      color-mix(in srgb, var(--frame) 40%, #000)
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 72%, #fff)
-      color-mix(in srgb, var(--frame) 40%, #000);
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #000),
+      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #fff);
     background: color-mix(in srgb, var(--frame) 72%, #000);
   }
   .ml-count {

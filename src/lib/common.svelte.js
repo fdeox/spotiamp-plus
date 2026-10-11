@@ -56,7 +56,10 @@ function crispPixelFont(zoom) {
     const body = document.querySelector("body");
     if (!body) return;
     const scale = (window.devicePixelRatio || 1) * (zoom || 1);
-    body.style.setProperty("--px-crisp", `${Math.max(1, Math.round(scale)) / scale}`);
+    const step = Math.max(1, Math.round(scale));
+    body.style.setProperty("--px-crisp", `${step / scale}`);
+    // one whole step bigger, for text meant to be read at length (lyrics)
+    body.style.setProperty("--px-crisp-up", `${(step + 1) / scale}`);
     crispWatch?.removeEventListener("change", crispFollow);
     crispWatch = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     crispWatch.addEventListener("change", crispFollow);

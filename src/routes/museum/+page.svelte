@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
+  import GenTop from "../../GenTop.svelte";
 
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(600, 620);
@@ -127,6 +128,7 @@
     <div class="mu-tl"></div>
     <span class="mu-title">SKIN MUSEUM</span>
     <button class="mu-close" data-no-drag onclick={close} aria-label="Close"></button>
+    <GenTop title="SKIN MUSEUM" onclose={close} />
   </div>
 
   <div class="mu-bar">

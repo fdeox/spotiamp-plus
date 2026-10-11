@@ -8,6 +8,7 @@
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { badgeList } from "$lib/badges.js";
   import { ITEMS, readOutfit, toggleItem, undress, OUTFIT_KEY, STATS_TAB_KEY } from "$lib/wardrobe.js";
+  import GenTop from "../../GenTop.svelte";
 
   // Listening stats, from Spotiamp+'s own history (history.rs). Everything is
   // worked out on this computer; nothing is sent anywhere.
@@ -528,6 +529,7 @@
     <div class="st-tl"></div>
     <span class="st-title">LISTENING STATS</span>
     <button class="st-close" data-no-drag onclick={close} aria-label="Close"></button>
+    <GenTop title="LISTENING STATS" onclose={close} />
   </div>
 
   <div class="st-body">

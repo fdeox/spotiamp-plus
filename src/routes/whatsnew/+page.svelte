@@ -4,6 +4,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
+  import GenTop from "../../GenTop.svelte";
 
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(320, 380);
@@ -17,8 +18,8 @@
       "<b>Halloween</b> 🎃 From October 24 to November 1 Lala dresses up as a little witch: a hat with a pumpkin on it and a cape. Rather not? Right-click her: <i>Dress up on special days</i>.",
       "<b>26 more MilkDrop presets by Incubo</b>, his takes on our own visualizer patterns (Spectrum, Synthwave, Dunes, Prism…): they need the spectrum frequency by frequency (<i>get_fft</i>, from his BeatDrop), which Spotiamp+ now gives MilkDrop. 527 presets in all.",
       "The main window's <b>visualizer</b> works like Winamp's: in the skin's own colours over its dotted backdrop. Click it for the oscilloscope or to switch it off; right-click it for the Fire and Line styles, thin bands, peaks and how fast they fall. A double-click still opens the visualizer window.",
-      "<b>Skins, the full Winamp way</b>: their own mouse cursors, their window shapes (rounded or cut-out edges) and, if you like, their own font for the playlist and the Library (<i>Skins</i>, <i>Use the skin's font</i>).",
-      "<b>Sharper text</b>: the pixel font of the playlist, the Library, the lyrics and the other windows now sits on whole screen pixels, at 125% and 150% display scaling too, so it's crisp instead of blurry.",
+      "<b>Skins, the full Winamp way</b>: their own mouse cursors, their window shapes (rounded or cut-out edges) and, if you like, their own font for the playlist and the Library (<i>Skins</i>, <i>Use the skin's font</i>). The Library, lyrics, album art and other windows wear the skin's own titlebar, with the title in its own letters, and the Library's buttons sit quietly in skins that don't draw any.",
+      "<b>Sharper text</b>: the pixel font of the playlist, the Library, the lyrics and the other windows now sits on whole screen pixels, at 125% and 150% display scaling too, so it's crisp instead of blurry. The lyrics are a size bigger.",
       "A song's full name shows when you hover over it in the playlist and the Library.",
       "Dragging the player is smoother: the windows docked to it move with it in one go. Also fixed: the update button on the playlist's titlebar slipping out of place; gaps beside the album art (it fills its window now, and stays square as you resize it); the badges still to earn being hard to read.",
     ],
@@ -190,6 +191,7 @@
     <div class="wn-tl"></div>
     <span class="wn-title">{keysOnly ? "KEYBOARD SHORTCUTS" : "WHAT'S NEW"}</span>
     <button class="wn-close" data-no-drag onclick={close} aria-label="Close"></button>
+    <GenTop title={keysOnly ? "KEYBOARD SHORTCUTS" : "WHAT'S NEW"} onclose={close} />
   </div>
 
   <div class="wn-body">

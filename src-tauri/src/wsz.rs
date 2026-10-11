@@ -460,6 +460,44 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         }
     }
 
+    // The whole GEN.BMP too, so the windows can build their titlebars the way
+    // Winamp does (see GenTop.svelte): the corners, the end caps either side
+    // of the title, the fills between them, and the title in the skin's own
+    // letters. Only for a sheet whose titlebar row is really drawn; the
+    // letters only when they're there (some skins leave the cells blank).
+    if let Some(sheet) = files
+        .read("GEN.BMP")
+        .and_then(|b| image::load_from_memory(&b).ok())
+        .map(|img| img.to_rgb8())
+        && gen_titlebar_drawn(&sheet)
+    {
+        let mut png = Vec::new();
+        if image::DynamicImage::ImageRgb8(sheet.clone())
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .is_ok()
+        {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+            sprites.insert("gen".into(), format!("data:image/png;base64,{b64}"));
+            // the focused window's letters, then the unfocused one's
+            for (var, y) in [("genletters", 88u32), ("genletters2", 96)] {
+                if let Some(letters) = gen_letters(&sheet, y) {
+                    sprites.insert(var.into(), letters);
+                }
+            }
+            // the two repeating tiles on their own (a slice of a sprite sheet
+            // can't repeat in CSS): the fill between the pieces, and the one
+            // behind the title, each focused (y=0) and not (y=21)
+            for (var, x, y) in [("genbar", 104u32, 0u32), ("genbar2", 104, 21), ("genmid", 52, 0), ("genmid2", 52, 21)] {
+                let tile = image::DynamicImage::ImageRgb8(sheet.clone()).crop_imm(x, y, 25, 20);
+                let mut png = Vec::new();
+                if tile.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).is_ok() {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+                    sprites.insert(var.into(), format!("data:image/png;base64,{b64}"));
+                }
+            }
+        }
+    }
+
     // GENEX.BMP is how real Winamp colours plugin windows (the media library):
     // single pixels along the top row define the UI palette, and the sheet
     // carries the generic button face (normal + pressed).
@@ -591,6 +629,8 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     if !sprites.contains_key("genexbtn") {
         sprites.insert("genexbtn".into(), "none".into());
         sprites.insert("genexbtnp".into(), "none".into());
+        // drawn instead: a thin bevel, 1 px edge (see the Library's .ml-btn)
+        sprites.insert("genexbtnw".into(), "1px".into());
         let frame = ["titlebarcolor", "genexwndbg", "plbg"]
             .iter()
             .find_map(|key| sprites.get(*key).and_then(|v| hex_rgb(v)));
@@ -643,6 +683,62 @@ fn button_label_colour(frame: [u8; 3], own: Option<[u8; 3]>) -> [u8; 3] {
     }
 }
 
+/// Whether GEN.BMP's titlebar pieces (the top 20 rows, 155 wide) are really
+/// drawn and the pressed close button (148,42 9x9) is on the sheet. A sheet
+/// left in its background colour up there would draw an empty bar.
+fn gen_titlebar_drawn(sheet: &image::RgbImage) -> bool {
+    if sheet.width() < 157 || sheet.height() < 51 {
+        return false;
+    }
+    let mut seen = std::collections::HashSet::new();
+    for y in 0..20 {
+        for x in 0..155 {
+            seen.insert(sheet.get_pixel(x, y).0);
+            if seen.len() >= 8 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// GEN.BMP's title letters A-Z on row `y` (88 focused, 96 not), 7 rows tall,
+/// as "x:width" pairs. They start at x=1, each ended by a column in the
+/// colour at x=0 (as webamp reads them). None when the row doesn't hold 26
+/// sensible letters, or when the cells are blank (all the same picture).
+fn gen_letters(sheet: &image::RgbImage, y: u32) -> Option<String> {
+    if sheet.height() < y + 7 {
+        return None;
+    }
+    let background = *sheet.get_pixel(0, y);
+    let mut cells = Vec::with_capacity(26);
+    let mut x = 1;
+    for _ in 0..26 {
+        let mut end = x;
+        while end < sheet.width() && *sheet.get_pixel(end, y) != background {
+            end += 1;
+        }
+        if end == x || end - x > 16 || (end >= sheet.width() && cells.len() < 25) {
+            return None;
+        }
+        cells.push((x, end - x));
+        x = end + 1;
+    }
+    let pictures: std::collections::HashSet<Vec<[u8; 3]>> = cells
+        .iter()
+        .map(|&(x, w)| {
+            (y..y + 7)
+                .flat_map(|yy| (x..x + w).map(move |xx| (xx, yy)))
+                .map(|(xx, yy)| sheet.get_pixel(xx, yy).0)
+                .collect()
+        })
+        .collect();
+    if pictures.len() < 13 {
+        return None;
+    }
+    Some(cells.iter().map(|(x, w)| format!("{x}:{w}")).collect::<Vec<_>>().join(" "))
+}
+
 /// SPOTIAMP.TXT's `LibraryTitle=`: letters, digits, spaces and a little
 /// punctuation (it ends up in CSS as a string), up to 32 of them.
 fn library_title(text: &str) -> Option<String> {
@@ -666,6 +762,39 @@ fn skin_font(value: &str) -> Option<String> {
         && name.len() <= 40
         && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'));
     ok.then(|| format!("\"{name}\""))
+}
+
+#[cfg(test)]
+mod gen_tests {
+    use super::*;
+
+    fn sheet_of(name: &str) -> image::RgbImage {
+        let (_, skin) = BUNDLED_SKINS.iter().find(|(n, _)| n.starts_with(name)).unwrap();
+        image::load_from_memory(&zip_file(skin, "GEN.BMP").unwrap()).unwrap().to_rgb8()
+    }
+
+    #[test]
+    fn reads_the_title_letters() {
+        let sheet = sheet_of("Winamp5");
+        assert!(gen_titlebar_drawn(&sheet));
+        let letters = gen_letters(&sheet, 88).unwrap();
+        let cells: Vec<&str> = letters.split(' ').collect();
+        assert_eq!(cells.len(), 26);
+        assert_eq!(cells[0], "1:8");
+        assert!(gen_letters(&sheet, 96).is_some());
+        // Bento draws the bar but leaves its letter cells blank
+        let bento = sheet_of("Bento");
+        assert!(gen_titlebar_drawn(&bento));
+        assert_eq!(gen_letters(&bento, 88), None);
+    }
+
+    #[test]
+    fn an_empty_sheet_is_no_titlebar() {
+        let blank = image::RgbImage::from_pixel(194, 109, image::Rgb([0, 198, 255]));
+        assert!(!gen_titlebar_drawn(&blank));
+        assert_eq!(gen_letters(&blank, 88), None);
+        assert!(!gen_titlebar_drawn(&image::RgbImage::new(100, 40)));
+    }
 }
 
 #[cfg(test)]

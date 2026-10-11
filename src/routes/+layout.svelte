@@ -50,7 +50,8 @@
     "plnormal", "plcurrent", "plbg", "plselbg", "textcolor", "libtitle",
     "genexitembg", "genexitemfg", "genexwndbg", "genexbtntext",
     "genexwndtext", "genexdivider", "genexselbg", "genexhdrbg",
-    "genexhdrtext", "genexbtn", "genexbtnp", "viscolor", "plfont",
+    "genexhdrtext", "genexbtn", "genexbtnp", "genexbtnw", "viscolor", "plfont",
+    "gen", "genletters", "genletters2", "genbar", "genbar2", "genmid", "genmid2",
     // the skin's cursors
     "cur-close", "cur-eqclose", "cur-eqnormal", "cur-eqslid", "cur-eqtitle", "cur-mainmenu", "cur-min", "cur-normal", "cur-pclose", "cur-pnormal", "cur-posbar", "cur-psize", "cur-ptbar", "cur-pvscroll", "cur-pwinbut", "cur-pwsnorm", "cur-pwssize", "cur-songname", "cur-titlebar", "cur-volbal", "cur-volbar", "cur-winbut", "cur-wsclose", "cur-wsmin", "cur-wsnormal", "cur-wsposbar", "cur-wswinbut",
   ];

@@ -10,6 +10,7 @@
   import { FRAG_B, MODE_NAMES_B, FEEDBACK_B } from "./shaders-b.js";
   import { patternSources } from "./shader-split.js";
   import { forwardShortcuts, MAIN_WINDOW_KEYS } from "$lib/shortcuts.js";
+  import GenTop from "../../GenTop.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   // L is MilkDrop's preset list here while it's on (the Library otherwise:
@@ -1565,6 +1566,7 @@
     <span class="viz-title">VISUALIZER</span>
     <button class="viz-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
+    <GenTop title="VISUALIZER" onclose={close} />
   </div>
 
   <div class="viz-stage" class:milk>

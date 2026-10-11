@@ -5,6 +5,7 @@
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
+  import GenTop from "../../GenTop.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
@@ -144,6 +145,7 @@
     <span class="lyr-title">LYRICS</span>
     <button class="lyr-close" data-no-drag onclick={close} aria-label="Close"
     ></button>
+    <GenTop title="LYRICS" onclose={close} />
   </div>
 
   <div
@@ -300,9 +302,9 @@
     padding: 8px 10px;
     text-align: center;
     font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
+    font-size: calc(8px * var(--px-crisp-up, 2));
     -webkit-font-smoothing: none;
-    line-height: 1.75;
+    line-height: 1.5;
     scrollbar-width: none;
   }
   .lyr-body::-webkit-scrollbar {
