@@ -1025,7 +1025,7 @@
     .then((names) => (bundledSkins = names))
     .catch(() => {});
   const prettySkinName = (/** @type {string} */ name) => name.replaceAll("_", " ");
-  /** @param {string} name */
+
   // "Use the skin's font" (see +layout.svelte)
   let skinFont = (() => {
     try {
