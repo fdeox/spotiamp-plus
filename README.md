@@ -35,6 +35,10 @@ docking windows that snap together like classic Winamp.
   then (a fact about the song, your listening streak, a tip) and wanders over to
   your other windows when she's bored. Drag her along the edge, double-click her
   for a stroll, right-click her for her size, to quiet her or to hide her.
+  **Dress her up**: 20 outfits in her wardrobe, from sneakers and caps to a
+  hoodie, a guitar and a crown, each opened by one of your listening badges
+  (*Listening stats → WARDROBE*). On Halloween she's a little witch, and over
+  the New Year she wears a Santa hat.
 - 💿 **Local file playback** — play your own MP3, FLAC, M4A (AAC or Apple
   Lossless), WAV or OGG files right alongside Spotify. Add files or a whole folder from the playlist
   menu (or press **O** / **Shift+O**); they land in the playlist as normal rows,
@@ -102,7 +106,15 @@ docking windows that snap together like classic Winamp.
   (star the ones you like to find them under *Favorites*),
   or **load any Winamp 2.x skin (`.wsz`)** from disk. Every window — player,
   equalizer, playlist **and the media library** — reskins live and persists
-  across restarts.
+  across restarts. Skins come the full Winamp way: their own **mouse
+  cursors**, **window shapes** (rounded or cut-out edges), the other windows'
+  **titlebars with the title in the skin's own letters**, the visualizer's
+  **colours** and, if you like, **their font** for the playlist and the Library
+  (*Skins → Use the skin's font*).
+- 📈 **Main window visualizer** — the spectrum analyzer and oscilloscope in the
+  player, like Winamp's: in the skin's own colours over its dotted backdrop.
+  Click it to switch, right-click it for the Fire and Line styles, thin or thick
+  bands, peaks and how fast they fall.
 - 🌀 **WebGL visualizer** — a window with **100 audio-reactive patterns**:
   spectrum analysers, VU meters, a scrolling spectrogram, Milkdrop-style
   feedback modes, synthwave, a spinning record and more, cycling on click, on
@@ -110,21 +122,24 @@ docking windows that snap together like classic Winamp.
   (**Esc** to come back).
 - 🎆 **MilkDrop** — real MilkDrop presets in the visualizer, drawn by
   [projectM](https://github.com/projectM-visualizer/projectm) and moving with
-  the music: press **M** there (or its MILKDROP button). About **500 presets**
-  come with it, 150 of them by **Incubo_** (Se7enSlasher), among them his
-  MilkDrop takes on Spotiamp+'s own patterns, and MilkDrop's own textures.
+  the music: press **M** there (or its MILKDROP button). **534 presets** come
+  with it, 183 of them by **Incubo_** (Se7enSlasher), among them his MilkDrop
+  takes on Spotiamp+'s own patterns, and MilkDrop's own textures. Presets made
+  for his BeatDrop work too: Spotiamp+ gives MilkDrop the spectrum frequency by
+  frequency and the waveform (`get_fft`, `get_wave`).
   **L** opens the preset list: search it, ♥ your favourites and change only
   between them. A click is the next preset, PIN keeps one, double-click goes
   fullscreen (with the song's title over it); right-click to choose how often
   presets change (or to cut on the beat) and for the folder for your own
   `.milk` files and textures.
 - 🎤 **Lyrics window** — synced, scrolling lyrics that highlight the current
-  line in time with playback; **click a line to jump the song there**
-  (right-click → *Windows → Lyrics*).
+  line in time with playback; **click a line to jump the song there**, and
+  right-click for the text size (right-click the player → *Windows → Lyrics*).
 - 🖼️ **Album art window** — the current cover in its own resizable window that
   docks like the others (right-click → *Windows → Album art*).
 - 🔍 **Scale** — every window at 1×, 1.5×, 2× or 3× (right-click →
-  *Windows → Scale*), or **Ctrl+D** for 2×.
+  *Windows → Scale*), or **Ctrl+D** for 2×. The pixel font stays crisp at any
+  Windows display scaling (125 %, 150 %…).
 - 🔊 **Normalize volume** — evens out loudness between songs (right-click →
   *Audio*), like Spotify's own setting. Pick the **output device** there too.
 - 📌 **Taskbar extras** (optional) — the song title on the taskbar button,
