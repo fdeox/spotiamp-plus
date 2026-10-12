@@ -17,7 +17,7 @@ docking windows that snap together like classic Winamp.
 > **Free Mode**, where Spotiamp+ becomes the Winamp face of the official Spotify
 > app and drives it. Login always uses Spotify's own OAuth page.
 
-![Spotiamp+ in action: skins, the Skin Museum, lyrics and the visualizer](docs/demo.gif)
+![Spotiamp+ in action: the same windows in eleven skins, with the library, lyrics, album art, the visualizer and Lala](docs/demo.gif)
 
 ---
 >## Project Status
@@ -180,21 +180,31 @@ docking windows that snap together like classic Winamp.
 
 ## Screenshots
 
-| Classic | Cherry | Amber | Emerald |
-| :-----: | :----: | :---: | :-----: |
-| ![](docs/screenshots/classic2.jpg) | ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
+![Spotiamp+ in the classic skin: the visualizer, album art, player, equalizer, playlist, library and lyrics, with Lala on top](docs/screenshots/classic2.jpg)
+
+| Spotiamp+ | Cherry |
+| :-------: | :----: |
+| ![](docs/screenshots/spotiamp.jpg) | ![](docs/screenshots/cherry.jpg) |
+
+| Amber | Emerald |
+| :---: | :-----: |
+| ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
 
 | Media Library | Visualizer |
 | :-----------: | :--------: |
 | ![](docs/screenshots/library.jpg) | ![](docs/screenshots/visualizer.jpg) |
 
-| Equalizer | Lyrics |
-| :-------: | :----: |
-| ![](docs/screenshots/eq.jpg) | ![](docs/screenshots/lyrics.jpg) |
+| Equalizer | Album art |
+| :-------: | :-------: |
+| ![](docs/screenshots/eq.jpg) | ![](docs/screenshots/art.jpg) |
 
-| Fullscreen visualizer |
-| :-------------------: |
-| ![](docs/fullscreen-visualizer.gif) |
+| Lyrics |
+| :----: |
+| ![](docs/screenshots/lyrics.jpg) |
+
+| MilkDrop, moving with the music | Four of its presets |
+| :-----------------------------: | :-----------------: |
+| ![](docs/fullscreen-visualizer.gif) | ![](docs/screenshots/milkdrop.jpg) |
 
 ### Load any classic Winamp skin
 
