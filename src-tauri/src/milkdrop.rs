@@ -1330,6 +1330,8 @@ fn render(
     let mut next_frame = Instant::now();
     // when something was last heard
     let mut heard = Instant::now();
+    // hidden here because the visualizer was (see below)
+    let mut hidden_with_owner = false;
     loop {
         // the window went away (its parent closed): done
         if !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
@@ -1404,6 +1406,23 @@ fn render(
                 Ok(_) => {}
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return Ok(()),
+            }
+        }
+        // The visualizer gone from the screen with the player minimized:
+        // Windows hides it (it's the player's) but not this window of its
+        // own, which stayed on the screen, drawing (Incubo). Hidden with it
+        // then, and back when it is.
+        unsafe {
+            let owner_up = GetWindow(hwnd, GW_OWNER)
+                .is_ok_and(|owner| IsWindowVisible(owner).as_bool() && !IsIconic(owner).as_bool());
+            if !owner_up && IsWindowVisible(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+                hidden_with_owner = true;
+            } else if owner_up && hidden_with_owner {
+                hidden_with_owner = false;
+                if !PICTURE_HIDDEN.load(Ordering::Relaxed) {
+                    let _ = ShowWindow(hwnd, SW_SHOWNA);
+                }
             }
         }
         // hidden (minimized, or the page asked): no drawing, and the audio
