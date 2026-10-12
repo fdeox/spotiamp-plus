@@ -1455,7 +1455,7 @@ fn render(
             }
         }
         if let Some((path, reply)) = snapshot.take() {
-            let _ = reply.send(save_frame(&path, width, height));
+            let _ = reply.send(save_frame(calls.as_ref(), &path, width, height));
         }
         unsafe {
             let _ = SwapBuffers(gl.hdc);
@@ -1511,9 +1511,16 @@ fn render(
     }
 }
 
-fn save_frame(path: &Path, width: u32, height: u32) -> Result<(), String> {
+/// The picture on the screen, to a file (the tests' snapshot). projectM
+/// leaves its own framebuffer bound for reading (the frame before its comp
+/// shader), so the screen's is bound first: reading without it gave that
+/// frame instead, as if comp shaders did nothing.
+fn save_frame(calls: Option<&GlCalls>, path: &Path, width: u32, height: u32) -> Result<(), String> {
     let mut pixels = vec![0u8; (width * height * 4) as usize];
     unsafe {
+        if let Some(calls) = calls {
+            (calls.bind_framebuffer)(GL_FRAMEBUFFER, 0);
+        }
         glReadBuffer(GL_BACK);
         glReadPixels(
             0,
