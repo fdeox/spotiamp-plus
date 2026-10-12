@@ -35,6 +35,19 @@
   import stand_halloween from "$lib/mascot/stand_halloween.png";
   import held_halloween from "$lib/mascot/held_halloween.png";
   import sleep_halloween from "$lib/mascot/sleep_halloween.png";
+  import idle_xmas from "$lib/mascot/idle_xmas.png";
+  import dance_xmas from "$lib/mascot/dance_xmas.png";
+  import celebrate_xmas from "$lib/mascot/celebrate_xmas.png";
+  import happy_xmas from "$lib/mascot/happy_xmas.png";
+  import surprised_xmas from "$lib/mascot/surprised_xmas.png";
+  import sad_xmas from "$lib/mascot/sad_xmas.png";
+  import love_xmas from "$lib/mascot/love_xmas.png";
+  import dizzy_xmas from "$lib/mascot/dizzy_xmas.png";
+  import yawn_xmas from "$lib/mascot/yawn_xmas.png";
+  import walk_xmas from "$lib/mascot/walk_xmas.png";
+  import stand_xmas from "$lib/mascot/stand_xmas.png";
+  import held_xmas from "$lib/mascot/held_xmas.png";
+  import sleep_xmas from "$lib/mascot/sleep_xmas.png";
 
   // Lala, the llama (mascot.rs owns the window). It dances while music plays,
   // falls asleep a minute after it stops, and reacts: a new badge (a hop), a
@@ -42,7 +55,8 @@
   // Everything comes from events the other windows already send.
 
   const STRIPS = { idle, dance, sleep, celebrate, happy, surprised, sad, love, dizzy, yawn, idle_party, dance_party, walk: walkStrip, stand, held: heldStrip,
-    idle_halloween, dance_halloween, celebrate_halloween, happy_halloween, surprised_halloween, sad_halloween, love_halloween, dizzy_halloween, yawn_halloween, walk_halloween, stand_halloween, held_halloween, sleep_halloween };
+    idle_halloween, dance_halloween, celebrate_halloween, happy_halloween, surprised_halloween, sad_halloween, love_halloween, dizzy_halloween, yawn_halloween, walk_halloween, stand_halloween, held_halloween, sleep_halloween,
+    idle_xmas, dance_xmas, celebrate_xmas, happy_xmas, surprised_xmas, sad_xmas, love_xmas, dizzy_xmas, yawn_xmas, walk_xmas, stand_xmas, held_xmas, sleep_xmas };
   /** reactions that play through once rather than for a while */
   const ONCE = ["celebrate", "yawn"];
   // April 21, Winamp's birthday: a party hat all day
@@ -55,11 +69,17 @@
     const d = new Date();
     return (d.getMonth() === 9 && d.getDate() >= 24) || (d.getMonth() === 10 && d.getDate() === 1);
   })();
+  // the New Year: a Santa hat from December 20 to January 2
+  const NEW_YEAR = (() => {
+    const d = new Date();
+    return (d.getMonth() === 11 && d.getDate() >= 20) || (d.getMonth() === 0 && d.getDate() <= 2);
+  })();
+  const SEASON = HALLOWEEN ? "_halloween" : NEW_YEAR ? "_xmas" : "";
   // the party hat, if she dresses up on special days (right-click: off)
   const party = () => PARTY && costumes;
   /** the strip an animation is drawn from: her costume's, in season */
   /** @param {string} name */
-  const dressed = (name) => (HALLOWEEN && costumes && images[`${name}_halloween`] ? `${name}_halloween` : name);
+  const dressed = (name) => (SEASON && costumes && images[`${name}${SEASON}`] ? `${name}${SEASON}` : name);
   const FRAME_W = ANIMS_JSON._frame.width;
   const FRAME_H = ANIMS_JSON._frame.height;
   /** each animation: its frame count and how long each frame shows */
@@ -245,7 +265,7 @@
   try {
     chatty = localStorage.getItem("lala-chatty") !== "0";
   } catch {}
-  // costumes on special days (Halloween, Winamp's birthday); right-click: off
+  // costumes on special days (Halloween, the New Year, Winamp's birthday); right-click: off
   let costumes = true;
   try {
     costumes = localStorage.getItem("lala-costumes") !== "0";
