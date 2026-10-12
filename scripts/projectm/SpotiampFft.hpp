@@ -53,11 +53,17 @@ public:
     //! A preset's shader, ready for projectM: the helpers it calls in front
     //! (only those, so no preset gets a texture it doesn't use), its
     //! HAS_FFT_PEAK checks settled, since projectM's preprocessor only takes
-    //! "#if <number>" (no names, no defined(), no #ifdef), and any local
-    //! variable named like a built-in value given a name of its own.
+    //! "#if <number>" (no names, no defined(), no #ifdef), BeatDrop's
+    //! screen-dependent aspect_sd read as the aspect projectM has, and any
+    //! local variable named like a built-in value given a name of its own.
     static auto Prepare(const std::string& code) -> std::string
     {
-        std::string out = Unshadow(code);
+        std::string out = code;
+        if (out.find("aspect_sd") != std::string::npos)
+        {
+            out = std::regex_replace(out, std::regex(R"(\baspect_sd\b)"), "aspect");
+        }
+        out = Unshadow(out);
         bool const fft = out.find("get_fft") != std::string::npos || out.find("HAS_FFT_PEAK") != std::string::npos;
         bool const wave = out.find("get_wave") != std::string::npos;
         if (!fft && !wave)

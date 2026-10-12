@@ -41,6 +41,21 @@
     }
   });
 
+  // Moved onto a screen with another scale (100 % to 125 %, say): Windows
+  // doesn't resize these frameless windows, so the same size in logical
+  // pixels is put on again. Without it the playlist and the EQ kept their
+  // old size in screen pixels, a fifth too small, with their insides cut off.
+  if (!OWN_SIZE) {
+    getCurrentWindow()
+      .onScaleChanged(() => {
+        const zoom = REACTIVE_WINDOW_SIZE.zoom;
+        getCurrentWindow()
+          .setSize(new LogicalSize(REACTIVE_WINDOW_SIZE.width * zoom, REACTIVE_WINDOW_SIZE.height * zoom))
+          .catch(() => {});
+      })
+      .catch(() => {});
+  }
+
   // Skins: every window reads the active skin and reapplies it live when it
   // changes (broadcast from the player's right-click menu).
   const CUSTOM_SKIN_VARS = [
