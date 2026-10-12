@@ -542,9 +542,28 @@
       await invoke("seek", {
         positionMs,
       }).catch(handleError);
+      checkSeek(positionMs);
     }
     // jump the Discord progress bar to the new position too
     pushDiscordPresence();
+  }
+
+  // Now and then a jump made just as a song starts doesn't take (the stream
+  // isn't that far along yet, and librespot only logs it): if the song is
+  // still nowhere near there a moment later, it's asked once more.
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let seekCheck;
+  /** @param {number} positionMs */
+  function checkSeek(positionMs) {
+    clearTimeout(seekCheck);
+    const uri = loadedTrack?.uri?.asString;
+    seekCheck = setTimeout(() => {
+      if (!uri || loadedTrack?.uri?.asString !== uri || playerState !== "playing") return;
+      const now = positionAnchorMs + (performance.now() - positionAnchorAt);
+      if (Math.abs(now - positionMs) < 4000) return;
+      invoke("log_frontend_error", { window: "player", message: `a jump to ${positionMs} ms didn't take (at ${Math.round(now)} ms): asked again` }).catch(() => {});
+      invoke("seek", { positionMs }).catch(() => {});
+    }, 2000);
   }
 
   // --- local files ---------------------------------------------------------
