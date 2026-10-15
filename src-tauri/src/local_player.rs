@@ -840,21 +840,27 @@ pub fn local_metadata(path: String) -> LocalMeta {
     read_local_meta(&PathBuf::from(path)).unwrap_or_default()
 }
 
+/// A tag's text without the zero bytes and spaces some files pad it with
+/// (a WAV's INFO list ends each one with a zero, ID3v1 fills its fields).
+fn tag_text(value: &symphonia::core::meta::Value) -> String {
+    value.to_string().trim_matches(|c: char| c == '\0' || c.is_whitespace()).to_string()
+}
+
 fn apply_tags(rev: &symphonia::core::meta::MetadataRevision, meta: &mut LocalMeta) {
     use symphonia::core::meta::StandardTagKey;
     for tag in rev.tags() {
         match tag.std_key {
             Some(StandardTagKey::TrackTitle) if meta.title.is_empty() => {
-                meta.title = tag.value.to_string();
+                meta.title = tag_text(&tag.value);
             }
             Some(StandardTagKey::Artist) if meta.artist.is_empty() => {
-                meta.artist = tag.value.to_string();
+                meta.artist = tag_text(&tag.value);
             }
             Some(StandardTagKey::AlbumArtist) if meta.artist.is_empty() => {
-                meta.artist = tag.value.to_string();
+                meta.artist = tag_text(&tag.value);
             }
             Some(StandardTagKey::Album) if meta.album.is_empty() => {
-                meta.album = tag.value.to_string();
+                meta.album = tag_text(&tag.value);
             }
             _ => {}
         }
@@ -917,6 +923,14 @@ pub(crate) fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
 #[cfg(test)]
 mod format_tests {
     use super::*;
+
+    #[test]
+    fn tags_lose_their_padding() {
+        use symphonia::core::meta::Value;
+        assert_eq!(tag_text(&Value::from("Tagged Artist\0")), "Tagged Artist");
+        assert_eq!(tag_text(&Value::from("  Song \0\0")), "Song");
+        assert_eq!(tag_text(&Value::from("Şebnem Ferah")), "Şebnem Ferah");
+    }
 
     #[test]
     fn the_average_bitrate_is_size_over_length() {
