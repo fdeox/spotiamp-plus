@@ -5,5 +5,9 @@ fn main() {
     println!("cargo:rerun-if-changed=presets");
     println!("cargo:rerun-if-changed=milkdrop");
     println!("cargo:rerun-if-changed=textures");
+    // Last.fm's key and secret for this app (lastfm.rs), from the build's
+    // environment, never the repo
+    println!("cargo:rerun-if-env-changed=SPOTIAMP_LASTFM_KEY");
+    println!("cargo:rerun-if-env-changed=SPOTIAMP_LASTFM_SECRET");
     tauri_build::build()
 }

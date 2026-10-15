@@ -339,7 +339,7 @@
     if (menuBusy) return;
     menuBusy = true;
     try {
-      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists()]);
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm()]);
       // Order matters here. Tauri's popup holds this page's resource table
       // locked on a worker until the menu closes, while it waits for the main
       // thread to show it; closing or creating a menu runs ON the main thread
@@ -443,6 +443,40 @@
   /** A literal "&" in a Windows menu needs doubling (a single one marks the Alt key). */
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
+  // Last.fm (lastfm.rs): signed in or not, for the menu
+  /** @type {{ available: boolean, user: string | null, scrobbling: boolean, waiting: number }} */
+  let lastfm = { available: false, user: null, scrobbling: false, waiting: 0 };
+  async function loadLastfm() {
+    lastfm = await invoke("lastfm_status").catch(() => lastfm);
+  }
+  async function connectLastfm() {
+    showToast("Allow Spotiamp+ on the Last.fm page in your browser…");
+    try {
+      const user = await invoke("lastfm_connect");
+      showToast(`Scrobbling to Last.fm as ${user}`);
+    } catch (e) {
+      showToast(`${e}`);
+    }
+  }
+  function lastfmItems() {
+    const sep = { item: /** @type {const} */ ("Separator") };
+    if (!lastfm.user) return [{ text: "Connect your Last.fm…", action: connectLastfm }];
+    return [
+      { text: menuText(`Signed in as ${lastfm.user}`), enabled: false },
+      {
+        text: "Scrobble what I play",
+        checked: lastfm.scrobbling,
+        action: () => invoke("lastfm_set_scrobbling", { on: !lastfm.scrobbling }).catch(() => {}),
+      },
+      ...(lastfm.waiting ? [{ text: `${lastfm.waiting} waiting to go out (no internet?)`, enabled: false }] : []),
+      sep,
+      {
+        text: "Disconnect",
+        action: () => invoke("lastfm_disconnect").then(() => showToast("Last.fm disconnected")).catch(() => {}),
+      },
+    ];
+  }
+
   // The list commands: the right-click menu's Playlist submenu, and what the
   // LIST OPTS button (bottom right, like Winamp's) opens, with the Library first.
   function listMenuItems() {
@@ -457,6 +491,7 @@
       : [
           { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
           { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          { text: "Open a link (Spotify or radio)…", accelerator: "Ctrl+L", action: () => (playlist.urlBoxOpen = true) },
           sep,
           { text: "Open playlist file (.m3u)…", action: openM3u },
           { text: "Save as playlist file (.m3u)…", action: saveM3u },
@@ -616,6 +651,7 @@
       { text: "&Skins", items: skinItems },
       { text: "&Windows", items: windowItems },
       ...(controllerMode ? [] : [{ text: "&Audio", items: audioItems }]),
+      ...(controllerMode || !lastfm.available ? [] : [{ text: "Last.&fm", items: lastfmItems() }]),
       sep,
       { text: "Jump to track…", accelerator: "J", action: () => playlist.openJump() },
       { text: "Play selected next", accelerator: "Q", action: () => playlist.toggleQueue() },

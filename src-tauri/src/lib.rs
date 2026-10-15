@@ -28,6 +28,7 @@ mod whatsnew_window;
 mod museum;
 mod history;
 mod capture;
+mod lastfm;
 mod lists;
 mod local_library;
 mod local_player;
@@ -166,7 +167,7 @@ fn open_external(target: String) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn open_in_browser(url: &str) {
+pub(crate) fn open_in_browser(url: &str) {
     unsafe {
         use windows::Win32::UI::Shell::ShellExecuteW;
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -185,7 +186,7 @@ fn open_in_browser(url: &str) {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn open_in_browser(_url: &str) {}
+pub(crate) fn open_in_browser(_url: &str) {}
 
 /// Send logs to a file in the config directory.
 ///
@@ -694,6 +695,12 @@ pub fn run() {
             local_player::local_reveal,
             local_player::local_metadata,
             local_library::local_library,
+            lastfm::lastfm_status,
+            lastfm::lastfm_connect,
+            lastfm::lastfm_disconnect,
+            lastfm::lastfm_set_scrobbling,
+            lastfm::lastfm_now_playing,
+            lastfm::lastfm_scrobble,
             local_library::local_library_add_folder,
             local_library::local_library_remove_folder,
             library_window::set_library_window_visible,

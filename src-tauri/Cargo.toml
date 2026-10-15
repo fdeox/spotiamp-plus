@@ -58,6 +58,8 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
+# Last.fm signs its calls with MD5 (lastfm.rs)
+md-5 = "0.10"
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 discord-rich-presence = "0.2"
 

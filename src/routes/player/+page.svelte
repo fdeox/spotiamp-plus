@@ -439,6 +439,42 @@
       art: loadedTrack.isLocal ? null : (loadedTrack.albumArt ?? null),
     }).catch(() => {});
   }
+  // Last.fm (lastfm.rs, once signed in from the menu): "now playing" when a
+  // song starts, and the scrobble once half of it or 4 minutes has played, as
+  // Last.fm asks; songs under 30 s don't count. Rust does nothing unless
+  // you're signed in with scrobbling on. Songs only: not a radio station, not
+  // a file without an artist, and not in Free Mode (the Spotify app plays
+  // there, and it can scrobble by itself).
+  let lastfmLog = { key: "", startedAt: 0, ms: 0, nowSent: false, scrobbled: false };
+  function lastfmTick() {
+    if (controllerMode) return;
+    const key = !loadedTrack || loadedTrack.isStream
+      ? ""
+      : loadedTrack.isLocal
+        ? `local:${loadedTrack.path}`
+        : (loadedTrack.uri?.asString ?? "");
+    if (key !== lastfmLog.key) {
+      lastfmLog = { key, startedAt: Date.now(), ms: 0, nowSent: false, scrobbled: false };
+    }
+    if (!key || playerState != "playing" || !loadedTrack?.artist || !loadedTrack?.name) return;
+    lastfmLog.ms += 1000;
+    const duration = loadedTrack.durationInMs || 0;
+    const play = {
+      artist: loadedTrack.artist,
+      track: loadedTrack.name,
+      album: loadedTrack.album ?? "",
+      duration_ms: Math.round(duration),
+      started_at: lastfmLog.startedAt,
+    };
+    if (!lastfmLog.nowSent) {
+      lastfmLog.nowSent = true;
+      invoke("lastfm_now_playing", { play }).catch(() => {});
+    }
+    if (!lastfmLog.scrobbled && duration > 30000 && lastfmLog.ms >= Math.min(duration / 2, 240000)) {
+      lastfmLog.scrobbled = true;
+      invoke("lastfm_scrobble", { play }).catch(() => {});
+    }
+  }
   function finishPlay() {
     if (playLog.loggedMs && playLog.ms - playLog.loggedMs >= 10000) {
       playLog.loggedMs = playLog.ms;
@@ -987,6 +1023,7 @@
       }
       historyTick();
       osdTick();
+      lastfmTick();
     }, 1000);
 
     const playlistWindowEventSubscription = subscribeToWindowEvent(
