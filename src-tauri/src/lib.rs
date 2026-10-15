@@ -29,12 +29,14 @@ mod museum;
 mod history;
 mod capture;
 mod lists;
+mod local_library;
 mod local_player;
 mod loopback;
 mod lyrics_window;
 mod oauth;
 mod player_window;
 mod playlist_window;
+mod radio;
 mod settings;
 mod smtc;
 mod smtc_publish;
@@ -691,6 +693,9 @@ pub fn run() {
             local_player::local_pick_folder,
             local_player::local_reveal,
             local_player::local_metadata,
+            local_library::local_library,
+            local_library::local_library_add_folder,
+            local_library::local_library_remove_folder,
             library_window::set_library_window_visible,
             visualizer_window::set_visualizer_window_visible,
             eq_window::set_eq_window_visible,

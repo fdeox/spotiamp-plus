@@ -226,6 +226,8 @@ export class LocalRow extends PlaylistRow {
     displayDuration = $state("")
     unavailable = false
     isLocal = true
+    /** A radio station's link (Ctrl+L) rather than a file. */
+    isStream = false
 
     /**
      * @param {string} path
@@ -238,8 +240,9 @@ export class LocalRow extends PlaylistRow {
         // filter local rows out, so the stub is never actually resolved.
         super(/** @type {any} */ ({ asString: `local:${path}`, id: path }), playlist);
         this.path = path;
+        this.isStream = isStreamLink(path);
         const base = path.split(/[\\/]/).pop() ?? path;
-        const name = meta?.name || base;
+        const name = meta?.name || (this.isStream ? stationHost(path) : base.replace(/\.[^.]+$/, "") || base);
         this.displayName = meta?.artist ? `${meta.artist} - ${name}` : name;
         this.durationMs = meta?.durationMs ?? 0;
         this.displayDuration = this.durationMs ? durationToString(this.durationMs) : "";
@@ -277,6 +280,20 @@ export class LocalRow extends PlaylistRow {
 
     isSelected() {
         return this.playlist.selectedSet.has(this);
+    }
+}
+
+/** A radio station's link rather than a file's path. @param {string} path */
+export function isStreamLink(path) {
+    return /^https?:\/\//i.test(path);
+}
+
+/** Until a station says its name: its server's. @param {string} link */
+function stationHost(link) {
+    try {
+        return new URL(link).host;
+    } catch {
+        return link;
     }
 }
 
@@ -344,6 +361,8 @@ export class Playlist {
     jumpOpen = $state(false);
     /** Ctrl+J: Winamp's jump to time (the box is the playlist page's) */
     timeJumpOpen = $state(false);
+    /** Ctrl+L: the box a link is typed or pasted into. */
+    urlBoxOpen = $state(false);
     /** Bumped when a letter with no shortcut is typed in the playlist, so the
      *  page can point at J (people expect typing to search). */
     typedHint = $state(0);
@@ -450,6 +469,10 @@ export class Playlist {
                 // Ctrl+J: Winamp's jump to time
                 e.preventDefault();
                 this.timeJumpOpen = true;
+            } else if (ctrl && !e.altKey && e.key.toLowerCase() == "l") {
+                // Ctrl+L: Winamp's open location
+                e.preventDefault();
+                this.urlBoxOpen = true;
             } else if (!ctrl && !e.altKey) {
                 // Winamp transport keys, forwarded to the player
                 const k = e.key.toLowerCase();
@@ -528,6 +551,9 @@ export class Playlist {
                 } else if (event.UrlsAppended) {
                     // append without clearing (e.g. adding one search result)
                     this.addUrls(event.UrlsAppended);
+                } else if (event.LocalFilesSent) {
+                    // songs from the Library's Local Media
+                    this.addLocalItems(event.LocalFilesSent.items, event.LocalFilesSent.replace);
                 } else if (event.AddLocalFiles) {
                     // local files picked from the player's O / Shift+O
                     this.addLocalFiles(event.AddLocalFiles);
@@ -537,6 +563,17 @@ export class Playlist {
                 } else if (event.JumpToTimeRequested !== undefined) {
                     // Ctrl+J pressed in the main window
                     this.timeJumpOpen = true;
+                } else if (event.OpenUrlRequested !== undefined) {
+                    // Ctrl+L pressed in the main window
+                    this.urlBoxOpen = true;
+                } else if (event.StreamInfo) {
+                    // a station said its name or moved on to another song
+                    const info = event.StreamInfo;
+                    for (const r of this.rows) {
+                        if (r instanceof LocalRow && r.path === info.path) {
+                            r.displayName = info.title || info.station || r.displayName;
+                        }
+                    }
                 } else if (event.QueueRequested !== undefined) {
                     // Q pressed in the main window: queue the playlist's selection
                     this.toggleQueue();
@@ -759,8 +796,10 @@ export class Playlist {
      * row pulls its name/duration from the file's tags. Called from the playlist
      * menu directly and from the player's O / Shift+O via an AddLocalFiles event.
      * @param {string[]} paths
+     * @param {boolean} [play] off for files dropped on the list: they're only
+     *   added, as dropped Spotify songs are
      */
-    async addLocalFiles(paths) {
+    async addLocalFiles(paths, play = true) {
         /** @type {LocalRow | undefined} */
         let first;
         for (const path of paths) {
@@ -769,9 +808,62 @@ export class Playlist {
             first ??= row;
         }
         if (first) {
-            await first.play();
+            if (play) await first.play();
             this.persist();
         }
+    }
+
+    /**
+     * Songs sent from the Library's Local Media with their tags already read,
+     * so a whole folder goes in at once without opening each file again.
+     * `replace`: the list is cleared first and the first song plays;
+     * otherwise they're added at the end.
+     * @param {{path: string, name?: string, artist?: string, durationMs?: number, sampleRate?: number, kbps?: number}[]} items
+     * @param {boolean} replace
+     */
+    async addLocalItems(items, replace) {
+        if (replace) await this.clear();
+        const listed = new Set(this.rows.flatMap((r) => (r instanceof LocalRow ? [r.path] : [])));
+        /** @type {LocalRow[]} */
+        const added = [];
+        for (const item of items) {
+            if (!item?.path || listed.has(item.path)) continue;
+            listed.add(item.path);
+            added.push(new LocalRow(item.path, this, item));
+        }
+        if (added.length) this.rows = [...this.rows, ...added];
+        if (replace && added[0]) await added[0].play();
+        this.persist();
+    }
+
+    /**
+     * Ctrl+L: a link typed or pasted in. A Spotify link (a song, an album or
+     * a playlist) is added and starts; any other web link is taken for a
+     * radio station and plays through the local engine.
+     * @param {string} text
+     * @returns {Promise<string>} why it couldn't be opened ("" when it was)
+     */
+    async openUrl(text) {
+        const link = text.trim();
+        if (!link) return "";
+        const before = this.rows.length;
+        const spotify = /(track|album|playlist)[/:]([A-Za-z0-9]{22})/.exec(link);
+        if (spotify && /spotify/i.test(link)) {
+            await this.addUrls([`https://open.spotify.com/${spotify[1]}/${spotify[2]}`]);
+            // the first of them (or the song, if it was there already)
+            const id = spotify[1] === "track" ? `spotify:track:${spotify[2]}` : null;
+            const row =
+                this.rows[before] ??
+                (id ? this.rows.find((r) => !(r instanceof LocalRow) && r.uri.asString === id) : undefined);
+            if (!row) return "Spotify had nothing for that link";
+            await row.play();
+            return "";
+        }
+        if (!isStreamLink(link)) return "That isn't a link (it starts with http:// or https://)";
+        const row = await this.addLocalRow(link);
+        this.persist();
+        await row.play();
+        return "";
     }
 
     /**
@@ -816,17 +908,20 @@ export class Playlist {
         const existing = this.rows.find((r) => r instanceof LocalRow && r.path === path);
         if (existing) return /** @type {LocalRow} */ (existing);
         let meta;
-        try {
-            const m = await invoke("local_metadata", { path });
-            meta = {
-                name: m?.title || undefined,
-                artist: m?.artist || undefined,
-                durationMs: m?.duration_ms || 0,
-                sampleRate: m?.sample_rate || 0,
-                kbps: m?.kbps || 0,
-            };
-        } catch {
-            meta = undefined;
+        // a station's link has no tags to read
+        if (!isStreamLink(path)) {
+            try {
+                const m = await invoke("local_metadata", { path });
+                meta = {
+                    name: m?.title || undefined,
+                    artist: m?.artist || undefined,
+                    durationMs: m?.duration_ms || 0,
+                    sampleRate: m?.sample_rate || 0,
+                    kbps: m?.kbps || 0,
+                };
+            } catch {
+                meta = undefined;
+            }
         }
         const row = new LocalRow(path, this, meta);
         this.rows.push(row);

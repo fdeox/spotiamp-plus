@@ -3,6 +3,7 @@
     enterExitViewport,
     range,
     handleDrop,
+    fromFileUrl,
     handleError,
     copyDiagnostics,
     REACTIVE_WINDOW_SIZE,
@@ -411,7 +412,7 @@
     if (!rows.length || controllerMode) return [];
     const uris = playlist.selectedSpotifyUris();
     const allLoved = uris.length > 0 && uris.every((u) => playlist.loved.has(u));
-    const local = rows.length === 1 && rows[0].isLocal ? /** @type {{path: string}} */ (/** @type {any} */ (rows[0])) : null;
+    const local = rows.length === 1 && rows[0].isLocal ? /** @type {{path: string, isStream: boolean}} */ (/** @type {any} */ (rows[0])) : null;
     /** @type {any[]} */
     const items = [
       { text: "Play", accelerator: "Enter", action: () => playlist.playSelected() },
@@ -429,7 +430,7 @@
         { text: uris.length === 1 ? "Copy Spotify link" : `Copy ${uris.length} Spotify links`, action: () => copySpotifyLinks(uris) },
       );
     }
-    if (local) {
+    if (local && !local.isStream) {
       items.push({
         text: "Show in folder",
         action: () => invoke("local_reveal", { path: local.path }).catch(() => showToast("That file isn't there any more")),
@@ -711,6 +712,35 @@
         .catch(() => {});
     });
   });
+  // Ctrl+L: Winamp's open location. A Spotify link or a radio station's.
+  let urlText = $state("");
+  let urlInput = $state(/** @type {HTMLInputElement | undefined} */ (undefined));
+  $effect(() => {
+    if (!playlist.urlBoxOpen) return;
+    untrack(() => {
+      urlText = "";
+      const win = getCurrentWindow();
+      // asked for from the main window while the playlist is hidden: no box
+      win
+        .isVisible()
+        .then((visible) => {
+          if (!visible) {
+            playlist.urlBoxOpen = false;
+            return;
+          }
+          win.setFocus().catch(() => {});
+          tick().then(() => urlInput?.focus());
+        })
+        .catch(() => {});
+    });
+  });
+  async function openUrl() {
+    const text = urlText;
+    playlist.urlBoxOpen = false;
+    const why = await playlist.openUrl(text);
+    if (why) showToast(why);
+  }
+
   function jumpToTime() {
     const parts = timeJumpText.trim().split(":").map((p) => p.trim());
     if (!parts[0] || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return;
@@ -1160,7 +1190,11 @@
 
   onMount(() => {
     const cleanupDropHandler = handleDrop(async (urls) => {
-      await playlist.addUrls(urls);
+      // a song dragged from the Library's Local Media comes as a file: link
+      const files = urls.filter((u) => u.startsWith("file:"));
+      if (files.length) await playlist.addLocalFiles(files.map(fromFileUrl), false);
+      const rest = urls.filter((u) => !u.startsWith("file:"));
+      if (rest.length) await playlist.addUrls(rest);
     });
 
     emitWindowEvent("playlistWindow", { Ready: null });
@@ -1824,6 +1858,26 @@
         aria-label="Time to jump to"
       />
       <div class="jump-empty">Now at {fmtTime(playlist.positionMs)}. Enter jumps there, Esc cancels.</div>
+    </div>
+  {/if}
+
+  {#if playlist.urlBoxOpen}
+    <!-- Ctrl+L: open a link, Spotify's or a radio station's -->
+    <div class="jump-backdrop" role="presentation" onmousedown={() => (playlist.urlBoxOpen = false)}></div>
+    <div class="jump-box save-box" role="dialog" aria-label="Open a link">
+      <input
+        class="jump-input"
+        bind:this={urlInput}
+        bind:value={urlText}
+        onkeydown={(e) => {
+          if (e.key === "Enter") openUrl();
+          else if (e.key === "Escape") playlist.urlBoxOpen = false;
+        }}
+        placeholder="a Spotify link or a radio station"
+        spellcheck="false"
+        aria-label="Link to open"
+      />
+      <div class="jump-empty">A song, album or playlist from Spotify, or a station's stream (http://…, .pls, .m3u).</div>
     </div>
   {/if}
 </span>

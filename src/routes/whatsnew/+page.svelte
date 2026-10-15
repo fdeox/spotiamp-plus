@@ -13,6 +13,12 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.8": [
+      "<b>Local Media</b> in the Library 🎵 Add your music folders once (right-click <i>Local Media</i>, <i>Add a folder…</i>) and every song in them is there, with its artist, album and length, to sort, filter as you type, and play or drag into the playlist like the rest. New files show up by themselves.",
+      "<b>Ctrl+L</b> opens a link, like Winamp's <i>Open location</i>: paste a Spotify song, album or playlist, or an <b>internet radio station</b> (SHOUTcast, Icecast, a .pls or .m3u). A station plays through the EQ and the visualizers, with the name of the song it's on.",
+      "<b>Long playlists are quick</b>: in a list of 1400 songs a click used to take a sixth of a second to show. Now it's instant, and so are select all, delete and Q.",
+      "A file without tags shows its name without the .mp3 at the end.",
+    ],
     "0.7.7": [
       "<b>Lala's wardrobe</b> 👕 20 outfits for her, from sneakers and caps to a hoodie, a guitar and a crown, each opened by one of your listening badges. Put them on and take them off in <i>Listening stats</i>, <i>WARDROBE</i> (or right-click Lala: <i>Wardrobe…</i>); one per slot, and they stay on whatever she's up to.",
       "<b>Halloween</b> 🎃 From October 24 to November 1 Lala dresses up as a little witch: a hat with a pumpkin on it and a cape. And from December 20 to January 2, a Santa hat for the New Year. Rather not? Right-click her: <i>Dress up on special days</i>.",
@@ -104,6 +110,7 @@
     ["S / R", "Shuffle, repeat"],
     ["Ctrl+D", "Everything 2× bigger"],
     ["O / Shift+O", "Add music files / a folder"],
+    ["Ctrl+L", "Open a Spotify link or a radio station"],
     ["L", "Open the Library"],
     ["F1", "All the keys"],
   ];
@@ -133,6 +140,7 @@
         ["Alt+↑ ↓", "Move the selected tracks"],
         ["Ctrl+A", "Select everything"],
         ["O / Shift+O", "Add music files / a folder"],
+        ["Ctrl+L", "Open a link: a Spotify song, album or playlist, or a radio station"],
       ],
     },
     {

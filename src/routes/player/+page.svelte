@@ -68,7 +68,7 @@
    * The loaded track is normally a Spotify track; local files reuse the same
    * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
    * transport routes on `isLocal`), so the type carries those as optional.
-   * @type {(SpotifyTrack & { isLocal?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
+   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -202,7 +202,10 @@
   }
   const trackDisplayText = $derived(
     loadedTrack
-      ? `${loadedTrack.displayName} (${loadedTrack.displayDuration})`
+      ? // a radio station has no length: just its song
+        loadedTrack.displayDuration
+        ? `${loadedTrack.displayName} (${loadedTrack.displayDuration})`
+        : loadedTrack.displayName
       : "Winamp 2.91",
   );
   const stoppedOrUnavailable = $derived.by(() =>
@@ -393,7 +396,7 @@
   let playLog = { key: "", startedAt: 0, ms: 0, loggedMs: 0 };
   function historyTick() {
     if (controllerMode) return;
-    const key = !loadedTrack
+    const key = !loadedTrack || loadedTrack.isStream
       ? ""
       : loadedTrack.isLocal
         ? `local:${loadedTrack.path}`
@@ -458,6 +461,9 @@
   }
 
   async function pause() {
+    // a radio station can't wait for us: pausing one stops it, and play
+    // connects again, live
+    if (loadedTrack?.isStream) return stop();
     if (loadedTrack?.isLocal) {
       playerState = "paused";
       await invoke("local_pause").catch(() => {});
@@ -531,6 +537,7 @@
     // the backend command wants an integer u32; the interpolated position is a
     // float, so round before sending (otherwise Tauri rejects the call)
     positionMs = Math.round(positionMs);
+    if (loadedTrack?.isStream) return; // live: nowhere to jump to
     // To make the UI a bit snappier and to not glitch between new and old value
     setPosition(positionMs);
     sliderSeekPosition = positionMs;
@@ -585,8 +592,10 @@
       await invoke(controllerMode ? "smtc_pause" : "stop").catch(() => {});
     }
     const base = path.split(/[\\/]/).pop() ?? path;
+    const isStream = /^https?:\/\//i.test(path);
     loadedTrack = /** @type {any} */ ({
       isLocal: true,
+      isStream,
       path,
       name: meta?.name ?? base,
       artist: meta?.artist ?? "",
@@ -604,6 +613,7 @@
     playerState = "playing";
     await invoke("local_load", { path }).catch(() => {});
     startLocalPoll();
+    if (isStream) return; // a station's names come as it plays
     // Fill in real names from the file's tags (title/artist/duration), so the
     // display isn't just the filename. Fire-and-forget; guard against the user
     // having switched tracks by the time it resolves.
@@ -659,7 +669,21 @@
           playerState = "stopped";
           const reason = ev.Failed?.reason ?? "unknown error";
           console.warn("Local playback failed:", reason, ev.Failed?.path);
-          handleError(`This file couldn't be played.\n\n${reason}`);
+          const what = loadedTrack?.isStream ? "This station" : "This file";
+          handleError(`${what} couldn't be played.\n\n${reason}`);
+        } else if (ev && ev.StreamInfo && loadedTrack?.isStream) {
+          // a station said its name, or moved on to another song
+          const { station, title, kbps, sample_rate } = ev.StreamInfo;
+          const name = title || station || loadedTrack.name;
+          loadedTrack = /** @type {any} */ ({
+            ...loadedTrack,
+            name,
+            artist: title ? station : "",
+            kbps: kbps || loadedTrack.kbps,
+            sampleRate: sample_rate || loadedTrack.sampleRate,
+            displayName: title && station ? `${title} (${station})` : name,
+          });
+          emitWindowEvent("playerWindow", { StreamInfo: { path: loadedTrack?.path ?? "", station, title } });
         }
       }
     }, 250);
@@ -1120,6 +1144,12 @@
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "j") {
         e.preventDefault();
         if (loadedTrack) emitWindowEvent("playerWindow", { JumpToTimeRequested: null });
+        return;
+      }
+      // Ctrl+L: Winamp's open location (the box opens in the playlist)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        emitWindowEvent("playerWindow", { OpenUrlRequested: null });
         return;
       }
       // Ctrl+V: Winamp's stop after current (the playlist keeps the switch)

@@ -136,6 +136,26 @@ function preventAndStopPropagation(ev) {
 }
 
 /**
+ * A file's path as a file: link (a song dragged out of the Library's Local
+ * Media carries one), and back.
+ * @param {string} path e.g. C:\Music\a b.mp3 or \\server\share\x.mp3
+ */
+export function toFileUrl(path) {
+    const parts = path.replaceAll("\\", "/").split("/");
+    const encoded = parts
+        .map((p, i) => (i === 0 && /^[A-Za-z]:$/.test(p) ? p : encodeURIComponent(p)))
+        .join("/");
+    return encoded.startsWith("//") ? `file:${encoded}` : `file:///${encoded}`;
+}
+
+/** @param {string} url a file: link */
+export function fromFileUrl(url) {
+    const u = new URL(url);
+    const path = decodeURIComponent(u.pathname).replaceAll("/", "\\");
+    return u.host ? `\\\\${u.host}${path}` : path.replace(/^\\(?=[A-Za-z]:)/, "");
+}
+
+/**
  * @param {string} uriList
  */
 function parseUriList(uriList) {

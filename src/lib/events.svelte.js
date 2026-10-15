@@ -16,7 +16,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  * enum-like ones carry one `{ Variant: value }` at a time.
  * @typedef {{
  *   playlistWindow: { event: DockDrag & { Ready: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, PlayNow: boolean, EndReached: null, LocalFilesPicked: string[], LocalTrackLoaded: { path: string, name: string, durationMs: number, sampleRate?: number, kbps?: number }, StopAfterCurrentChanged: boolean } },
- *   playerWindow: { event: DockDrag & { CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, AddLocalFiles: string[], JumpRequested: null, JumpToTimeRequested: null, QueueRequested: null, PlayerReady: null, MenuRequested: null, UrlsAppended: string[], ShuffleChanged: boolean, RepeatChanged: number, TrackEnded: null, StopAfterCurrentToggle: null } },
+ *   playerWindow: { event: DockDrag & { CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, AddLocalFiles: string[], LocalFilesSent: { items: { path: string, name?: string, artist?: string, durationMs?: number, sampleRate?: number, kbps?: number }[], replace: boolean }, JumpRequested: null, JumpToTimeRequested: null, OpenUrlRequested: null, StreamInfo: { path: string, station: string, title: string }, QueueRequested: null, PlayerReady: null, MenuRequested: null, UrlsAppended: string[], ShuffleChanged: boolean, RepeatChanged: number, TrackEnded: null, StopAfterCurrentToggle: null } },
  *   eqWindow: { event: DockDrag & { CloseRequested: null } },
  *   libraryWindow: { event: DockDrag },
  *   lyricsWindow: { event: DockDrag },

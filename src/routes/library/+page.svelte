@@ -1,7 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, tick } from "svelte";
-  import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
+  import { REACTIVE_WINDOW_SIZE, toFileUrl } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
@@ -30,7 +30,9 @@
 
   /**
    * @typedef {{ name: string, uri: string, track_count: number, image: string | null }} UserPlaylist
-   * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null }} LibTrack
+   * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null, path?: string }} LibTrack
+   * @typedef {{ path: string, title: string, artist: string, album: string, duration_ms: number, sample_rate: number, kbps: number, date_ms: number }} LocalItem
+   * @typedef {{ folders: string[], items: LocalItem[], scanning: boolean }} LocalLibrary
    * @typedef {{ name: string, uris: string[] }} SavedList
    * @typedef {{ uri: string, added_ms: number | null }} TrackRef
    */
@@ -67,7 +69,10 @@
   // Every row op below reads through this so clicks map to the right track.
   const displayTracks = $derived.by(() => {
     const col = sortCol;
-    if (!col) return tracks;
+    // in Local Media the search box filters the files as you type
+    const q = activeNode === "local" ? fold(search.trim()) : "";
+    const shown = q ? tracks.filter((t) => fold(`${t.name} ${t.artist} ${t.album}`).includes(q)) : tracks;
+    if (!col) return shown;
     const field = col === "title" ? "name" : col;
     /** @param {any} t */
     const key = (t) =>
@@ -76,7 +81,7 @@
         : col === "date"
           ? (t.addedMs ?? 0)
           : (t[field] ?? "");
-    return [...tracks].sort((a, b) => {
+    return [...shown].sort((a, b) => {
       const ka = key(a);
       const kb = key(b);
       const c =
@@ -428,7 +433,9 @@
     selectedTrack = index;
     const uri = displayTracks[index]?.uri;
     if (!uri) return;
-    if (searchMode) {
+    if (activeNode === "local") {
+      sendLocalTracks(displayTracks.slice(index), true);
+    } else if (searchMode) {
       emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
     } else {
       // play from here down the list *as currently sorted*
@@ -440,17 +447,20 @@
 
   // Bottom-bar buttons operate on the selected row (falling back to the first).
   function playSelected() {
-    const uri = displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri;
-    if (!uri) return;
-    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(uri)] });
+    const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
+    if (!t) return;
+    if (t.path) return sendLocalTracks([t], true);
+    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(t.uri)] });
   }
   function enqueueSelected() {
-    const uri = displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri;
-    if (!uri) return;
-    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
+    const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
+    if (!t) return;
+    if (t.path) return sendLocalTracks([t], false);
+    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(t.uri)] });
   }
   function playAll() {
     if (displayTracks.length === 0) return;
+    if (activeNode === "local") return sendLocalTracks(displayTracks, true);
     emitWindowEvent("playerWindow", {
       UrlsDropped: displayTracks.map((t) => trackUrl(t.uri)),
     });
@@ -477,7 +487,8 @@
   /** @param {string} name */
   async function addSelectedToList(name) {
     const uri = selectedUriString();
-    if (!uri) return;
+    // the lists hold Spotify songs only
+    if (!uri || uri.startsWith("local:")) return;
     await invoke("add_to_list", { name, uri }).catch(() => {});
     showListMenu = false;
   }
@@ -574,6 +585,136 @@
     return () => {
       off.then((f) => f()).catch(() => {});
     };
+  });
+
+  // --- Local Media: the music folders added here (local_library.rs) ---
+  let localFolders = $state(/** @type {string[]} */ ([]));
+  let localItems = $state(/** @type {LocalItem[]} */ ([]));
+  // how far a reading of the folders has got (null: not reading)
+  let localScan = $state(/** @type {{ done: number, total: number } | null} */ (null));
+  const localByPath = $derived(new Map(localItems.map((i) => [i.path, i])));
+  /** @param {string} p */
+  const fileName = (p) => p.split(/[\\/]/).pop() ?? p;
+  /** @param {LocalItem} i @returns {LibTrack} */
+  const localTrack = (i) => ({
+    uri: `local:${i.path}`,
+    path: i.path,
+    name: i.title || fileName(i.path).replace(/\.[^.]+$/, ""),
+    artist: i.artist,
+    album: i.album,
+    albumArt: null,
+    duration: i.duration_ms,
+    unavailable: false,
+    addedMs: i.date_ms || null,
+  });
+  /** @param {LocalLibrary} lib */
+  function showLocal(lib) {
+    localFolders = lib.folders;
+    localItems = lib.items;
+    localScan = lib.scanning ? (localScan ?? { done: 0, total: 0 }) : null;
+    if (activeNode === "local") {
+      tracks = lib.items.map(localTrack);
+      trackUris = tracks.map((t) => t.uri);
+      selectedTrack = -1;
+    }
+  }
+  async function selectLocal() {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = "local";
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = false;
+    ++loadToken;
+    // what's known shows at once; the folders are checked for changes meanwhile
+    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: true }).catch(() => null));
+    if (lib && activeNode === "local") showLocal(lib);
+  }
+  // Songs to the main playlist, their tags already read (no file opened again).
+  /** @param {LocalItem[]} items @param {boolean} replace */
+  function sendLocalItems(items, replace) {
+    if (!items.length) return;
+    emitWindowEvent("playerWindow", {
+      LocalFilesSent: {
+        items: items.map((i) => ({
+          path: i.path,
+          name: i.title || undefined,
+          artist: i.artist || undefined,
+          durationMs: i.duration_ms,
+          sampleRate: i.sample_rate,
+          kbps: i.kbps,
+        })),
+        replace,
+      },
+    });
+  }
+  /** @param {LibTrack[]} list @param {boolean} replace */
+  function sendLocalTracks(list, replace) {
+    sendLocalItems(
+      list.flatMap((t) => {
+        const item = t.path ? localByPath.get(t.path) : undefined;
+        return item ? [item] : [];
+      }),
+      replace,
+    );
+  }
+  async function loadLocalIntoMain() {
+    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: false }).catch(() => null));
+    if (lib) sendLocalItems(lib.items, true);
+  }
+  async function addLocalFolder() {
+    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library_add_folder").catch(() => null));
+    if (!lib) return;
+    if (activeNode !== "local") {
+      await selectLocal();
+    } else {
+      showLocal(lib);
+    }
+  }
+  /** @param {string} folder */
+  async function removeLocalFolder(folder) {
+    const lib = /** @type {LocalLibrary | null} */ (
+      await invoke("local_library_remove_folder", { folder }).catch(() => null)
+    );
+    if (lib) showLocal(lib);
+  }
+  /** @param {MouseEvent} e */
+  async function localMenu(e) {
+    e.preventDefault();
+    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: false }).catch(() => null));
+    const folders = lib?.folders ?? [];
+    popMenu([
+      { text: "Add a folder…", action: addLocalFolder },
+      {
+        text: "Look for new files",
+        enabled: folders.length > 0,
+        action: () => (activeNode === "local" ? selectLocal() : invoke("local_library", { rescan: true }).catch(() => {})),
+      },
+      { item: "Separator" },
+      {
+        text: "Remove a folder",
+        items: folders.length
+          ? folders.map((f) => ({ text: f.replaceAll("&", "&&"), action: () => removeLocalFolder(f) }))
+          : [{ text: "No folders yet", enabled: false }],
+      },
+    ]);
+  }
+  onMount(() => {
+    const offs = [
+      listen("localLibraryChanged", async () => {
+        const lib = /** @type {LocalLibrary | null} */ (
+          await invoke("local_library", { rescan: false }).catch(() => null)
+        );
+        if (lib) showLocal(lib);
+      }),
+      listen("localLibraryScan", (e) => {
+        const p = /** @type {{ done: number, total: number, scanning: boolean }} */ (e.payload);
+        localScan = p.scanning ? { done: p.done, total: p.total } : null;
+      }),
+    ];
+    return () => offs.forEach((off) => off.then((f) => f()).catch(() => {}));
   });
 
   // --- listening history (history.rs): Recently played / Most played ---
@@ -687,6 +828,16 @@
     selectedTrack = i;
     const uri = displayTracks[i]?.uri;
     if (!uri) return;
+    const path = displayTracks[i].path;
+    if (path) {
+      popMenu([
+        { text: "Play", action: () => loadTrackIntoMain(i) },
+        { text: "Add to the playlist", action: () => sendLocalTracks([displayTracks[i]], false) },
+        { item: "Separator" },
+        { text: "Show in folder", action: () => invoke("local_reveal", { path }).catch(() => {}) },
+      ]);
+      return;
+    }
     const loved = lovedSet.has(uri);
     const lists = /** @type {{name: string}[]} */ (await invoke("get_saved_lists").catch(() => []));
     popMenu([
@@ -747,10 +898,14 @@
   // played); Loved songs, Favorite Songs and search results don't, so there
   // the column goes rather than staying blank.
   const showDate = $derived(displayTracks.some((t) => t.addedMs));
-  const dateLabel = $derived(activeNode === "recent" || activeNode === "top" ? "Played" : "Added");
+  const dateLabel = $derived(
+    activeNode === "recent" || activeNode === "top" ? "Played" : activeNode === "local" ? "Date" : "Added",
+  );
 
   const headTitle = $derived(
-    activeNode === "recent"
+    activeNode === "local"
+      ? "Local Media"
+      : activeNode === "recent"
       ? "Recently played"
       : activeNode === "top"
       ? "Most played"
@@ -890,6 +1045,19 @@
       >
         <span class="ml-ic ml-ic-stats"></span>Listening stats
       </div>
+      <div
+        class="ml-node ml-root"
+        class:active={activeNode === "local"}
+        role="button"
+        tabindex="0"
+        title="the music on this computer: right-click to add a folder; double-click to load it all"
+        onclick={selectLocal}
+        ondblclick={loadLocalIntoMain}
+        oncontextmenu={localMenu}
+        onkeydown={(e) => e.key === "Enter" && selectLocal()}
+      >
+        <span class="ml-ic ml-ic-local"></span>Local Media
+      </div>
 
       <div
         class="ml-node ml-root"
@@ -1008,15 +1176,18 @@
         <input
           class="ml-search"
           bind:this={searchInput}
-          placeholder="artist, song… (Enter)"
+          placeholder={activeNode === "local" ? "filter your files…" : "artist, song… (Enter)"}
           bind:value={search}
-          onkeydown={(e) => e.key === "Enter" && doSearch()}
+          onkeydown={(e) => e.key === "Enter" && activeNode !== "local" && doSearch()}
         />
         <button class="ml-clear" onclick={clearSearch}>Clear</button>
       </div>
 
       <div class="ml-view-head">
         {headTitle}
+        {#if activeNode === "local" && localScan}
+          <span class="ml-find">{localScan.total ? `reading ${localScan.done} of ${localScan.total}…` : "looking for files…"}</span>
+        {/if}
         {#if findText}
           <span class="ml-find" class:miss={findMiss}>find: {findText}</span>
         {/if}
@@ -1071,7 +1242,7 @@
               draggable="true"
               ondragstart={(e) => {
                 selectedTrack = i;
-                dragLinks(e, [trackUrl(t.uri)]);
+                dragLinks(e, [t.path ? toFileUrl(t.path) : trackUrl(t.uri)]);
               }}
               onclick={() => (selectedTrack = i)}
               oncontextmenu={(e) => trackMenu(e, i)}
@@ -1094,6 +1265,17 @@
             <div class="ml-hint">{searchMode ? "searching…" : "loading…"}</div>
           {:else if tracksError}
             <div class="ml-hint ml-err">{tracksError}</div>
+          {:else if activeNode === "local" && tracks.length === 0}
+            <div class="ml-hint">
+              {#if localFolders.length === 0}
+                Add a music folder and its songs show here, ready to play.
+                <button class="ml-retry" onclick={addLocalFolder}>Add a folder…</button>
+              {:else}
+                {localScan ? "reading your files…" : "no music files in these folders"}
+              {/if}
+            </div>
+          {:else if tracks.length > 0 && displayTracks.length === 0}
+            <div class="ml-hint">no match</div>
           {:else if tracks.length === 0}
             <div class="ml-hint">
               {searchMode
@@ -1151,8 +1333,8 @@
       {/if}
     </div>
     <span class="ml-count">
-      {tracks.length}
-      {tracks.length === 1 ? "item" : "items"}
+      {displayTracks.length}
+      {displayTracks.length === 1 ? "item" : "items"}
     </span>
   </div>
 
@@ -1378,6 +1560,10 @@
   .ml-ic-stats::before {
     content: "▤";
   }
+  .ml-ic-local::before {
+    content: "♫";
+  }
+  .ml-ic-local,
   .ml-ic-pin,
   .ml-ic-recent,
   .ml-ic-stats,

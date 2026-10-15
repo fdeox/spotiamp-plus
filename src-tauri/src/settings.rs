@@ -334,6 +334,9 @@ pub struct Settings {
     /// each update (whatsnew_window.rs).
     #[serde(default)]
     pub last_seen_version: Option<String>,
+    /// The music folders of the Library's Local Media (local_library.rs).
+    #[serde(default)]
+    pub local_folders: Vec<String>,
 }
 
 impl Settings {

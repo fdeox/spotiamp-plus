@@ -40,6 +40,14 @@ pub enum LocalEvent {
     Position { position_ms: u32 },
     /// The file couldn't be opened or decoded.
     Failed { path: PathBuf, reason: String },
+    /// A radio station (radio.rs) said its name or moved to another song.
+    StreamInfo { station: String, title: String, kbps: u32, sample_rate: u32 },
+}
+
+/// A radio station's link rather than a file (Ctrl+L, radio.rs).
+pub fn is_stream(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy().to_ascii_lowercase();
+    s.starts_with("http://") || s.starts_with("https://")
 }
 
 enum Command {
@@ -62,6 +70,9 @@ pub struct LocalPlayer {
     /// applied to the output like the Spotify path does
     volume: Arc<AtomicU16>,
     balance: Arc<AtomicI16>,
+    /// Moves on with every load and stop: a station still being read (which
+    /// can keep the worker waiting on the network) lets go at once.
+    generation: Arc<AtomicU64>,
 }
 
 impl LocalPlayer {
@@ -75,6 +86,7 @@ impl LocalPlayer {
         let duration_ms = Arc::new(AtomicU64::new(0));
         let volume = Arc::new(AtomicU16::new(100));
         let balance = Arc::new(AtomicI16::new(0));
+        let generation = Arc::new(AtomicU64::new(0));
 
         let worker = Worker {
             eq,
@@ -85,6 +97,7 @@ impl LocalPlayer {
             duration_ms: duration_ms.clone(),
             volume: volume.clone(),
             balance: balance.clone(),
+            generation: generation.clone(),
         };
         std::thread::Builder::new()
             .name("local-player".into())
@@ -99,6 +112,7 @@ impl LocalPlayer {
             duration_ms,
             volume,
             balance,
+            generation,
         }
     }
 
@@ -110,6 +124,7 @@ impl LocalPlayer {
     }
 
     pub fn load(&self, path: PathBuf) {
+        self.generation.fetch_add(1, Ordering::Relaxed);
         let _ = self.cmd.send(Command::Load(path));
     }
     pub fn play(&self) {
@@ -119,6 +134,7 @@ impl LocalPlayer {
         let _ = self.cmd.send(Command::Pause);
     }
     pub fn stop(&self) {
+        self.generation.fetch_add(1, Ordering::Relaxed);
         let _ = self.cmd.send(Command::Stop);
     }
     pub fn seek(&self, position_ms: u32) {
@@ -230,6 +246,15 @@ struct Active {
     resampler: Option<Resampler>,
     /// Scratch for resampled output, reused across packets.
     resample_out: Vec<f32>,
+    /// A radio station's name and song (None for a file).
+    stream: Option<Arc<Mutex<crate::radio::StreamMeta>>>,
+    /// The file's own sample rate (for a station's readout).
+    source_rate: u32,
+    /// The player's generation when this was opened.
+    generation: u64,
+    /// How much decoded audio to keep ahead (samples): a station's sound
+    /// comes only as fast as it plays, so it gets seconds, a file a moment.
+    lead: usize,
 }
 
 struct Worker {
@@ -241,6 +266,7 @@ struct Worker {
     duration_ms: Arc<AtomicU64>,
     volume: Arc<AtomicU16>,
     balance: Arc<AtomicI16>,
+    generation: Arc<AtomicU64>,
 }
 
 impl Worker {
@@ -319,7 +345,23 @@ impl Worker {
                 if self.playing.load(Ordering::Relaxed) {
                     self.emit(LocalEvent::Position { position_ms: pos });
                 }
-                if ended && !a.ended_sent {
+                if let Some(meta) = &a.stream {
+                    let mut meta = meta.lock().unwrap_or_else(|e| e.into_inner());
+                    if meta.changed {
+                        meta.changed = false;
+                        let info = LocalEvent::StreamInfo {
+                            station: meta.station.clone(),
+                            title: meta.title.clone(),
+                            kbps: meta.kbps,
+                            sample_rate: a.source_rate,
+                        };
+                        drop(meta);
+                        self.emit(info);
+                    }
+                }
+                // a station let go for the next song or a stop hasn't ended
+                let let_go = a.stream.is_some() && self.generation.load(Ordering::Relaxed) != a.generation;
+                if ended && !a.ended_sent && !let_go {
                     a.ended_sent = true;
                     self.playing.store(false, Ordering::Relaxed);
                     self.emit(LocalEvent::EndOfTrack);
@@ -333,15 +375,25 @@ impl Worker {
     /// Open a file, build its cpal stream, and return the active state. The
     /// stream's callback is where EQ runs and the visualizer is fed.
     fn open(&self, path: &PathBuf) -> Result<Active, String> {
-        let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
-        let mut hint = Hint::new();
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            hint.with_extension(ext);
-        }
+        let generation = self.generation.load(Ordering::Relaxed);
+        let (mss, hint, station) = if is_stream(path) {
+            let (mss, hint, meta) = crate::radio::open(&path.to_string_lossy(), self.generation.clone())?;
+            (mss, hint, Some(meta))
+        } else {
+            let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+            let mss = MediaSourceStream::new(Box::new(file), Default::default());
+            let mut hint = Hint::new();
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                hint.with_extension(ext);
+            }
+            (mss, hint, None)
+        };
         let probed = symphonia::default::get_probe()
             .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-            .map_err(|e| format!("unsupported: {e}"))?;
+            .map_err(|e| match station {
+                Some(_) => "the station didn't send any sound Spotiamp+ can play".to_string(),
+                None => format!("unsupported: {e}"),
+            })?;
         let format = probed.format;
         let track = format
             .tracks()
@@ -399,7 +451,12 @@ impl Worker {
             if resampler.is_some() { ", resampling" } else { "" },
         );
 
-        let stream = self.build_stream(&device, out_rate, out_channels, &ring, &frames_played)?;
+        // A station: ~1.5 s of sound gathered before it plays, and again after
+        // the network falls behind, so it waits in silence instead of
+        // stuttering (Winamp buffers a stream the same way).
+        let per_second = out_rate as usize * out_channels;
+        let (lead, prebuffer) = if station.is_some() { (per_second * 4, per_second * 3 / 2) } else { (1 << 16, 0) };
+        let stream = self.build_stream(&device, out_rate, out_channels, &ring, &frames_played, prebuffer)?;
 
         Ok(Active {
             format,
@@ -414,6 +471,10 @@ impl Worker {
             sample_buf: None,
             resampler,
             resample_out: Vec::new(),
+            stream: station,
+            source_rate: sample_rate,
+            generation,
+            lead,
         })
     }
 
@@ -428,7 +489,10 @@ impl Worker {
         out_channels: usize,
         ring: &Arc<Mutex<VecDeque<f32>>>,
         frames_played: &Arc<AtomicU64>,
+        prebuffer: usize,
     ) -> Result<cpal::Stream, String> {
+        // a station gathering its buffer: silence until it's there
+        let mut buffering = prebuffer > 0;
         let config = cpal::StreamConfig {
             channels: out_channels as u16,
             sample_rate: cpal::SampleRate(out_rate),
@@ -456,6 +520,18 @@ impl Worker {
                     if !playing.load(Ordering::Relaxed) {
                         out.iter_mut().for_each(|s| *s = 0.0);
                         return;
+                    }
+                    if prebuffer > 0 {
+                        let have = ring.lock().unwrap().len();
+                        if buffering && have >= prebuffer {
+                            buffering = false;
+                        } else if !buffering && have == 0 {
+                            buffering = true;
+                        }
+                        if buffering {
+                            out.iter_mut().for_each(|s| *s = 0.0);
+                            return;
+                        }
                     }
 
                     let mut got = 0usize;
@@ -511,11 +587,14 @@ impl Worker {
     /// Decode a little further into the ring; return true when the file is fully
     /// decoded AND played out (so the caller can emit EndOfTrack).
     fn pump(&self, a: &mut Active) -> bool {
-        // Keep a modest lead over playback so live EQ/seek stay responsive.
-        const TARGET: usize = 1 << 16; // ~0.3–0.7 s depending on rate/channels
+        // Keep a modest lead over playback so live EQ/seek stay responsive
+        // (a file: 1 << 16 samples, ~0.3–0.7 s). Never for long, though: a
+        // station's sound comes only as fast as it plays, so its lead fills
+        // slowly, and the loop has the clock and the commands to see to.
+        let started = std::time::Instant::now();
         loop {
             let len = a.ring.lock().unwrap().len();
-            if len >= TARGET {
+            if len >= a.lead || started.elapsed() >= std::time::Duration::from_millis(40) {
                 break;
             }
             match a.format.next_packet() {
@@ -718,7 +797,7 @@ pub async fn local_pick_folder(app_handle: tauri::AppHandle) -> Vec<String> {
 
 /// Recursively gather audio files under `dir`. Depth-bounded so an accidental
 /// pick of a drive root can't walk the whole disk forever.
-fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>, depth: u32) {
+pub(crate) fn collect_audio_files(dir: &std::path::Path, out: &mut Vec<String>, depth: u32) {
     if depth > 8 {
         return;
     }
@@ -791,7 +870,7 @@ fn average_kbps(bytes: u64, duration_ms: u32) -> u32 {
     (bytes * 8 / duration_ms as u64) as u32
 }
 
-fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
+pub(crate) fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
     let file = std::fs::File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
