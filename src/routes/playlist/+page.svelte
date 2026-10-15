@@ -1459,14 +1459,23 @@
       playlist.select(row);
     }
 
-    const selected = new Set(playlist.selectedRows);
-    const block = playlist.rows.filter((r) => selected.has(r));
-    const remaining = playlist.rows.filter((r) => !selected.has(r));
-    const topIndex = Math.min(...block.map((r) => playlist.rows.indexOf(r)));
+    // One pass over the rows: looking each one up again (indexOf) made a
+    // click in a 1400-song list take 150 ms.
+    const selected = playlist.selectedSet;
+    /** @type {Row[]} */
+    const block = [];
+    /** @type {Row[]} */
+    const remaining = [];
     // Where the block sits among the non-dragged rows at the start.
-    const baseInsert = remaining.filter(
-      (r) => playlist.rows.indexOf(r) < topIndex,
-    ).length;
+    let baseInsert = 0;
+    for (const r of playlist.rows) {
+      if (selected.has(r)) {
+        block.push(r);
+      } else {
+        remaining.push(r);
+        if (!block.length) baseInsert++;
+      }
+    }
     const dragElement =
       row.element ??
       (e.currentTarget instanceof HTMLElement ? e.currentTarget : undefined);

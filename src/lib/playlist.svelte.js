@@ -211,7 +211,7 @@ export class TrackRow extends PlaylistRow {
     }
 
     isSelected() {
-        return this.playlist.selectedRows.includes(this);
+        return this.playlist.selectedSet.has(this);
     }
 }
 
@@ -276,7 +276,7 @@ export class LocalRow extends PlaylistRow {
     }
 
     isSelected() {
-        return this.playlist.selectedRows.includes(this);
+        return this.playlist.selectedSet.has(this);
     }
 }
 
@@ -304,6 +304,11 @@ export class Playlist {
      * @type {Row[]}
      */
     selectedRows = $state([]);
+    /**
+     * The selection as a set, for the rows asking "am I selected?": every row
+     * of a long list searching the array made a click take 150 ms.
+     */
+    selectedSet = $derived(new Set(this.selectedRows));
     /**
      * The currently "active" row (keyboard focus). Used as the target for
      * scroll-into-view and as the row that gets played on Enter.
@@ -667,9 +672,10 @@ export class Playlist {
             const pending = this.unloadedRows();
             for (let i = 0; i < pending.length && failures < 3; i += PRELOAD_BATCH) {
                 // skip rows loaded meanwhile or no longer in the list
+                const listed = new Set(this.rows);
                 const rows = pending
                     .slice(i, i + PRELOAD_BATCH)
-                    .filter((row) => !row.track && !row.trackPromise && this.rows.includes(row));
+                    .filter((row) => !row.track && !row.trackPromise && listed.has(row));
                 if (rows.length === 0) continue;
                 try {
                     await TrackRow.populateMany(rows);
@@ -887,9 +893,11 @@ export class Playlist {
             return;
         }
 
-        const indices = this.selectedRows
-            .map((r) => this.rows.indexOf(r))
-            .sort((a, b) => a - b);
+        // in one pass, in order (not an indexOf per selected row: slow when
+        // most of a long list is selected)
+        /** @type {number[]} */
+        const indices = [];
+        this.rows.forEach((r, i) => this.selectedSet.has(r) && indices.push(i));
 
         // Can't move past the edges of the list.
         if (offset < 0 && indices[0] === 0) {
@@ -937,9 +945,7 @@ export class Playlist {
         }
 
         const removed = new Set(this.selectedRows);
-        const firstIndex = Math.min(
-            ...this.selectedRows.map((r) => this.rows.indexOf(r)),
-        );
+        const firstIndex = this.rows.findIndex((r) => removed.has(r));
 
         if (this.loadedRow && removed.has(this.loadedRow)) {
             this.loadedRow = undefined;
@@ -1061,21 +1067,31 @@ export class Playlist {
             : this.focusedRow
               ? [this.focusedRow]
               : [];
-        let queue = [...this.queue];
-        for (const row of this.rows.filter((r) => picked.includes(r))) {
-            queue = queue.includes(row)
-                ? queue.filter((r) => r !== row)
-                : [...queue, row];
-        }
-        this.queue = queue;
+        // the queued ones come out, the others go in at the end, in playlist order
+        const pickedSet = new Set(picked);
+        const queued = new Set(this.queue);
+        const toggled = this.rows.filter((r) => pickedSet.has(r));
+        const out = new Set(toggled.filter((r) => queued.has(r)));
+        this.queue = [
+            ...this.queue.filter((r) => !out.has(r)),
+            ...toggled.filter((r) => !queued.has(r)),
+        ];
     }
+
+    /** Each queued row's 1-based place (its first, if it's in twice). */
+    queuePlaces = $derived.by(() => {
+        /** @type {Map<Row, number>} */
+        const places = new Map();
+        this.queue.forEach((r, i) => places.has(r) || places.set(r, i + 1));
+        return places;
+    });
 
     /**
      * 1-based position of `row` in the play queue, or 0 when it isn't queued.
      * @param {Row} row
      */
     queuePosition(row) {
-        return this.queue.indexOf(row) + 1;
+        return this.queuePlaces.get(row) ?? 0;
     }
 
     /**
