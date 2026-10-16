@@ -636,10 +636,18 @@
     trackUris = [];
     tracksError = "";
     tracksLoading = false;
-    ++loadToken;
+    const token = ++loadToken;
     // what's known shows at once; the folders are checked for changes meanwhile
-    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: true }).catch(() => null));
-    if (lib && activeNode === "local") showLocal(lib);
+    let lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: true }).catch(() => null));
+    // The reading's end comes as an event too, but one sent before this page
+    // was listening (a small folder, just as the Library opened) would be
+    // missed: ask again until it's done.
+    while (lib?.scanning && token === loadToken) {
+      showLocal(lib);
+      await new Promise((r) => setTimeout(r, 500));
+      lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: false }).catch(() => null));
+    }
+    if (lib && token === loadToken) showLocal(lib);
   }
   // Songs to the main playlist, their tags already read (no file opened again).
   /** @param {LocalItem[]} items @param {boolean} replace */
