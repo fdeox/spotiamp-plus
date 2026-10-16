@@ -916,7 +916,7 @@
     invoke("set_discord_activity", {
       name: track.name,
       artist: track.artist,
-      album: track.album || (track.isLocal ? "Local file" : ""),
+      album: track.album || (track.isStream ? "Radio station" : track.isLocal ? "Local file" : ""),
       albumArt: track.albumArt ?? null,
       playlistIndex: playlistPos.index,
       playlistLength: playlistPos.length,
