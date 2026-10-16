@@ -68,7 +68,7 @@
    * The loaded track is normally a Spotify track; local files reuse the same
    * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
    * transport routes on `isLocal`), so the type carries those as optional.
-   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, remembered?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
+   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, remembered?: boolean, stationName?: string, path?: string, sampleRate?: number, kbps?: number }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -699,6 +699,19 @@
     return true;
   }
 
+  // A station whose sound has come out for a few seconds really plays: its
+  // reconnect tries start over, and it's one of your stations now (the
+  // Library's Radio). Connecting isn't enough: a server can take the
+  // connection and send nothing, which would have it tried forever.
+  function stationPlays() {
+    reconnects = 0;
+    if (!loadedTrack || loadedTrack.remembered) return;
+    loadedTrack = /** @type {any} */ ({ ...loadedTrack, remembered: true });
+    invoke("radio_remember", {
+      station: { url: loadedTrack?.path ?? "", name: loadedTrack?.stationName || "", bitrate: loadedTrack?.kbps || 0 },
+    }).catch(() => {});
+  }
+
   function startLocalPoll() {
     if (localPollTimer) return;
     localPollTimer = setInterval(async () => {
@@ -715,6 +728,7 @@
         const pos = await invoke("local_position").catch(() => 0);
         setPosition(pos);
         sliderSeekPosition = pos;
+        if (loadedTrack?.isStream && pos >= 3000) stationPlays();
       }
       const events = await invoke("local_take_events").catch(() => []);
       // Unit enum variants serialise as their name string ("EndOfTrack");
@@ -744,7 +758,6 @@
           }
         } else if (ev && ev.StreamInfo && loadedTrack?.isStream) {
           // a station said its name, or moved on to another song
-          reconnects = 0; // (it plays)
           const { station, title, kbps, sample_rate } = ev.StreamInfo;
           const name = title || station || loadedTrack.name;
           loadedTrack = /** @type {any} */ ({
@@ -754,15 +767,9 @@
             kbps: kbps || loadedTrack.kbps,
             sampleRate: sample_rate || loadedTrack.sampleRate,
             displayName: title && station ? `${title} (${station})` : name,
+            stationName: station || loadedTrack.stationName,
           });
           emitWindowEvent("playerWindow", { StreamInfo: { path: loadedTrack?.path ?? "", station, title } });
-          // it plays: one of your stations now (the Library's Radio)
-          if (!loadedTrack?.remembered) {
-            loadedTrack = /** @type {any} */ ({ ...loadedTrack, remembered: true });
-            invoke("radio_remember", {
-              station: { url: loadedTrack?.path ?? "", name: station || "", bitrate: kbps || 0 },
-            }).catch(() => {});
-          }
         }
       }
     }, 250);

@@ -289,21 +289,31 @@ impl Worker {
             };
 
             match cmd {
-                Some(Command::Load(path)) => match self.open(&path) {
-                    Ok(a) => {
-                        self.duration_ms.store(0, Ordering::Relaxed);
-                        self.position_ms.store(0, Ordering::Relaxed);
-                        self.playing.store(true, Ordering::Relaxed);
-                        active = Some(a);
-                        self.emit(LocalEvent::Playing { position_ms: 0 });
+                Some(Command::Load(path)) => {
+                    // (before opening: the file's container may say its length)
+                    self.duration_ms.store(0, Ordering::Relaxed);
+                    let asked_at = self.generation.load(Ordering::Relaxed);
+                    match self.open(&path) {
+                        Ok(a) => {
+                            self.position_ms.store(0, Ordering::Relaxed);
+                            self.playing.store(true, Ordering::Relaxed);
+                            active = Some(a);
+                            self.emit(LocalEvent::Playing { position_ms: 0 });
+                        }
+                        Err(reason) => {
+                            active = None;
+                            self.playing.store(false, Ordering::Relaxed);
+                            if self.generation.load(Ordering::Relaxed) != asked_at {
+                                // let go while connecting (another song, a stop):
+                                // not a failure to tell anyone about
+                                log::info!("local open of '{}' let go ({reason})", path.display());
+                            } else {
+                                log::warn!("local open failed for '{}': {}", path.display(), reason);
+                                self.emit(LocalEvent::Failed { path, reason });
+                            }
+                        }
                     }
-                    Err(reason) => {
-                        log::warn!("local open failed for '{}': {}", path.display(), reason);
-                        active = None;
-                        self.playing.store(false, Ordering::Relaxed);
-                        self.emit(LocalEvent::Failed { path, reason });
-                    }
-                },
+                }
                 Some(Command::Play) => {
                     if active.is_some() {
                         self.playing.store(true, Ordering::Relaxed);
@@ -383,14 +393,22 @@ impl Worker {
         let (source, station) = if is_stream(path) {
             let tuned = crate::radio::open(&path.to_string_lossy(), self.generation.clone())?;
             let source = if tuned.aac {
-                Source::adts(Box::new(tuned.audio), None)
+                let mut source = Source::adts(Box::new(tuned.audio), None);
+                if !source.finds_sound() {
+                    return Err("the station didn't send any sound Spotiamp+ can play".into());
+                }
+                source
             } else {
                 self.probe(tuned.audio, &tuned.hint, "the station didn't send any sound Spotiamp+ can play")?
             };
             (source, Some(tuned.meta))
         } else if is_aac_file {
             let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-            (Source::adts(Box::new(file), Some(path.clone())), None)
+            let mut source = Source::adts(Box::new(file), Some(path.clone()));
+            if !source.finds_sound() {
+                return Err("unsupported: no AAC in it Spotiamp+ can read".into());
+            }
+            (source, None)
         } else {
             let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
             let mss = MediaSourceStream::new(Box::new(file), Default::default());

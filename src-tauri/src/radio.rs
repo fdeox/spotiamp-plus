@@ -12,7 +12,7 @@ use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use oauth2::reqwest;
@@ -23,6 +23,16 @@ use symphonia::core::probe::Hint;
 /// How long a station may go quiet before it counts as gone.
 const STALL: Duration = Duration::from_secs(20);
 const CONNECT: Duration = Duration::from_secs(10);
+
+/// For https stations, kept for the whole run: its connections are reused
+/// (a station in pieces asks every few seconds).
+static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(CONNECT)
+        .user_agent(concat!("Spotiamp+/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+});
 
 /// What a station says about itself, and the song it's on.
 #[derive(Debug, Default, Clone)]
@@ -111,8 +121,10 @@ impl Body {
                     }
                 }
             }
-            Body::Https(response) => tauri::async_runtime::block_on(response.chunk())
+            // (a station gone quiet lets go in time: the thread doesn't wait forever)
+            Body::Https(response) => tauri::async_runtime::block_on(async { tokio::time::timeout(STALL, response.chunk()).await })
                 .ok()
+                .and_then(Result::ok)
                 .flatten()
                 .map(|b| b.to_vec()),
         }
@@ -142,14 +154,20 @@ fn open_http(url: &str) -> Result<Opened, String> {
     let u = Url::parse(url).map_err(|_| "that isn't a link".to_string())?;
     let host = u.host_str().ok_or("that link has no server in it")?.to_string();
     let port = u.port_or_known_default().unwrap_or(80);
-    let addr = (host.as_str(), port)
+    let addrs: Vec<_> = (host.as_str(), port)
         .to_socket_addrs()
         .map_err(|_| format!("couldn't find {host}"))?
-        .next()
-        .ok_or_else(|| format!("couldn't find {host}"))?;
-    let mut socket = TcpStream::connect_timeout(&addr, CONNECT).map_err(|_| format!("{host} didn't answer"))?;
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("couldn't find {host}"));
+    }
+    // each address the name has (IPv6 and IPv4): the first that answers
+    let mut socket = addrs
+        .iter()
+        .find_map(|a| TcpStream::connect_timeout(a, CONNECT).ok())
+        .ok_or_else(|| format!("{host} didn't answer"))?;
     socket.set_read_timeout(Some(STALL)).ok();
-    let path = &u[oauth2::url::Position::BeforePath..];
+    let path = &u[oauth2::url::Position::BeforePath..oauth2::url::Position::AfterQuery];
     let host_header = if u.port().is_some() { format!("{host}:{port}") } else { host.clone() };
     // in one go: some servers take the first packet for the whole request
     let request = format!(
@@ -194,13 +212,11 @@ fn open_http(url: &str) -> Result<Opened, String> {
 }
 
 fn open_https(url: &str) -> Result<Opened, String> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(CONNECT)
-        .user_agent(concat!("Spotiamp+/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = tauri::async_runtime::block_on(client.get(url).header("Icy-MetaData", "1").send())
-        .map_err(|_| "the station didn't answer".to_string())?;
+    let request = CLIENT.get(url).header("Icy-MetaData", "1").send();
+    let response = tauri::async_runtime::block_on(async { tokio::time::timeout(STALL, request).await })
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(|| "the station didn't answer".to_string())?;
     if !response.status().is_success() {
         return Err(format!("the station answered {}", response.status()));
     }

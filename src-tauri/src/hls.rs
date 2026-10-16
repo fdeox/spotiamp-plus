@@ -35,8 +35,9 @@ fn absolute(base: &str, link: &str) -> Option<String> {
 }
 
 /// From a list of qualities, the one to play: the best up to 320 kbps (or
-/// the smallest, when all are above), audio only where there's a choice.
-fn best_variant(text: &str, base: &str) -> Option<String> {
+/// the smallest, when all are above), audio only where there's a choice; its
+/// link and bandwidth.
+fn best_variant(text: &str, base: &str) -> Option<(String, u64)> {
     let mut variants: Vec<(u64, bool, String)> = Vec::new();
     let mut lines = text.lines().map(str::trim);
     while let Some(line) = lines.next() {
@@ -58,7 +59,7 @@ fn best_variant(text: &str, base: &str) -> Option<String> {
         .filter(|v| v.0 <= 320_000)
         .max_by_key(|v| v.0)
         .or_else(|| audio.iter().min_by_key(|v| v.0))
-        .map(|v| v.2.clone())
+        .map(|v| (v.2.clone(), v.0))
 }
 
 fn media_list(text: &str, base: &str) -> MediaList {
@@ -207,13 +208,10 @@ fn run(
     let (mut list_url, mut text) = (url, text);
     let mut kbps = kbps;
     if text.contains("#EXT-X-STREAM-INF") {
-        let variant = best_variant(&text, &list_url).ok_or("there's no stream in this station's list")?;
-        kbps = text
-            .lines()
-            .find(|l| l.contains("#EXT-X-STREAM-INF"))
-            .and_then(|l| l.split(',').find_map(|a| a.trim().strip_prefix("BANDWIDTH=")))
-            .and_then(|b| b.parse::<u32>().ok())
-            .map_or(kbps, |b| b / 1000);
+        let (variant, bandwidth) = best_variant(&text, &list_url).ok_or("there's no stream in this station's list")?;
+        if bandwidth > 0 {
+            kbps = (bandwidth / 1000) as u32;
+        }
         let (u, body) = fetch_all(&variant)?;
         list_url = u;
         text = String::from_utf8_lossy(&body).into_owned();
@@ -275,7 +273,10 @@ mod tests {
     #[test]
     fn a_list_of_qualities_gives_the_best_up_to_320k() {
         let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS=\"mp4a.40.5\"\nlow/list.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=128255,CODECS=\"mp4a.40.2\"\nmid/list.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=900000,CODECS=\"avc1.4d401f,mp4a.40.2\",RESOLUTION=640x360\nvideo.m3u8\n";
-        assert_eq!(best_variant(master, "https://r.example/s/playlist.m3u8").unwrap(), "https://r.example/s/mid/list.m3u8");
+        assert_eq!(
+            best_variant(master, "https://r.example/s/playlist.m3u8").unwrap(),
+            ("https://r.example/s/mid/list.m3u8".to_string(), 128255)
+        );
     }
 
     #[test]

@@ -65,6 +65,15 @@ impl Source {
         Ok(Source::Symphonia { format, decoder, track_id: track.id, buf: None })
     }
 
+    /// ADTS: whether a frame comes at all (a station that says AAC but
+    /// sends something else, a .aac file that isn't). Nothing is used up.
+    pub(crate) fn finds_sound(&mut self) -> bool {
+        match self {
+            Source::Adts { frames, .. } => frames.next_header().is_some(),
+            _ => true,
+        }
+    }
+
     /// Who decodes, for the log.
     pub(crate) fn kind(&self) -> &'static str {
         match self {
@@ -145,6 +154,10 @@ fn aac(decoded: Result<rusty_aac::DecodedAudio, rusty_aac::Error>, out: &mut Vec
     }
 }
 
+/// How far to look for the next frame before giving up: frames are 8 KB at
+/// most, and what comes between them (a stream joined midway) is less.
+const SEARCH: usize = 64 * 1024;
+
 /// The core sample rates an ADTS header can name, by its index.
 const ADTS_RATES: [u32; 13] = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
@@ -186,6 +199,7 @@ impl AdtsFrames {
     }
 
     fn next_header(&mut self) -> Option<usize> {
+        let mut passed = 0;
         loop {
             if !self.fill(7) {
                 return None;
@@ -194,6 +208,14 @@ impl AdtsFrames {
                 return Some(len);
             }
             self.pos += 1;
+            passed += 1;
+            if passed > SEARCH {
+                return None;
+            }
+            if self.pos > 256 * 1024 {
+                self.buf.drain(..self.pos);
+                self.pos = 0;
+            }
         }
     }
 
@@ -291,6 +313,21 @@ mod tests {
         assert_eq!((rate, channels), (44100, 2));
         // a second of sound (the encoder's start-up adds a frame or two)
         assert!((43_000..48_000).contains(&frames), "{frames} frames");
+    }
+
+    /// Something that isn't ADTS (MP3 frames, a station that says AAC but
+    /// isn't) is told at once instead of searched forever; real AAC is found.
+    #[test]
+    fn what_is_not_aac_is_told_at_once() {
+        let mp3ish: Vec<u8> = std::iter::repeat_n([0xFF, 0xFB, 0x90, 0x64], 50_000).flatten().collect();
+        assert!(!Source::adts(Box::new(std::io::Cursor::new(mp3ish)), None).finds_sound());
+        let mut junk_then_aac = vec![0u8; 1000];
+        junk_then_aac.extend(tone_adts(0.5));
+        let mut source = Source::adts(Box::new(std::io::Cursor::new(junk_then_aac)), None);
+        assert!(source.finds_sound());
+        // and nothing was used up: it plays from its first frame
+        let mut out = Vec::new();
+        assert!(matches!(source.next(&mut out), Next::Audio { .. } | Next::Skip));
     }
 
     #[test]

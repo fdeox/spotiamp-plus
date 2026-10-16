@@ -43,11 +43,16 @@ pub fn listen(window: &WebviewWindow) {
                     }
                 }
             }
-            let paths = audio_files(dropped);
-            log::info!("{} file(s) dropped on the {label} window", paths.len());
-            if !paths.is_empty() {
-                let _ = app.emit_to(label.as_str(), "filesDropped", paths);
-            }
+            // a big folder takes a while to look through: not on the windows'
+            // thread, which would freeze them all meanwhile
+            let (label, app) = (label.clone(), app.clone());
+            std::thread::spawn(move || {
+                let paths = audio_files(dropped);
+                log::info!("{} file(s) dropped on the {label} window", paths.len());
+                if !paths.is_empty() {
+                    let _ = app.emit_to(label.as_str(), "filesDropped", paths);
+                }
+            });
             Ok(())
         }));
         let mut token = Default::default();

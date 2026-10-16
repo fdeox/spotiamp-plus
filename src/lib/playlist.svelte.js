@@ -872,6 +872,8 @@ export class Playlist {
             await row.play();
             return "";
         }
+        // an artist, a podcast…: not a radio station either
+        if (/^spotify:|open\.spotify\.com|spotify\.link/i.test(link)) return "Spotiamp+ opens Spotify songs, albums and playlists";
         if (!isStreamLink(link)) return "That isn't a link (it starts with http:// or https://)";
         const row = await this.addLocalRow(link);
         this.persist();

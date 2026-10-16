@@ -170,7 +170,8 @@ async fn call(method: &str, mut params: BTreeMap<String, String>, post: bool) ->
         None => Ok(value),
         Some(9) => Err(Failure::SignedOut),
         Some(14) => Err(Failure::NotYet),
-        Some(11 | 16 | 29) => Err(Failure::Later),
+        // 8: "operation failed, try again" (Last.fm's backend had a moment)
+        Some(8 | 11 | 16 | 29) => Err(Failure::Later),
         Some(code) => {
             let message = value.get("message").and_then(Value::as_str).unwrap_or("no reason given");
             log::warn!("Last.fm: {method} turned down ({code}: {message})");
