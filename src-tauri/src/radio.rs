@@ -270,6 +270,44 @@ fn fetch(url: String, head_tx: mpsc::Sender<Result<Head, String>>, audio: SyncSe
     let _ = head_tx.send(Err("too many redirects".into()));
 }
 
+/// AAC in MPEG-2 frames (ADTS headers starting FF F8 / FF F9) differs from
+/// the MPEG-4 kind only by one header bit, but the decoder takes only MPEG-4
+/// (Europe 1 and others sent nothing it could play). Each frame's header is
+/// turned into the MPEG-4 one; the sound inside is the same.
+#[derive(Default)]
+struct AdtsFix {
+    buf: Vec<u8>,
+}
+
+impl AdtsFix {
+    /// Bytes in, the same bytes out with every frame header made MPEG-4; a
+    /// frame not all here yet waits for the rest.
+    fn push(&mut self, data: &[u8], out: &mut VecDeque<u8>) {
+        self.buf.extend_from_slice(data);
+        let mut i = 0;
+        while self.buf.len() - i >= 7 {
+            let b = &self.buf[i..];
+            // sync (12 bits set) and layer 00: a frame header
+            if b[0] == 0xFF && (b[1] & 0xF6) == 0xF0 {
+                let len = (((b[3] & 0x03) as usize) << 11) | ((b[4] as usize) << 3) | ((b[5] as usize) >> 5);
+                if len >= 7 {
+                    if self.buf.len() - i < len {
+                        break;
+                    }
+                    self.buf[i + 1] &= !0x08;
+                    out.extend(&self.buf[i..i + len]);
+                    i += len;
+                    continue;
+                }
+            }
+            // between frames: passed on as it is (the decoder finds the next)
+            out.push_back(self.buf[i]);
+            i += 1;
+        }
+        self.buf.drain(..i);
+    }
+}
+
 /// The audio, the station's song names taken out of it.
 struct StreamReader {
     chunks: Mutex<Receiver<Vec<u8>>>,
@@ -282,13 +320,22 @@ struct StreamReader {
     /// The player's; once it moves on (another song, stop), reading ends.
     generation: Arc<AtomicU64>,
     opened_at: u64,
+    /// For an AAC station: its frames made ones the decoder takes.
+    adts: Option<AdtsFix>,
 }
 
 impl StreamReader {
+    fn put(&mut self, data: &[u8]) {
+        match &mut self.adts {
+            Some(fix) => fix.push(data, &mut self.audio),
+            None => self.audio.extend(data),
+        }
+    }
+
     fn feed(&mut self, mut data: &[u8]) {
         while !data.is_empty() {
             if self.metaint == 0 {
-                self.audio.extend(data);
+                self.put(data);
                 return;
             }
             if let Some(left) = self.meta_left {
@@ -319,7 +366,7 @@ impl StreamReader {
                 }
             } else {
                 let take = self.until_meta.min(data.len());
-                self.audio.extend(&data[..take]);
+                self.put(&data[..take]);
                 data = &data[take..];
                 self.until_meta -= take;
             }
@@ -406,6 +453,7 @@ pub fn open(url: &str, generation: Arc<AtomicU64>) -> Result<(MediaSourceStream,
         meta: meta.clone(),
         generation,
         opened_at,
+        adts: head.content_type.contains("aac").then(AdtsFix::default),
     };
     let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(reader)), Default::default());
     Ok((mss, hint, meta))
@@ -428,8 +476,58 @@ mod tests {
             meta: Arc::new(Mutex::new(StreamMeta::default())),
             generation: Arc::new(AtomicU64::new(0)),
             opened_at: 0,
+            adts: None,
         };
         (r, tx)
+    }
+
+    /// MPEG-2 frame headers come out MPEG-4, the rest byte for byte, however
+    /// the bytes arrive.
+    #[test]
+    fn mpeg2_aac_frames_become_mpeg4() {
+        let frame = |id_bit: u8, len: usize, fill: u8| {
+            let mut f = vec![0xFF, 0xF1 | id_bit, 0x50, 0x80 | ((len >> 11) as u8 & 0x03), (len >> 3) as u8, ((len & 7) << 5) as u8 | 0x1F, 0xFC];
+            f.resize(len, fill);
+            f
+        };
+        // two MPEG-2 frames, one MPEG-4, and payload that looks like a header
+        let mut stream = frame(0x08, 40, 0xFF);
+        stream.extend(frame(0x08, 23, 0xF9));
+        stream.extend(frame(0x00, 30, 0x11));
+        let mut want = stream.clone();
+        want[1] = 0xF1;
+        want[41] = 0xF1;
+        for piece in [1, 5, 7, 64] {
+            let mut fix = AdtsFix::default();
+            let mut out = VecDeque::new();
+            for chunk in stream.chunks(piece) {
+                fix.push(chunk, &mut out);
+            }
+            assert_eq!(out.into_iter().collect::<Vec<u8>>(), want, "in pieces of {piece}");
+        }
+    }
+
+    /// A saved MPEG-2 AAC station (Europe 1) is something the decoder takes
+    /// once fixed. Run by hand: STREAMFILE=<saved .aac>.
+    #[test]
+    #[ignore]
+    fn a_saved_mpeg2_station_decodes() {
+        let bytes = std::fs::read(std::env::var("STREAMFILE").unwrap()).unwrap();
+        let mut fixed = VecDeque::new();
+        AdtsFix::default().push(&bytes, &mut fixed);
+        let fixed: Vec<u8> = fixed.into();
+        let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(fixed)), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension("aac");
+        let mut probed = symphonia::default::get_probe().format(&hint, mss, &Default::default(), &Default::default()).expect("probe");
+        let track = probed.format.tracks()[0].clone();
+        let mut decoder = symphonia::default::get_codecs().make(&track.codec_params, &Default::default()).expect("decoder");
+        let mut frames = 0;
+        for _ in 0..50 {
+            frames += decoder.decode(&probed.format.next_packet().unwrap()).unwrap().frames();
+        }
+        println!("{frames} frames at {:?} Hz", track.codec_params.sample_rate);
+        assert!(frames > 40_000);
     }
 
     /// `audio` with a song name after every `metaint` bytes
