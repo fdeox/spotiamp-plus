@@ -645,7 +645,14 @@ export class Playlist {
      * Persist the current playlist as the ordered list of track URIs.
      */
     persist() {
-        if (!this.persistEnabled) return;
+        if (!this.persistEnabled) {
+            // Free Mode keeps a list of its own: its local files and stations
+            // (Spotify songs need Premium), so the Premium list stays as it was
+            invoke("set_free_uris", {
+                uris: this.rows.filter((r) => r instanceof LocalRow).map((r) => r.uri.asString),
+            }).catch(() => {});
+            return;
+        }
         // Spotify rows persist as their uri; local rows as their "local:<path>"
         // stub — so the whole queue, in order, comes back after a restart. The
         // launch reload turns each back into the right kind of row.

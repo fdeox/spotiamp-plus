@@ -42,7 +42,8 @@
   const controllerMode = untrack(() => playlistSettings.controller_mode === true);
 
   function createInitialPlaylist() {
-    return new Playlist(controllerMode ? [] : playlistSettings.uris, !controllerMode);
+    // Free Mode: its own list of local files and stations
+    return new Playlist(controllerMode ? (playlistSettings.free_uris ?? []) : playlistSettings.uris, !controllerMode);
   }
 
   applyInitialWindowSize();

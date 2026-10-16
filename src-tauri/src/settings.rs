@@ -132,6 +132,10 @@ impl WindowState {
 pub struct PlaylistSettings {
     pub window_state: WindowState,
     pub uris: Vec<String>,
+    /// Free Mode's own list: its local files and radio stations ("local:…"),
+    /// kept apart so the Premium list stays as it was.
+    #[serde(default)]
+    pub free_uris: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash)]

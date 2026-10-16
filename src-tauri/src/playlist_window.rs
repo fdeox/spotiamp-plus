@@ -15,6 +15,12 @@ pub fn set_uris(uris: Vec<String>) {
     Settings::current_mut().playlist.uris = uris;
 }
 
+/// Free Mode's list (local files and stations), apart from the Premium one.
+#[tauri::command]
+pub fn set_free_uris(uris: Vec<String>) {
+    Settings::current_mut().playlist.free_uris = uris;
+}
+
 #[tauri::command]
 pub fn set_playlist_inner_size(width: u32, height: u32) {
     Settings::current_mut().playlist.window_state.inner_size =

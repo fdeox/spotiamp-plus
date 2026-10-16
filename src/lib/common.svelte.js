@@ -215,5 +215,5 @@ export function handleDrop(urlCallback) {
  */
 
 /**
- * @typedef {{ uris: string[], window_state: WindowState, controller_mode?: boolean }} PlaylistSettings
+ * @typedef {{ uris: string[], free_uris?: string[], window_state: WindowState, controller_mode?: boolean }} PlaylistSettings
  */
