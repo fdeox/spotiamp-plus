@@ -4,7 +4,8 @@
 //! HTTP, which an HTTP client turns down, so plain http:// streams are read
 //! over a socket of our own; https:// ones go through reqwest. The song names a
 //! station sends between the audio (ICY metadata) are taken out of the sound
-//! and passed on. A .pls / .m3u link is followed to the stream inside it.
+//! and passed on. A .pls / .m3u link is followed to the stream inside it,
+//! and an .m3u8 of pieces (HLS) is played piece by piece (hls.rs).
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
@@ -35,7 +36,7 @@ pub struct StreamMeta {
 
 /// The response's head: what matters of its headers.
 #[derive(Debug, Default)]
-struct Head {
+pub(crate) struct Head {
     content_type: String,
     metaint: usize,
     station: String,
@@ -43,6 +44,11 @@ struct Head {
 }
 
 impl Head {
+    /// A station played in pieces (HLS): no headers of its own to read.
+    pub(crate) fn for_pieces(aac: bool, kbps: u32) -> Head {
+        Head { content_type: if aac { "audio/aac" } else { "audio/mpeg" }.into(), kbps, ..Default::default() }
+    }
+
     fn from_headers<'a>(headers: impl Iterator<Item = (String, &'a str)>) -> Head {
         let mut head = Head::default();
         for (name, value) in headers {
@@ -230,6 +236,29 @@ fn first_stream(text: &str, base: &str) -> Result<String, String> {
         .ok_or_else(|| "there's no station in that list".into())
 }
 
+/// The whole of a small file (a list, a piece), and where it came from in
+/// the end (after redirects), for the links inside it.
+fn fetch_all(url: &str) -> Result<(String, Vec<u8>), String> {
+    let mut url = url.to_string();
+    for _ in 0..5 {
+        let opened = if url.to_ascii_lowercase().starts_with("https://") { open_https(&url) } else { open_http(&url) };
+        match opened? {
+            Opened::Redirect(to) => url = to,
+            Opened::Stream(_, mut body) => {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = body.next_chunk() {
+                    bytes.extend(chunk);
+                    if bytes.len() > 32 << 20 {
+                        return Err("the station sent far too much".into());
+                    }
+                }
+                return Ok((url, bytes));
+            }
+        }
+    }
+    Err("too many redirects".into())
+}
+
 /// Connect (following redirects and playlist files), then pass the audio on
 /// until the reader goes away or the station stops.
 fn fetch(url: String, head_tx: mpsc::Sender<Result<Head, String>>, audio: SyncSender<Vec<u8>>) {
@@ -244,7 +273,13 @@ fn fetch(url: String, head_tx: mpsc::Sender<Result<Head, String>>, audio: SyncSe
             Ok(Opened::Redirect(to)) => url = to,
             Ok(Opened::Stream(head, mut body)) => {
                 if head.is_playlist(&url) {
-                    match first_stream(&body.text(), &url) {
+                    let text = body.text();
+                    if text.contains("#EXT-X-") {
+                        // pieces (HLS): played as they come
+                        crate::hls::play(url, text, head.kbps, &fetch_all, head_tx, audio);
+                        return;
+                    }
+                    match first_stream(&text, &url) {
                         Ok(next) => url = next,
                         Err(e) => {
                             let _ = head_tx.send(Err(e));

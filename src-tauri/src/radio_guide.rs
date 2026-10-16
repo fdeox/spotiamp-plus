@@ -1,9 +1,11 @@
 //! The Library's Radio (0.7.8): stations to find and keep. The guide is
 //! radio-browser.info, a free and open directory of tens of thousands of
 //! stations. Only stations Spotiamp+ can really play are shown: ones the
-//! directory found working at its last check, not HLS (streamed in pieces),
-//! and in MP3, AAC or Ogg Vorbis (not Opus, which comes as "OGG" too). "Your
-//! stations" are the ones that played here, newest first.
+//! directory found working at its last check, in MP3, AAC or Ogg Vorbis (not
+//! Opus, which comes as "OGG" too), streamed whole or in pieces (HLS, whose
+//! sound the directory often can't name: it's AAC or MP3 nearly always, and
+//! 38 of the 40 most listened in Turkey played; the other two were gone).
+//! "Your stations" are the ones that played here, newest first.
 
 use oauth2::reqwest;
 use serde_json::Value;
@@ -53,12 +55,13 @@ fn playable(s: &Value) -> bool {
     let url = text("url_resolved");
     let codec = text("codec").to_ascii_uppercase();
     let opus = format!("{} {}", text("name"), url).to_ascii_lowercase().contains("opus");
+    let pieces = num("hls") == 1;
     num("lastcheckok") == 1
-        && num("hls") == 0
         && (url.starts_with("http://") || url.starts_with("https://"))
         && match codec.as_str() {
             "MP3" | "AAC" | "AAC+" => true,
-            "OGG" => !opus,
+            "OGG" => !opus && !pieces,
+            "UNKNOWN" => pieces,
             _ => false,
         }
 }
@@ -94,9 +97,19 @@ async fn ask(path: &str) -> Result<Vec<Value>, String> {
     Err("the radio guide didn't answer (no internet?)".into())
 }
 
-/// What can be played of a list, most listened first, each stream once.
-fn keep_playable(lists: Vec<Vec<Value>>, limit: usize) -> Vec<Station> {
-    let mut all: Vec<&Value> = lists.iter().flatten().filter(|s| playable(s)).collect();
+/// The stations whose server turned us away.
+fn unplayable() -> std::collections::HashSet<String> {
+    Settings::current().radio_unplayable.iter().cloned().collect()
+}
+
+/// What can be played of a list, most listened first, each stream once,
+/// leaving out the `unplayable`.
+fn keep_playable(lists: Vec<Vec<Value>>, limit: usize, unplayable: &std::collections::HashSet<String>) -> Vec<Station> {
+    let mut all: Vec<&Value> = lists
+        .iter()
+        .flatten()
+        .filter(|s| playable(s) && !unplayable.contains(s.get("url_resolved").and_then(Value::as_str).unwrap_or("")))
+        .collect();
     all.sort_by_key(|s| std::cmp::Reverse(s.get("clickcount").and_then(Value::as_i64).unwrap_or(0)));
     let mut seen = std::collections::HashSet::new();
     let list: Vec<Station> = all
@@ -135,7 +148,7 @@ pub async fn radio_search(query: String) -> Result<Vec<Station>, String> {
     let (by_name, by_tag) = tokio::join!(ask(&name_path), ask(&tag_path));
     match (by_name, by_tag) {
         (Err(e), Err(_)) => Err(e),
-        (by_name, by_tag) => Ok(keep_playable(vec![by_name.unwrap_or_default(), by_tag.unwrap_or_default()], 100)),
+        (by_name, by_tag) => Ok(keep_playable(vec![by_name.unwrap_or_default(), by_tag.unwrap_or_default()], 100, &unplayable())),
     }
 }
 
@@ -146,7 +159,7 @@ pub async fn radio_popular(country: Option<String>) -> Result<Vec<Station>, Stri
         Some(c) => format!("/json/stations/search?countrycode={}&{COMMON}", encode(&c)),
         None => format!("/json/stations/search?{COMMON}"),
     };
-    Ok(keep_playable(vec![ask(&path).await?], 100))
+    Ok(keep_playable(vec![ask(&path).await?], 100, &unplayable()))
 }
 
 /// Your stations: the ones that played here, newest first.
@@ -210,6 +223,19 @@ pub fn radio_home_country() -> Option<String> {
     None
 }
 
+/// A station's server turned us away (not found, bad request): it isn't
+/// shown in the guide again. (A moment without internet doesn't count.)
+#[tauri::command]
+pub fn radio_unplayable(url: String) {
+    let mut settings = Settings::current_mut();
+    let list = &mut settings.radio_unplayable;
+    if !list.contains(&url) {
+        list.push(url);
+        let extra = list.len().saturating_sub(500);
+        list.drain(..extra);
+    }
+}
+
 #[tauri::command]
 pub fn radio_forget(url: String) {
     Settings::current_mut().radio_stations.retain(|s| s.url != url);
@@ -237,8 +263,15 @@ mod tests {
             s("MP3", 0, 1, "Jazz again", "http://a/jazz", 1),
             s("MP3", 0, 1, "Not a link", "rtsp://a/x", 9),
         ];
-        let got: Vec<String> = keep_playable(vec![list], 10).into_iter().map(|s| s.name).collect();
-        // most listened first, each stream once
-        assert_eq!(got, ["Vorbis FM", "Plus", "Jazz"]);
+        let none = Default::default();
+        let got: Vec<String> = keep_playable(vec![list.clone()], 10, &none).into_iter().map(|s| s.name).collect();
+        // most listened first, each stream once; pieces (HLS) too, even unnamed
+        assert_eq!(got, ["Pieces", "Vorbis FM", "Plus", "Jazz"]);
+        let unnamed = |hls| keep_playable(vec![vec![s("UNKNOWN", hls, 1, "U", "http://a/u", 1)]], 1, &none).len();
+        assert_eq!((unnamed(1), unnamed(0)), (1, 0));
+        // one whose server turned us away: left out
+        let refused = ["http://a/vorbis".to_string()].into_iter().collect();
+        let got: Vec<String> = keep_playable(vec![list], 10, &refused).into_iter().map(|s| s.name).collect();
+        assert_eq!(got, ["Pieces", "Plus", "Jazz"]);
     }
 }

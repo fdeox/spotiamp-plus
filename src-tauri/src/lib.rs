@@ -28,6 +28,7 @@ mod diagnostics;
 mod whatsnew_window;
 mod museum;
 mod history;
+mod hls;
 mod capture;
 mod lastfm;
 mod lists;
@@ -703,6 +704,7 @@ pub fn run() {
             radio_guide::radio_stations,
             radio_guide::radio_remember,
             radio_guide::radio_forget,
+            radio_guide::radio_unplayable,
             radio_guide::radio_home_country,
             lastfm::lastfm_status,
             lastfm::lastfm_connect,

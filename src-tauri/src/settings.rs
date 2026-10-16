@@ -344,6 +344,10 @@ pub struct Settings {
     /// Radio stations that played here, newest first (radio_guide.rs).
     #[serde(default)]
     pub radio_stations: Vec<crate::radio_guide::Station>,
+    /// Stations whose server turned us away (not found, bad request): left
+    /// out of the guide from then on (radio_guide.rs).
+    #[serde(default)]
+    pub radio_unplayable: Vec<String>,
 }
 
 impl Settings {
