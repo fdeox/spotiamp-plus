@@ -114,6 +114,22 @@
   let rowsEl = $state();
   let scrollPos = $state(0);
   let scrollMax = $state(0);
+  // Only the rows in view are drawn, and some either side; the space of the
+  // rest is kept, so the list scrolls as if all were there. A 10,000-song
+  // Local Media drew 60,000 elements, and scrolling and filtering crawled.
+  const ROW_H = 13; // .ml-row's height
+  const OVERSCAN = 20;
+  let viewH = $state(400);
+  const windowStart = $derived(Math.max(0, Math.floor(scrollPos / ROW_H) - OVERSCAN));
+  const windowEnd = $derived.by(() => Math.min(displayTracks.length, Math.ceil((scrollPos + viewH) / ROW_H) + OVERSCAN));
+  /** Bring row `i` into view (in the middle, if it was out of sight). @param {number} i */
+  function showRow(i) {
+    if (!rowsEl) return;
+    const top = i * ROW_H;
+    if (top < rowsEl.scrollTop || top + ROW_H > rowsEl.scrollTop + rowsEl.clientHeight) {
+      rowsEl.scrollTop = Math.max(0, top - rowsEl.clientHeight / 2);
+    }
+  }
   function syncScroll() {
     if (!rowsEl) return;
     scrollMax = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight);
@@ -268,7 +284,7 @@
     findMiss = idx < 0;
     if (idx >= 0) {
       selectedTrack = idx;
-      rowsEl?.querySelectorAll(".ml-row")[idx]?.scrollIntoView({ block: "nearest" });
+      showRow(idx);
     }
   }
   onMount(() => {
@@ -1385,15 +1401,18 @@
       </div>
 
       <div class="ml-listwrap">
-      <div class="ml-rows" bind:this={rowsEl} onscroll={syncScroll}>
+      <div class="ml-rows" bind:this={rowsEl} bind:clientHeight={viewH} onscroll={syncScroll}>
         {#if activeNode === "audio" && !searchMode && !selectedUri}
           <div class="ml-hint">
             Select a playlist on the left, or search Spotify above.
           </div>
         {:else}
-          {#each displayTracks as t, i}
+          <div style:height="{windowStart * ROW_H}px"></div>
+          {#each displayTracks.slice(windowStart, windowEnd) as t, j (windowStart + j)}
+            {@const i = windowStart + j}
             <div
               class="ml-row"
+              data-row={i}
               class:sel={selectedTrack === i}
               class:odd={i % 2 === 1}
               role="button"
@@ -1420,6 +1439,7 @@
               <div class="ml-col ml-c-time">{isRadio ? (t.duration ? `${t.duration}k` : "") : fmt(t.duration)}</div>
             </div>
           {/each}
+          <div style:height="{(displayTracks.length - windowEnd) * ROW_H}px"></div>
           {#if tracksLoading}
             <div class="ml-hint">{searchMode ? "searching…" : "loading…"}</div>
           {:else if tracksError}
