@@ -341,6 +341,9 @@ pub struct Settings {
     /// The music folders of the Library's Local Media (local_library.rs).
     #[serde(default)]
     pub local_folders: Vec<String>,
+    /// Radio stations that played here, newest first (radio_guide.rs).
+    #[serde(default)]
+    pub radio_stations: Vec<crate::radio_guide::Station>,
 }
 
 impl Settings {

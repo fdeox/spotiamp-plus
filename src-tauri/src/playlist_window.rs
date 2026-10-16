@@ -55,5 +55,7 @@ pub fn build_window(
             .window_state
             .set_position(position);
     });
+    // music files dropped on it from Explorer
+    crate::file_drop::listen(&window);
     Ok(window)
 }

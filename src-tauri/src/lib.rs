@@ -14,6 +14,7 @@ mod discord;
 mod eq;
 mod eq_window;
 mod eqf;
+mod file_drop;
 mod library_window;
 mod art_window;
 mod m3u;
@@ -38,6 +39,7 @@ mod oauth;
 mod player_window;
 mod playlist_window;
 mod radio;
+mod radio_guide;
 mod settings;
 mod smtc;
 mod smtc_publish;
@@ -696,6 +698,12 @@ pub fn run() {
             local_player::local_reveal,
             local_player::local_metadata,
             local_library::local_library,
+            radio_guide::radio_search,
+            radio_guide::radio_popular,
+            radio_guide::radio_stations,
+            radio_guide::radio_remember,
+            radio_guide::radio_forget,
+            radio_guide::radio_home_country,
             lastfm::lastfm_status,
             lastfm::lastfm_connect,
             lastfm::lastfm_disconnect,

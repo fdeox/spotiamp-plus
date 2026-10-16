@@ -442,7 +442,9 @@
     selectedTrack = index;
     const uri = displayTracks[index]?.uri;
     if (!uri) return;
-    if (activeNode === "local") {
+    if (isRadio) {
+      sendStations([displayTracks[index]], true);
+    } else if (activeNode === "local") {
       sendLocalTracks(displayTracks.slice(index), true);
     } else if (searchMode) {
       emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
@@ -458,12 +460,14 @@
   function playSelected() {
     const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
     if (!t) return;
+    if (isRadio) return sendStations([t], true);
     if (t.path) return sendLocalTracks([t], true);
     emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(t.uri)] });
   }
   function enqueueSelected() {
     const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
     if (!t) return;
+    if (isRadio) return sendStations([t], false);
     if (t.path) return sendLocalTracks([t], false);
     emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(t.uri)] });
   }
@@ -595,6 +599,90 @@
       off.then((f) => f()).catch(() => {});
     };
   });
+
+  // --- Radio: the station guide and your stations (radio_guide.rs) ---
+  /** @typedef {{ url: string, name: string, tags: string, country: string, codec: string, bitrate: number, uuid: string }} Station */
+  let expandRadio = $state(true);
+  let radioQuery = $state("");
+  const isRadio = $derived(typeof activeNode === "string" && activeNode.startsWith("radio:"));
+  // "Popular in …": the country set in Windows (its region, not its language;
+  // the language's country until that's known)
+  const languageCountry = (() => {
+    try {
+      const region = new Intl.Locale(navigator.language).maximize().region;
+      return region && /^[A-Z]{2}$/.test(region) ? region : null;
+    } catch {
+      return null;
+    }
+  })();
+  let myCountry = $state(/** @type {string | null} */ (languageCountry));
+  invoke("radio_home_country")
+    .then((c) => {
+      if (typeof c === "string" && c) myCountry = c;
+    })
+    .catch(() => {});
+  const myCountryName = $derived.by(() => {
+    try {
+      return myCountry ? (new Intl.DisplayNames(["en"], { type: "region" }).of(myCountry) ?? myCountry) : null;
+    } catch {
+      return myCountry;
+    }
+  });
+  /** @param {Station} s @returns {LibTrack} */
+  const stationTrack = (s) => ({
+    uri: `radio:${s.url}`,
+    path: s.url,
+    name: s.name || s.url,
+    artist: s.tags,
+    album: s.country,
+    albumArt: null,
+    duration: s.bitrate,
+    unavailable: false,
+    addedMs: null,
+  });
+  /**
+   * @param {"radio:yours" | "radio:popular" | "radio:local" | "radio:search"} node
+   * @param {() => Promise<Station[]>} get
+   */
+  async function showRadio(node, get) {
+    searchMode = false;
+    selectedUri = null;
+    activeNode = node;
+    selectedTrack = -1;
+    tracks = [];
+    trackUris = [];
+    tracksError = "";
+    tracksLoading = true;
+    const token = ++loadToken;
+    try {
+      const list = await get();
+      if (token !== loadToken) return;
+      tracks = list.map(stationTrack);
+      trackUris = tracks.map((t) => t.uri);
+    } catch (e) {
+      if (token === loadToken) tracksError = String(e);
+    } finally {
+      if (token === loadToken) tracksLoading = false;
+    }
+  }
+  const selectYourStations = () => showRadio("radio:yours", () => invoke("radio_stations"));
+  const selectPopular = (/** @type {boolean} */ mine) =>
+    showRadio(mine ? "radio:local" : "radio:popular", () => invoke("radio_popular", { country: mine ? myCountry : null }));
+  function searchRadio() {
+    const q = search.trim();
+    if (!q) return;
+    radioQuery = q;
+    showRadio("radio:search", () => invoke("radio_search", { query: q }));
+  }
+  // A station to the playlist (`play`: and on), its name going with it. It
+  // joins your stations once it really plays (the player says so).
+  /** @param {LibTrack[]} list @param {boolean} play */
+  function sendStations(list, play) {
+    if (!list.length) return;
+    emitWindowEvent("playerWindow", {
+      LocalFilesSent: { items: list.map((t) => ({ path: t.path ?? "", name: t.name })), replace: false, play },
+    });
+  }
 
   // --- Local Media: the music folders added here (local_library.rs) ---
   let localFolders = $state(/** @type {string[]} */ ([]));
@@ -846,6 +934,19 @@
     const uri = displayTracks[i]?.uri;
     if (!uri) return;
     const path = displayTracks[i].path;
+    if (isRadio && path) {
+      const yours = activeNode === "radio:yours";
+      popMenu([
+        { text: "Play", action: () => loadTrackIntoMain(i) },
+        { text: "Add to the playlist", action: () => sendStations([displayTracks[i]], false) },
+        { item: "Separator" },
+        { text: "Copy the station's link", action: () => navigator.clipboard.writeText(path).catch(() => {}) },
+        ...(yours
+          ? [{ text: "Remove from your stations", action: () => invoke("radio_forget", { url: path }).then(selectYourStations).catch(() => {}) }]
+          : []),
+      ]);
+      return;
+    }
     if (path) {
       popMenu([
         { text: "Play", action: () => loadTrackIntoMain(i) },
@@ -920,7 +1021,15 @@
   );
 
   const headTitle = $derived(
-    activeNode === "local"
+    activeNode === "radio:yours"
+      ? "Your stations"
+      : activeNode === "radio:popular"
+      ? "Popular stations"
+      : activeNode === "radio:local"
+      ? `Popular in ${myCountryName}`
+      : activeNode === "radio:search"
+      ? `Stations: ${radioQuery}`
+      : activeNode === "local"
       ? "Local Media"
       : activeNode === "recent"
       ? "Recently played"
@@ -1077,6 +1186,31 @@
       >
         <span class="ml-ic ml-ic-local"></span>Local Media
       </div>
+      <div
+        class="ml-node ml-root"
+        role="button"
+        tabindex="0"
+        title="internet radio: your stations, the popular ones, or search above"
+        onclick={() => (expandRadio = !expandRadio)}
+        onkeydown={(e) => e.key === "Enter" && (expandRadio = !expandRadio)}
+      >
+        <span class="ml-tw">{expandRadio ? "▾" : "▸"}</span>
+        <span class="ml-ic ml-ic-radio"></span>Radio
+      </div>
+      {#if expandRadio}
+        {#each [["radio:yours", "Your stations"], ["radio:popular", "Popular"], ...(myCountry ? [["radio:local", `Popular in ${myCountryName}`]] : [])] as [node, label] (node)}
+          <div
+            class="ml-node ml-child"
+            class:active={activeNode === node}
+            role="button"
+            tabindex="0"
+            onclick={() => (node === "radio:yours" ? selectYourStations() : selectPopular(node === "radio:local"))}
+            onkeydown={(e) => e.key === "Enter" && (node === "radio:yours" ? selectYourStations() : selectPopular(node === "radio:local"))}
+          >
+            <span class="ml-ic ml-ic-list"></span>{label}
+          </div>
+        {/each}
+      {/if}
       {#if freeMode}
         <div class="ml-node ml-child ml-dim" title="playlists, Liked Songs and search come from Spotify's own streaming, which needs Premium">
           your Spotify library needs Premium
@@ -1201,9 +1335,9 @@
         <input
           class="ml-search"
           bind:this={searchInput}
-          placeholder={activeNode === "local" ? "filter your files…" : "artist, song… (Enter)"}
+          placeholder={activeNode === "local" ? "filter your files…" : isRadio ? "a station or a genre (Enter)" : "artist, song… (Enter)"}
           bind:value={search}
-          onkeydown={(e) => e.key === "Enter" && activeNode !== "local" && doSearch()}
+          onkeydown={(e) => e.key === "Enter" && activeNode !== "local" && (isRadio ? searchRadio() : doSearch())}
         />
         <button class="ml-clear" onclick={clearSearch}>Clear</button>
       </div>
@@ -1220,13 +1354,13 @@
 
       <div class="ml-cols">
         <button class="ml-col ml-c-artist ml-colbtn" onclick={() => sortBy("artist")}>
-          Artist{sortCol === "artist" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+          {isRadio ? "Genre" : "Artist"}{sortCol === "artist" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
         <button class="ml-col ml-c-title ml-colbtn" onclick={() => sortBy("title")}>
-          Title{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+          {isRadio ? "Station" : "Title"}{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
         <button class="ml-col ml-c-album ml-colbtn" onclick={() => sortBy("album")}>
-          Album{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+          {isRadio ? "Country" : "Album"}{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
         {#if showDate}
           <button class="ml-col ml-c-date ml-colbtn" onclick={() => sortBy("date")}>
@@ -1234,7 +1368,7 @@
           </button>
         {/if}
         <button class="ml-col ml-c-time ml-colbtn" onclick={() => sortBy("time")}>
-          Time{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+          {isRadio ? "kbps" : "Time"}{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
         </button>
         <span
           class="ml-colresize ml-colresize-artist"
@@ -1283,13 +1417,19 @@
               {#if showDate}
                 <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
               {/if}
-              <div class="ml-col ml-c-time">{fmt(t.duration)}</div>
+              <div class="ml-col ml-c-time">{isRadio ? (t.duration ? `${t.duration}k` : "") : fmt(t.duration)}</div>
             </div>
           {/each}
           {#if tracksLoading}
             <div class="ml-hint">{searchMode ? "searching…" : "loading…"}</div>
           {:else if tracksError}
             <div class="ml-hint ml-err">{tracksError}</div>
+          {:else if isRadio && tracks.length === 0}
+            <div class="ml-hint">
+              {activeNode === "radio:yours"
+                ? "The stations you play show up here. Pick one under Popular, or search for a station or a genre above."
+                : "no stations found"}
+            </div>
           {:else if activeNode === "local" && tracks.length === 0}
             <div class="ml-hint">
               {#if localFolders.length === 0}
@@ -1329,8 +1469,8 @@
   <div class="ml-footer">
     <button class="ml-btn" onclick={playSelected}>Play</button>
     <button class="ml-btn" onclick={enqueueSelected}>Enqueue</button>
-    <button class="ml-btn" onclick={playAll}>Play all</button>
-    <div class="ml-listwrap" class:hidden={activeNode === "local"}>
+    <button class="ml-btn" class:hidden={isRadio} onclick={playAll}>Play all</button>
+    <div class="ml-listwrap" class:hidden={activeNode === "local" || isRadio}>
       <button class="ml-btn" onclick={toggleListMenu} title="add the selected track to a list">
         + List
       </button>
@@ -1588,6 +1728,11 @@
   .ml-ic-local::before {
     content: "♫";
   }
+  .ml-ic-radio::before {
+    content: "📻";
+    font-size: 9px;
+  }
+  .ml-ic-radio,
   .ml-ic-local,
   .ml-ic-pin,
   .ml-ic-recent,
@@ -1950,8 +2095,9 @@
     position: relative;
     display: inline-flex;
   }
-  /* + List: Spotify songs only, so not over Local Media */
-  .ml-listwrap.hidden {
+  /* + List: Spotify songs only, so not over Local Media or Radio */
+  .ml-listwrap.hidden,
+  .ml-btn.hidden {
     visibility: hidden;
   }
   .ml-listbackdrop {

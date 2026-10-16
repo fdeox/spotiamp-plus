@@ -68,7 +68,7 @@
    * The loaded track is normally a Spotify track; local files reuse the same
    * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
    * transport routes on `isLocal`), so the type carries those as optional.
-   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
+   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, remembered?: boolean, path?: string, sampleRate?: number, kbps?: number }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -720,6 +720,13 @@
             displayName: title && station ? `${title} (${station})` : name,
           });
           emitWindowEvent("playerWindow", { StreamInfo: { path: loadedTrack?.path ?? "", station, title } });
+          // it plays: one of your stations now (the Library's Radio)
+          if (!loadedTrack?.remembered) {
+            loadedTrack = /** @type {any} */ ({ ...loadedTrack, remembered: true });
+            invoke("radio_remember", {
+              station: { url: loadedTrack?.path ?? "", name: station || "", bitrate: kbps || 0 },
+            }).catch(() => {});
+          }
         }
       }
     }, 250);
@@ -1138,11 +1145,13 @@
     const cleanupDropHandler = handleDrop((urls) => {
       emitWindowEvent("playerWindow", { UrlsDropped: urls });
     });
-    // (No native file-drop handler: the windows are built with
-    // `disable_drag_drop_handler` so the browser drop event above can catch
-    // Spotify link drops, which means Tauri's file-drop event never fires.
-    // Local files come in through the picker instead — O / Shift+O and the
-    // playlist's "Add local file(s)" menu.)
+    // Music files dropped on the main window from Explorer (file_drop.rs: the
+    // windows have no Tauri drop handler, so Spotify links dropped here keep
+    // working): into the playlist, and the first one plays, as in Winamp.
+    const offDropped = getCurrentWindow().listen("filesDropped", (e) => {
+      const paths = /** @type {string[]} */ (e.payload);
+      if (paths?.length) emitWindowEvent("playerWindow", { AddLocalFiles: paths });
+    });
 
     // The dedicated media keys and headset buttons, forwarded from Rust because
     // they arrive even when the app has no focus. They reuse the same actions as
@@ -1301,6 +1310,7 @@
       mediaKeySubscription.then((unlisten) => unlisten());
       forwardedKeySubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
+      offDropped.then((f) => f()).catch(() => {});
       stopLocalPoll();
       document.removeEventListener("keydown", onPlayerKeyDown);
     };

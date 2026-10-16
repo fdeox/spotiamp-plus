@@ -553,7 +553,7 @@ export class Playlist {
                     this.addUrls(event.UrlsAppended);
                 } else if (event.LocalFilesSent) {
                     // songs from the Library's Local Media
-                    this.addLocalItems(event.LocalFilesSent.items, event.LocalFilesSent.replace);
+                    this.addLocalItems(event.LocalFilesSent.items, event.LocalFilesSent.replace, event.LocalFilesSent.play);
                 } else if (event.AddLocalFiles) {
                     // local files picked from the player's O / Shift+O
                     this.addLocalFiles(event.AddLocalFiles);
@@ -824,11 +824,13 @@ export class Playlist {
      * Songs sent from the Library's Local Media with their tags already read,
      * so a whole folder goes in at once without opening each file again.
      * `replace`: the list is cleared first and the first song plays;
-     * otherwise they're added at the end.
+     * otherwise they're added at the end (and with `play`, the first one
+     * plays: a radio station from the Library, found where it already is).
      * @param {{path: string, name?: string, artist?: string, durationMs?: number, sampleRate?: number, kbps?: number}[]} items
      * @param {boolean} replace
+     * @param {boolean} [play]
      */
-    async addLocalItems(items, replace) {
+    async addLocalItems(items, replace, play = false) {
         if (replace) await this.clear();
         const listed = new Set(this.rows.flatMap((r) => (r instanceof LocalRow ? [r.path] : [])));
         /** @type {LocalRow[]} */
@@ -840,6 +842,10 @@ export class Playlist {
         }
         if (added.length) this.rows = [...this.rows, ...added];
         if (replace && added[0]) await added[0].play();
+        else if (play && items[0]?.path) {
+            const first = this.rows.find((r) => r instanceof LocalRow && r.path === items[0].path);
+            await first?.play();
+        }
         this.persist();
     }
 

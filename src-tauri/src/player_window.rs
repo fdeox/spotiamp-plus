@@ -439,6 +439,8 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
     // Register the player as the docking master: dragging it moves the whole
     // connected group of windows in lockstep.
     app_window::register_dock_window(&window);
+    // music files dropped on it from Explorer
+    crate::file_drop::listen(&window);
 
     // Safeguard: shortly after launch, force the player un-minimized, on-screen
     // and focused, so it can never come up invisible (a stray minimize or a

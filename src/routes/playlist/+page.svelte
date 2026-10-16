@@ -1234,11 +1234,21 @@
       // a song dragged from the Library's Local Media comes as a file: link
       const files = urls.filter((u) => u.startsWith("file:"));
       if (files.length) await playlist.addLocalFiles(files.map(fromFileUrl), false);
-      const rest = urls.filter((u) => !u.startsWith("file:"));
+      // a radio station's link (from the Library's Radio, or a web page)
+      const isStation = (/** @type {string} */ u) => /^https?:\/\//i.test(u) && !/open\.spotify\.com/i.test(u);
+      const stations = urls.filter(isStation);
+      if (stations.length) await playlist.addLocalFiles(stations, false);
+      const rest = urls.filter((u) => !u.startsWith("file:") && !isStation(u));
       if (rest.length) await playlist.addUrls(rest);
     });
 
     emitWindowEvent("playlistWindow", { Ready: null });
+
+    // music files dropped here from Explorer: added at the end, as Winamp does
+    const offDropped = getCurrentWindow().listen("filesDropped", (e) => {
+      const paths = /** @type {string[]} */ (e.payload);
+      if (paths?.length) playlist.addLocalFiles(paths, false);
+    });
 
     // Quietly check for a new version on launch so the pill can flag it.
     checkForUpdatesSilently();
@@ -1262,6 +1272,7 @@
     // Cleanups
     return () => {
       cleanupDropHandler();
+      offDropped.then((f) => f()).catch(() => {});
       playlist.dispose();
       unsubMenu?.();
       unsubSkin?.();

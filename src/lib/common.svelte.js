@@ -178,6 +178,14 @@ export function handleDrop(urlCallback) {
      * @param {DocumentEventMap["drop"]} ev
      */
     function documentDropListener(ev) {
+        // files from Explorer: the page can't see where they are, WebView2
+        // can (file_drop.rs reads their paths and sends "filesDropped")
+        const files = ev.dataTransfer?.files;
+        const webview = /** @type {any} */ (window).chrome?.webview;
+        if (files?.length && webview?.postMessageWithAdditionalObjects) {
+            webview.postMessageWithAdditionalObjects("spotiamp-files", files);
+            return;
+        }
         if (ev.dataTransfer) {
             for (const item of ev.dataTransfer.items) {
                 if (item.kind === "string" && item.type.match(/^text\/uri-list/)) {

@@ -15,6 +15,8 @@
   const NOTES = {
     "0.7.8": [
       "<b>Local Media</b> in the Library 🎵 Add your music folders once (right-click <i>Local Media</i>, <i>Add a folder…</i>) and every song in them is there, with its artist, album and length, to sort, filter as you type, and play or drag into the playlist like the rest. New files show up by themselves. In <b>Free Mode</b> too: the Library opens there with Local Media (and <b>L</b> or the menu opens it).",
+      "<b>Radio</b> in the Library 📻 Search thousands of stations by name or genre, see the most listened ones (everywhere, or in your country), and find the ones you've played under <i>Your stations</i>. Only stations Spotiamp+ can really play are listed.",
+      "<b>Drag music files from Windows Explorer</b> onto the playlist (they're added) or the main window (they play), a whole folder too.",
       "<b>Ctrl+L</b> opens a link, like Winamp's <i>Open location</i>: paste a Spotify song, album or playlist, or an <b>internet radio station</b> (SHOUTcast, Icecast, a .pls or .m3u). A station plays through the EQ and the visualizers, with the name of the song it's on.",
       "<b>Long playlists are quick</b>: in a list of 1400 songs a click used to take a sixth of a second to show. Now it's instant, and so are select all, delete and Q.",
       "<b>Last.fm</b>: what you play goes on your Last.fm profile. Right-click, <i>Last.fm</i>, <i>Connect your Last.fm…</i> and allow Spotiamp+ on Last.fm's page. Songs scrobble once half of them (or 4 minutes) has played; without internet they wait and go later.",

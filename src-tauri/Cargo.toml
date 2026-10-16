@@ -60,6 +60,9 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 # Last.fm signs its calls with MD5 (lastfm.rs)
 md-5 = "0.10"
+# The paths of files dropped from Explorer (file_drop.rs): the same WebView2
+# bindings wry uses
+webview2-com = "0.38"
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 discord-rich-presence = "0.2"
 
