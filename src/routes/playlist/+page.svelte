@@ -485,6 +485,7 @@
       ? [
           { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
           { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
+          { text: "Open a radio station…", accelerator: "Ctrl+L", action: () => (playlist.urlBoxOpen = true) },
           sep,
           { text: "Clear playlist", action: () => playlist.clear() },
         ]
@@ -502,9 +503,7 @@
   }
   function listOptsItems() {
     const sep = { item: /** @type {const} */ ("Separator") };
-    // Free Mode has no library to browse
-    const library = controllerMode ? [] : [{ text: "Library…", action: openLibraryWindow }, sep];
-    return [...library, ...listMenuItems()];
+    return [{ text: "Library…", action: openLibraryWindow }, sep, ...listMenuItems()];
   }
 
   function menuItems() {
@@ -572,7 +571,7 @@
       },
     ];
     const windowItems = [
-      ...(controllerMode ? [] : [{ text: "Library", accelerator: "L", action: openLibraryWindow }]),
+      { text: "Library", accelerator: "L", action: openLibraryWindow },
       { text: "Visualizer", action: () => invoke("set_visualizer_window_visible", { visible: true }) },
       ...(controllerMode
         ? []
@@ -773,6 +772,11 @@
   async function openUrl() {
     const text = urlText;
     playlist.urlBoxOpen = false;
+    // Free Mode plays Spotify through its own app: a link of its can't play here
+    if (controllerMode && /spotify/i.test(text)) {
+      showToast("Spotify links need Premium; in Free Mode, play them in the Spotify app");
+      return;
+    }
     const why = await playlist.openUrl(text);
     if (why) showToast(why);
   }

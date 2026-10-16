@@ -1,6 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { REACTIVE_WINDOW_SIZE, toFileUrl } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
@@ -9,6 +9,11 @@
   import { ask } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
   import GenTop from "../../GenTop.svelte";
+
+  /** @type {{ data: { freeMode: boolean } }} */
+  const { data } = $props();
+  // Free Mode (no Spotify session): the Library is just Local Media
+  const freeMode = untrack(() => data?.freeMode === true);
 
   // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
   // typing letters in the Library searches the list.
@@ -145,6 +150,10 @@
         if (s) REACTIVE_WINDOW_SIZE.setSize(s.width, s.height);
       })
       .catch(() => {});
+    if (freeMode) {
+      selectLocal();
+      return;
+    }
     loadSavedListsLib();
     // nothing picked yet: Recently played rather than an empty list (once
     // the playlists are in, so Spotify is there to name the songs)
@@ -961,6 +970,7 @@
   <div class="ml-body">
     <!-- left: navigation tree -->
     <div class="ml-tree" style="flex-basis: {treeWidth}px;">
+      {#if !freeMode}
       {#if pinnedPlaylists.length}
         <div class="ml-node ml-root ml-dim-head">
           <span class="ml-ic ml-ic-pin"></span>Pinned
@@ -1045,6 +1055,7 @@
       >
         <span class="ml-ic ml-ic-stats"></span>Listening stats
       </div>
+      {/if}
       <div
         class="ml-node ml-root"
         class:active={activeNode === "local"}
@@ -1058,6 +1069,11 @@
       >
         <span class="ml-ic ml-ic-local"></span>Local Media
       </div>
+      {#if freeMode}
+        <div class="ml-node ml-child ml-dim" title="playlists, Liked Songs and search come from Spotify's own streaming, which needs Premium">
+          your Spotify library needs Premium
+        </div>
+      {:else}
 
       <div
         class="ml-node ml-root"
@@ -1157,6 +1173,7 @@
       >
         <span class="ml-ic ml-ic-search"></span>Search
       </div>
+      {/if}
     </div>
 
     <!-- draggable splitter -->
@@ -1305,7 +1322,7 @@
     <button class="ml-btn" onclick={playSelected}>Play</button>
     <button class="ml-btn" onclick={enqueueSelected}>Enqueue</button>
     <button class="ml-btn" onclick={playAll}>Play all</button>
-    <div class="ml-listwrap">
+    <div class="ml-listwrap" class:hidden={activeNode === "local"}>
       <button class="ml-btn" onclick={toggleListMenu} title="add the selected track to a list">
         + List
       </button>
@@ -1924,6 +1941,10 @@
   .ml-listwrap {
     position: relative;
     display: inline-flex;
+  }
+  /* + List: Spotify songs only, so not over Local Media */
+  .ml-listwrap.hidden {
+    visibility: hidden;
   }
   .ml-listbackdrop {
     position: fixed;

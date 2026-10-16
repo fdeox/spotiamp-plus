@@ -1227,11 +1227,8 @@
           break;
         case "l":
           acted();
-          // The library browses via the librespot session, which controller
-          // mode doesn't have.
-          if (!controllerMode) {
-            invoke("set_library_window_visible", { visible: true });
-          }
+          // (in Free Mode it's just Local Media: no Spotify session there)
+          invoke("set_library_window_visible", { visible: true });
           break;
         // Open local files off disk: O for a file picker, Shift+O for a whole
         // folder. A non-drag entry point for playing your own MP3s/FLACs.
