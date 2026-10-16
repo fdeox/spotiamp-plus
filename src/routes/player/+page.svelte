@@ -111,6 +111,11 @@
   let playlistPos = $state({ index: 0, length: 0 });
   /** the Spotify song last seen playing, and where (for carrying on after a dropped connection) */
   let lastPlaying = { at: 0, uri: /** @type {string | null} */ (null), positionMs: 0 };
+  // A jump asked for just before Spotify dropped, or while it was down: the
+  // reconnect starts there (the old player, going down, kept reporting its
+  // old spot, so lastPlaying alone took the song back).
+  let lastSeek = { at: 0, uri: /** @type {string | null} */ (null), positionMs: 0 };
+  let droppedAt = 0;
 
   // The EQ's AUTO: tell it what's playing, so the song's (or its artist's)
   // own preset loads (eq_window.rs). Runs again once a local file's tags
@@ -582,6 +587,7 @@
     } else if (controllerMode) {
       await invoke("smtc_seek", { positionMs }).catch(() => {});
     } else {
+      lastSeek = { at: Date.now(), uri: loadedTrack?.uri?.asString ?? null, positionMs };
       await invoke("seek", {
         positionMs,
       }).catch(handleError);
@@ -629,6 +635,7 @@
     }
     const base = path.split(/[\\/]/).pop() ?? path;
     const isStream = /^https?:\/\//i.test(path);
+    reconnects = 0;
     loadedTrack = /** @type {any} */ ({
       isLocal: true,
       isStream,
@@ -673,6 +680,25 @@
       .catch(() => {});
   }
 
+  // A station that drops (the network, its server) is tried again a few
+  // times, a little longer apart each time, before the playlist moves on,
+  // as Winamp does. Back to none once it plays again.
+  let reconnects = 0;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let reconnectTimer;
+  function reconnectStation() {
+    if (!loadedTrack?.isStream || reconnects >= 3) return false;
+    reconnects++;
+    flashTicker(`RECONNECTING (${reconnects}/3)`);
+    const path = loadedTrack.path;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      if (loadedTrack?.path !== path || playerState !== "playing") return;
+      invoke("local_load", { path }).catch(() => {});
+    }, 2000 * reconnects);
+    return true;
+  }
+
   function startLocalPoll() {
     if (localPollTimer) return;
     localPollTimer = setInterval(async () => {
@@ -695,9 +721,14 @@
       // struct variants as an object ({ Failed: { path, reason } }).
       for (const ev of events) {
         if (ev === "EndOfTrack") {
+          // a station that dropped: tried again first
+          if (reconnectStation()) continue;
           // the playlist decides what's next (repeat one, stop after current,
           // autoplay) the same way it does when a Spotify track ends
           emitWindowEvent("playerWindow", { TrackEnded: null });
+        } else if (ev && ev.Failed && reconnects > 0 && !/answered (HTTP\/\S+ )?4\d\d/.test(ev.Failed.reason ?? "") && reconnectStation()) {
+          // a station still not back: another try (not one that's gone)
+          continue;
         } else if (ev && ev.Failed) {
           // A file that couldn't be opened/decoded used to stop silently with
           // no clue why. Stop cleanly, log it, and tell the user the reason so a
@@ -707,8 +738,13 @@
           console.warn("Local playback failed:", reason, ev.Failed?.path);
           const what = loadedTrack?.isStream ? "This station" : "This file";
           handleError(`${what} couldn't be played.\n\n${reason}`);
+          // a station whose server turned us away: not offered in the guide again
+          if (loadedTrack?.isStream && /answered (HTTP\/\S+ )?4\d\d/.test(reason)) {
+            invoke("radio_unplayable", { url: loadedTrack.path }).catch(() => {});
+          }
         } else if (ev && ev.StreamInfo && loadedTrack?.isStream) {
           // a station said its name, or moved on to another song
+          reconnects = 0; // (it plays)
           const { station, title, kbps, sample_rate } = ev.StreamInfo;
           const name = title || station || loadedTrack.name;
           loadedTrack = /** @type {any} */ ({
@@ -1282,6 +1318,7 @@
     });
     const droppedSubscription = listen("spotifyDropped", () => {
       if (resumeAfterDrop || controllerMode) return; // keep the first note if reconnecting takes tries
+      droppedAt = Date.now();
       resumeAfterDrop = Date.now() - lastPlaying.at < 15_000 ? lastPlaying.uri : null;
     });
     const reconnectedSubscription = listen("spotifyReconnected", () => {
@@ -1291,7 +1328,8 @@
       // old player may have played on from its buffer until the reconnect
       // stopped it, so take the last second it was seen at
       if (!uri || loadedTrack?.uri?.asString !== uri || lastPlaying.uri !== uri || playerState === "paused") return;
-      invoke("load_track", { uri, positionMs: lastPlaying.positionMs, play: true }).catch(() => {});
+      const jumped = lastSeek.uri === uri && lastSeek.at > droppedAt - 3000;
+      invoke("load_track", { uri, positionMs: jumped ? lastSeek.positionMs : lastPlaying.positionMs, play: true }).catch(() => {});
     });
 
     return () => {
