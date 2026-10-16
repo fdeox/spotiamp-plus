@@ -24,6 +24,7 @@ mod milkdrop;
 mod mascot;
 mod stats_window;
 mod taskbar;
+mod decoding;
 mod diagnostics;
 mod whatsnew_window;
 mod museum;

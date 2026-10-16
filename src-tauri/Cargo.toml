@@ -60,9 +60,9 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 # Last.fm signs its calls with MD5 (lastfm.rs)
 md-5 = "0.10"
-# The paths of files dropped from Explorer (file_drop.rs): the same WebView2
-# bindings wry uses
-webview2-com = "0.38"
+# AAC with HE-AAC's high band and stereo (decoding.rs): symphonia plays only
+# the core, so AAC+ stations sounded dull
+rusty_aac = "1.1"
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 discord-rich-presence = "0.2"
 
@@ -104,7 +104,8 @@ windows = { version = "0.61", features = [
 # runs (without MilkDrop) if they're missing
 libloading = "0.8"
 # Same version wry/tauri already build, so the WebView2 types line up: used to
-# catch a crashed renderer and reload it (app_window::watch_for_renderer_crash).
+# catch a crashed renderer and reload it (app_window::watch_for_renderer_crash),
+# and for the paths of files dropped from Explorer (file_drop.rs).
 webview2-com = "0.38"
 
 [profile.dev]

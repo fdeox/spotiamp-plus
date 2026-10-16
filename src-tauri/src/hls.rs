@@ -347,7 +347,7 @@ mod real {
             std::thread::spawn(move || {
                 let r = (|| -> Result<String, String> {
                     let generation = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-                    let (mss, hint, _) = crate::radio::open(&url, generation)?;
+                    let crate::radio::Tuned { audio: mss, hint, .. } = crate::radio::open(&url, generation)?;
                     let mut p = symphonia::default::get_probe().format(&hint, mss, &Default::default(), &Default::default()).map_err(|e| format!("probe: {e}"))?;
                     let track = p.format.tracks()[0].clone();
                     let mut dec = symphonia::default::get_codecs().make(&track.codec_params, &Default::default()).map_err(|e| format!("decoder: {e}"))?;

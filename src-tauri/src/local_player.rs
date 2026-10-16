@@ -18,13 +18,10 @@ use std::sync::atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
+use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use symphonia::core::units::Time;
 
 use crate::eq::{EqProcessor, EqState};
 use crate::visualizer::Visualizer;
@@ -230,20 +227,23 @@ impl Resampler {
 
 /// A file opened and ready to decode, plus the cpal stream playing it.
 struct Active {
-    /// Format reader + decoder, kept together so we can seek and pull packets.
-    format: Box<dyn symphonia::core::formats::FormatReader>,
-    decoder: Box<dyn symphonia::core::codecs::Decoder>,
-    track_id: u32,
+    /// Where the sound comes from and what decodes it (decoding.rs).
+    source: crate::decoding::Source,
+    /// The last piece decoded, reused.
+    decoded: Vec<f32>,
     /// Output stream rate (what the ring holds and the callback plays).
     sample_rate: u32,
+    out_channels: usize,
     ring: Arc<Mutex<VecDeque<f32>>>,
     frames_played: Arc<AtomicU64>,
     finished_ring: Arc<AtomicBool>,
     _stream: cpal::Stream,
     ended_sent: bool,
-    sample_buf: Option<SampleBuffer<f32>>,
-    /// Set when the file's rate/channels differ from the output device's.
+    /// Set when the sound's rate/channels differ from the output device's.
     resampler: Option<Resampler>,
+    /// The rate and channels the resampler was made for: known from the
+    /// first piece decoded (HE-AAC turns 22 kHz mono into 44 kHz stereo).
+    resampler_for: Option<(u32, usize)>,
     /// Scratch for resampled output, reused across packets.
     resample_out: Vec<f32>,
     /// A radio station's name and song (None for a file).
@@ -375,10 +375,22 @@ impl Worker {
     /// Open a file, build its cpal stream, and return the active state. The
     /// stream's callback is where EQ runs and the visualizer is fed.
     fn open(&self, path: &PathBuf) -> Result<Active, String> {
+        use crate::decoding::Source;
         let generation = self.generation.load(Ordering::Relaxed);
-        let (mss, hint, station) = if is_stream(path) {
-            let (mss, hint, meta) = crate::radio::open(&path.to_string_lossy(), self.generation.clone())?;
-            (mss, hint, Some(meta))
+        let is_aac_file = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("aac"));
+        // AAC in ADTS (a station, an .aac file) goes to rusty_aac frame by
+        // frame; the rest is probed by symphonia
+        let (source, station) = if is_stream(path) {
+            let tuned = crate::radio::open(&path.to_string_lossy(), self.generation.clone())?;
+            let source = if tuned.aac {
+                Source::adts(Box::new(tuned.audio), None)
+            } else {
+                self.probe(tuned.audio, &tuned.hint, "the station didn't send any sound Spotiamp+ can play")?
+            };
+            (source, Some(tuned.meta))
+        } else if is_aac_file {
+            let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+            (Source::adts(Box::new(file), Some(path.clone())), None)
         } else {
             let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
             let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -386,36 +398,8 @@ impl Worker {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 hint.with_extension(ext);
             }
-            (mss, hint, None)
+            (self.probe(mss, &hint, "")?, None)
         };
-        let probed = symphonia::default::get_probe()
-            .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-            .map_err(|e| match station {
-                Some(_) => "the station didn't send any sound Spotiamp+ can play".to_string(),
-                None => format!("unsupported: {e}"),
-            })?;
-        let format = probed.format;
-        let track = format
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.sample_rate.is_some())
-            .ok_or("no audio track")?
-            .clone();
-        let track_id = track.id;
-        let sample_rate = track.codec_params.sample_rate.ok_or("no sample rate")?;
-        let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2).max(1);
-        let decoder = symphonia::default::get_codecs()
-            .make(&track.codec_params, &DecoderOptions::default())
-            .map_err(|e| format!("no decoder: {e}"))?;
-
-        // Report duration if the container knows it (for the seek bar).
-        if let (Some(n), tb) = (track.codec_params.n_frames, track.codec_params.time_base)
-            && let Some(tb) = tb
-        {
-            let t = tb.calc_time(n);
-            let ms = (t.seconds as f64 + t.frac) * 1000.0;
-            self.duration_ms.store(ms as u64, Ordering::Relaxed);
-        }
 
         let ring: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::with_capacity(1 << 18)));
         let frames_played = Arc::new(AtomicU64::new(0));
@@ -431,24 +415,18 @@ impl Worker {
             .map_err(|e| format!("no output config: {e}"))?;
         let out_rate = out_cfg.sample_rate().0;
         let out_channels = (out_cfg.channels() as usize).max(1);
-        let resampler = if out_rate != sample_rate || out_channels != channels {
-            Some(Resampler::new(sample_rate, out_rate, channels, out_channels))
-        } else {
-            None
-        };
 
         // Log the format decision so a "plays nothing" report is diagnosable
-        // from spotiamp.log (device chosen, file vs output rate/channels).
+        // from spotiamp.log (device chosen, who decodes; the sound's own rate
+        // is known from its first piece, and resampled if it differs).
         log::info!(
-            "local open: '{}' {} Hz {} ch -> device '{}' {} Hz {} ch ({} fmt){}",
+            "local open: '{}' ({}) -> device '{}' {} Hz {} ch ({} fmt)",
             path.display(),
-            sample_rate,
-            channels,
+            source.kind(),
             device.name().unwrap_or_else(|_| "?".into()),
             out_rate,
             out_channels,
             out_cfg.sample_format(),
-            if resampler.is_some() { ", resampling" } else { "" },
         );
 
         // A station: ~1.5 s of sound gathered before it plays, and again after
@@ -459,23 +437,45 @@ impl Worker {
         let stream = self.build_stream(&device, out_rate, out_channels, &ring, &frames_played, prebuffer)?;
 
         Ok(Active {
-            format,
-            decoder,
-            track_id,
+            source,
+            decoded: Vec::new(),
             sample_rate: out_rate,
+            out_channels,
             ring,
             frames_played,
             finished_ring,
             _stream: stream,
             ended_sent: false,
-            sample_buf: None,
-            resampler,
+            resampler: None,
+            resampler_for: None,
             resample_out: Vec::new(),
             stream: station,
-            source_rate: sample_rate,
+            source_rate: 0,
             generation,
             lead,
         })
+    }
+
+    /// symphonia's look at a file or stream: its first audio track, its
+    /// length when the container says it, and what decodes it.
+    fn probe(&self, mss: MediaSourceStream, hint: &Hint, unplayable: &str) -> Result<crate::decoding::Source, String> {
+        let probed = symphonia::default::get_probe()
+            .format(hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+            .map_err(|e| if unplayable.is_empty() { format!("unsupported: {e}") } else { unplayable.to_string() })?;
+        let format = probed.format;
+        let track = format
+            .tracks()
+            .iter()
+            .find(|t| t.codec_params.sample_rate.is_some())
+            .ok_or("no audio track")?
+            .clone();
+        // Report duration if the container knows it (for the seek bar).
+        if let (Some(n), Some(tb)) = (track.codec_params.n_frames, track.codec_params.time_base) {
+            let t = tb.calc_time(n);
+            let ms = (t.seconds as f64 + t.frac) * 1000.0;
+            self.duration_ms.store(ms as u64, Ordering::Relaxed);
+        }
+        crate::decoding::Source::probed(format, &track)
     }
 
     /// cpal output stream at the device's own supported rate/channels. The
@@ -597,34 +597,31 @@ impl Worker {
             if len >= a.lead || started.elapsed() >= std::time::Duration::from_millis(40) {
                 break;
             }
-            match a.format.next_packet() {
-                Ok(packet) => {
-                    if packet.track_id() != a.track_id {
-                        continue;
+            match a.source.next(&mut a.decoded) {
+                crate::decoding::Next::Audio { rate, channels } => {
+                    // the sound's rate and channels, from its first piece (and
+                    // again if they change): resampled to the device's if they
+                    // differ
+                    if a.resampler_for != Some((rate, channels)) {
+                        a.resampler_for = Some((rate, channels));
+                        a.source_rate = rate;
+                        a.resampler = (rate != a.sample_rate || channels != a.out_channels)
+                            .then(|| Resampler::new(rate, a.sample_rate, channels, a.out_channels));
+                        log::info!(
+                            "local sound: {rate} Hz {channels} ch{}",
+                            if a.resampler.is_some() { ", resampled" } else { "" }
+                        );
                     }
-                    match a.decoder.decode(&packet) {
-                        Ok(decoded) => {
-                            let spec = *decoded.spec();
-                            let buf = a
-                                .sample_buf
-                                .get_or_insert_with(|| SampleBuffer::new(decoded.capacity() as u64, spec));
-                            buf.copy_interleaved_ref(decoded);
-                            if let Some(rs) = a.resampler.as_mut() {
-                                a.resample_out.clear();
-                                rs.process(buf.samples(), &mut a.resample_out);
-                                a.ring.lock().unwrap().extend(a.resample_out.iter().copied());
-                            } else {
-                                a.ring.lock().unwrap().extend(buf.samples().iter().copied());
-                            }
-                        }
-                        Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
-                        Err(_) => {
-                            a.finished_ring.store(true, Ordering::Relaxed);
-                            break;
-                        }
+                    if let Some(rs) = a.resampler.as_mut() {
+                        a.resample_out.clear();
+                        rs.process(&a.decoded, &mut a.resample_out);
+                        a.ring.lock().unwrap().extend(a.resample_out.iter().copied());
+                    } else {
+                        a.ring.lock().unwrap().extend(a.decoded.iter().copied());
                     }
                 }
-                Err(_) => {
+                crate::decoding::Next::Skip => continue,
+                crate::decoding::Next::End => {
                     a.finished_ring.store(true, Ordering::Relaxed);
                     break;
                 }
@@ -637,15 +634,7 @@ impl Worker {
     /// Seek the reader to `ms`, clear the buffered audio, and reset the clock so
     /// position tracks from the new point.
     fn seek(&self, a: &mut Active, ms: u32) {
-        let time = Time::from(ms as f64 / 1000.0);
-        let _ = a.format.seek(
-            SeekMode::Accurate,
-            SeekTo::Time {
-                time,
-                track_id: Some(a.track_id),
-            },
-        );
-        a.decoder.reset();
+        a.source.seek(ms);
         a.ring.lock().unwrap().clear();
         if let Some(rs) = a.resampler.as_mut() {
             rs.buf.clear();
@@ -968,6 +957,6 @@ mod format_tests {
             .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
             .expect("a WAV reader");
         let track = probed.format.tracks()[0].clone();
-        assert!(symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default()).is_ok());
+        assert!(symphonia::default::get_codecs().make(&track.codec_params, &symphonia::core::codecs::DecoderOptions::default()).is_ok());
     }
 }

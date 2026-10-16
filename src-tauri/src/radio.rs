@@ -452,9 +452,20 @@ fn stream_title(block: &[u8]) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
-/// Connect to a station: the audio ready for the decoder, a hint of its
-/// format, and what it says about itself (filled in as songs change).
-pub fn open(url: &str, generation: Arc<AtomicU64>) -> Result<(MediaSourceStream, Hint, Arc<Mutex<StreamMeta>>), String> {
+/// A station tuned in.
+pub struct Tuned {
+    /// Its sound, ready for the decoder.
+    pub audio: MediaSourceStream,
+    /// A hint of its format.
+    pub hint: Hint,
+    /// What it says about itself, filled in as songs change.
+    pub meta: Arc<Mutex<StreamMeta>>,
+    /// AAC: decoded by rusty_aac (decoding.rs).
+    pub aac: bool,
+}
+
+/// Connect to a station.
+pub fn open(url: &str, generation: Arc<AtomicU64>) -> Result<Tuned, String> {
     let opened_at = generation.load(Ordering::Relaxed);
     let (head_tx, head_rx) = mpsc::channel();
     let (audio_tx, audio_rx) = mpsc::sync_channel(64);
@@ -472,6 +483,7 @@ pub fn open(url: &str, generation: Arc<AtomicU64>) -> Result<(MediaSourceStream,
         }
     };
     let hint = head.hint();
+    let aac = head.content_type.contains("aac");
     let meta = Arc::new(Mutex::new(StreamMeta {
         station: head.station.clone(),
         title: String::new(),
@@ -488,10 +500,10 @@ pub fn open(url: &str, generation: Arc<AtomicU64>) -> Result<(MediaSourceStream,
         meta: meta.clone(),
         generation,
         opened_at,
-        adts: head.content_type.contains("aac").then(AdtsFix::default),
+        adts: aac.then(AdtsFix::default),
     };
-    let mss = MediaSourceStream::new(Box::new(ReadOnlySource::new(reader)), Default::default());
-    Ok((mss, hint, meta))
+    let audio = MediaSourceStream::new(Box::new(ReadOnlySource::new(reader)), Default::default());
+    Ok(Tuned { audio, hint, meta, aac })
 }
 
 #[cfg(test)]
@@ -640,7 +652,7 @@ mod tests {
             s.write_all(&body).unwrap();
         });
         let generation = Arc::new(AtomicU64::new(0));
-        let (mut mss, _hint, meta) = open(&format!("http://127.0.0.1:{port}/;"), generation).unwrap();
+        let Tuned { audio: mut mss, meta, .. } = open(&format!("http://127.0.0.1:{port}/;"), generation).unwrap();
         let mut got = Vec::new();
         mss.read_to_end(&mut got).unwrap();
         assert_eq!(got, audio);
