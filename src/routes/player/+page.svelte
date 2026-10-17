@@ -450,7 +450,7 @@
   // you're signed in with scrobbling on. Songs only: not a radio station, not
   // a file without an artist, and not in Free Mode (the Spotify app plays
   // there, and it can scrobble by itself).
-  let lastfmLog = { key: "", startedAt: 0, ms: 0, nowSent: false, scrobbled: false };
+  let lastfmLog = { key: "", startedAt: 0, ms: 0, nowSent: false, scrobbled: false, at: 0 };
   function lastfmTick() {
     if (controllerMode) return;
     const key = !loadedTrack || loadedTrack.isStream
@@ -458,9 +458,15 @@
       : loadedTrack.isLocal
         ? `local:${loadedTrack.path}`
         : (loadedTrack.uri?.asString ?? "");
-    if (key !== lastfmLog.key) {
-      lastfmLog = { key, startedAt: Date.now(), ms: 0, nowSent: false, scrobbled: false };
+    // the same song from the start again after a good while of it (repeat
+    // one, or played again): a new listen, as Spotify counts it. Not a resume
+    // after a dropped connection, nor a jump back a little.
+    const at = seekPosition;
+    const again = key === lastfmLog.key && lastfmLog.ms >= 30000 && at < 5000 && lastfmLog.at > at + 25000;
+    if (key !== lastfmLog.key || again) {
+      lastfmLog = { key, startedAt: Date.now(), ms: 0, nowSent: false, scrobbled: false, at };
     }
+    lastfmLog.at = at;
     if (!key || playerState != "playing" || !loadedTrack?.artist || !loadedTrack?.name) return;
     lastfmLog.ms += 1000;
     const duration = loadedTrack.durationInMs || 0;
