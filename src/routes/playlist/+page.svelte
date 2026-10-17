@@ -1000,7 +1000,7 @@
   // open.spotify.com links, so other players still get the local ones.
   async function openM3u() {
     try {
-      const opened = /** @type {{entries: {kind: "spotify" | "local", value: string}[], skipped: number} | null} */ (
+      const opened = /** @type {{entries: ({kind: "spotify" | "local", value: string} | {kind: "stream", value: {url: string, name: string}})[], skipped: number} | null} */ (
         await invoke("m3u_open")
       );
       if (!opened) return; // cancelled

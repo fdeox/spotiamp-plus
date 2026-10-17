@@ -293,6 +293,20 @@ export function isStreamLink(path) {
     return /^https?:\/\//i.test(path);
 }
 
+/**
+ * The names of the stations played here (the Library's Your stations), by
+ * link, read once: a station kept in the list gets its name back after a
+ * restart instead of its server's.
+ * @type {Promise<Map<string, string>> | undefined}
+ */
+let knownStations;
+function stationNames() {
+    knownStations ??= invoke("radio_stations")
+        .then((list) => new Map(/** @type {{url: string, name: string}[]} */ (list).map((s) => [s.url, s.name])))
+        .catch(() => new Map());
+    return knownStations;
+}
+
 /** Until a station says its name: its server's. @param {string} link */
 function stationHost(link) {
     try {
@@ -890,14 +904,20 @@ export class Playlist {
 
     /**
      * Replace the playlist with an opened .m3u's songs, in the file's order
-     * (Spotify songs and local files mixed as they come).
-     * @param {{kind: "spotify" | "local", value: string}[]} entries
+     * (Spotify songs, local files and radio stations mixed as they come).
+     * @param {({kind: "spotify" | "local", value: string} | {kind: "stream", value: {url: string, name: string}})[]} entries
      */
     async openM3uEntries(entries) {
         await this.clear();
         for (const e of entries) {
             if (e.kind === "spotify") {
                 await this.addTrackRow(SpotifyUri.fromString(e.value));
+            } else if (e.kind === "stream") {
+                // a station, by the name the file gives it
+                const { url, name } = e.value;
+                if (!this.rows.some((r) => r instanceof LocalRow && r.path === url)) {
+                    this.rows.push(new LocalRow(url, this, name ? { name } : undefined));
+                }
             } else {
                 await this.addLocalRow(e.value);
             }
@@ -911,7 +931,8 @@ export class Playlist {
         await this.loadAllNames().catch(() => {});
         return this.rows.map((r) =>
             r instanceof LocalRow
-                ? { location: r.path, title: r.displayName, duration_ms: r.durationMs ?? 0 }
+                ? // a station by its name, not the song it was on
+                  { location: r.path, title: r.isStream ? r.stationName || r.displayName : r.displayName, duration_ms: r.durationMs ?? 0 }
                 : {
                       location: r.uri.asString,
                       title: r.track ? r.displayName : "",
@@ -930,8 +951,11 @@ export class Playlist {
         const existing = this.rows.find((r) => r instanceof LocalRow && r.path === path);
         if (existing) return /** @type {LocalRow} */ (existing);
         let meta;
-        // a station's link has no tags to read
-        if (!isStreamLink(path)) {
+        // a station's link has no tags to read: one played here before has its name
+        if (isStreamLink(path)) {
+            const name = (await stationNames()).get(path);
+            if (name) meta = { name };
+        } else {
             try {
                 const m = await invoke("local_metadata", { path });
                 meta = {

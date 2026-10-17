@@ -1,7 +1,8 @@
 //! Winamp's playlist files: open a .m3u / .m3u8 into the playlist, or save
-//! the playlist as one. Local files are written as their paths and Spotify
-//! songs as open.spotify.com links, so Spotiamp+ reads its own files back
-//! whole, and other players still get the local files.
+//! the playlist as one. Local files are written as their paths, Spotify
+//! songs as open.spotify.com links and radio stations as their links (with
+//! their names), so Spotiamp+ reads its own files back whole, and other
+//! players still get the local files and the stations.
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +19,8 @@ pub enum Entry {
     Spotify(String),
     /// an audio file's absolute path
     Local(String),
+    /// a radio station's link, and its name from the line above it
+    Stream { url: String, name: String },
 }
 
 #[derive(Serialize)]
@@ -87,12 +90,27 @@ fn is_audio(path: &Path) -> bool {
 fn parse(text: &str, base: &Path) -> Opened {
     let mut entries = Vec::new();
     let mut skipped = 0;
+    // the name on the #EXTINF line, for the entry under it
+    let mut title = String::new();
     for line in text.lines().map(str::trim) {
+        if let Some(info) = line.strip_prefix("#EXTINF:") {
+            title = info.split_once(',').map(|(_, t)| t.trim().to_string()).unwrap_or_default();
+            continue;
+        }
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        let name = std::mem::take(&mut title);
         if let Some(uri) = spotify_track(line) {
             entries.push(Entry::Spotify(uri));
+            continue;
+        }
+        // a radio station's link (not Spotify's other pages: an album, an artist)
+        let lower = line.to_ascii_lowercase();
+        if (lower.starts_with("http://") || lower.starts_with("https://"))
+            && url::Url::parse(line).ok().and_then(|u| u.host_str().map(|h| !h.ends_with("spotify.com"))) == Some(true)
+        {
+            entries.push(Entry::Stream { url: line.to_string(), name });
             continue;
         }
         let path: PathBuf = if line.starts_with("file:") {
@@ -104,7 +122,7 @@ fn parse(text: &str, base: &Path) -> Opened {
                 }
             }
         } else if line.contains("://") {
-            // a web stream or another service: nothing we can play
+            // another kind of stream (rtsp, mms) or service: nothing we can play
             skipped += 1;
             continue;
         } else {
@@ -186,12 +204,14 @@ mod tests {
         let dir = std::env::temp_dir().join("spotiamp-m3u-test");
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         std::fs::write(dir.join("sub").join("şarkı.mp3"), b"x").unwrap();
-        let text = "#EXTM3U\n#EXTINF:10,x\nsub\\şarkı.mp3\nhttps://open.spotify.com/track/abc\nmissing.mp3\nhttp://radio/stream\n";
+        let text = "#EXTM3U\n#EXTINF:10,x\nsub\\şarkı.mp3\nhttps://open.spotify.com/track/abc\nmissing.mp3\n#EXTINF:-1,Radio One\nhttp://radio/stream\nhttps://open.spotify.com/album/abc\nrtsp://old/stream\n";
         let got = parse(text, &dir);
-        assert_eq!(got.entries.len(), 2);
+        assert_eq!(got.entries.len(), 3);
         assert!(matches!(&got.entries[0], Entry::Local(p) if p.ends_with("şarkı.mp3")));
         assert!(matches!(&got.entries[1], Entry::Spotify(u) if u == "spotify:track:abc"));
-        assert_eq!(got.skipped, 2);
+        // a station with its name; an album page and an rtsp stream aren't played
+        assert!(matches!(&got.entries[2], Entry::Stream { url, name } if url == "http://radio/stream" && name == "Radio One"));
+        assert_eq!(got.skipped, 3);
     }
 
     #[test]

@@ -2,9 +2,9 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs::{File, create_dir_all},
     hash::{Hash, Hasher},
-    io::{BufReader, BufWriter},
+    io::{BufReader, Write},
     ops::{Deref, DerefMut},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -29,6 +29,43 @@ fn get_settings_file_path() -> PathBuf {
     get_config_dir()
         .expect("a config directory")
         .join("settings.yaml")
+}
+
+/// The whole file written next to it, then put in its place in one step: a
+/// crash or a kill mid-write leaves the old file whole, never half a new one
+/// (which the next start couldn't read). If the swap is refused (something
+/// holding the file open), it's written over the old way.
+fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let tmp = path.with_extension("yaml.tmp");
+    let swapped = File::create(&tmp)
+        .and_then(|mut f| f.write_all(bytes))
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if swapped.is_ok() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(path, bytes).map_err(|e| format!("Could not write the file ({e:?})"))
+}
+
+/// A settings file that's there but can't be read (cut short, edited by
+/// hand) is copied aside before the defaults are saved over it, so what was
+/// in it isn't lost for good: settings.unreadable-<when>.yaml.
+fn keep_aside(path: &Path) -> Option<PathBuf> {
+    let when = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let aside = path.with_file_name(format!("settings.unreadable-{when}.yaml"));
+    match std::fs::copy(path, &aside) {
+        Ok(_) => {
+            log::warn!("The settings that couldn't be read are kept in {aside:?}");
+            Some(aside)
+        }
+        Err(e) => {
+            log::warn!("Couldn't keep the unreadable settings aside ({e})");
+            None
+        }
+    }
 }
 
 /// A line in the log on the first save and then at most every ten minutes,
@@ -412,7 +449,10 @@ impl Settings {
             });
 
         if let Err(e) = &mut settings {
-            log::warn!("Could not load settings ({settings_file_path:?}): {e:}")
+            log::warn!("Could not load settings ({settings_file_path:?}): {e:}");
+            if settings_file_path.exists() {
+                keep_aside(&settings_file_path);
+            }
         }
         //TODO: Check if the error is something else than file not found and log
         //eprintln!("Failed to load config ({err}), falling back to default settings");
@@ -427,12 +467,9 @@ impl Settings {
 
     fn save(&self) {
         let settings_file_path = get_settings_file_path();
-        if let Err(e) = File::create(settings_file_path.clone())
-            .map_err(|e| format!("Could not create file ({e:?})"))
-            .and_then(|file| {
-                serde_yaml::to_writer(BufWriter::new(file), self)
-                    .map_err(|e| format!("Could not serialize ({e:?})"))
-            })
+        if let Err(e) = serde_yaml::to_string(self)
+            .map_err(|e| format!("Could not serialize ({e:?})"))
+            .and_then(|text| write_whole(&settings_file_path, text.as_bytes()))
         {
             log::error!("Failed to save settings: {:?}", e);
         } else {
@@ -445,5 +482,30 @@ impl Settings {
         let hasher = &mut DefaultHasher::new();
         self.hash(hasher);
         hasher.finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Saved whole (and again over it), no leftovers; an unreadable file is
+    /// copied aside as it was.
+    #[test]
+    fn saved_whole_and_unreadable_kept_aside() {
+        let dir = std::env::temp_dir().join(format!("spotiamp-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.yaml");
+        write_whole(&path, b"volume: 1").unwrap();
+        write_whole(&path, b"volume: 2").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"volume: 2");
+        assert!(!path.with_extension("yaml.tmp").exists());
+
+        std::fs::write(&path, b"player: [cut sh").unwrap();
+        let aside = keep_aside(&path).unwrap();
+        assert!(aside.file_name().unwrap().to_string_lossy().starts_with("settings.unreadable-"));
+        assert_eq!(std::fs::read(&aside).unwrap(), b"player: [cut sh");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
