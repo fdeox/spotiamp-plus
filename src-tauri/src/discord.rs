@@ -32,17 +32,23 @@ fn ensure_connected(guard: &mut Option<DiscordIpcClient>) -> bool {
     guard.is_some()
 }
 
+/// What the profile shows.
+struct Shown {
+    name: String,
+    artist: String,
+    album: String,
+    album_art: Option<String>,
+    /// The second line as it is (a radio station's "📻 Süper FM"); otherwise
+    /// it's "by <artist>".
+    state: Option<String>,
+    elapsed_ms: i64,
+    duration_ms: i64,
+    playing: bool,
+}
+
 /// One presence change, applied in order on the Discord thread.
 enum Update {
-    Set {
-        name: String,
-        artist: String,
-        album: String,
-        album_art: Option<String>,
-        elapsed_ms: i64,
-        duration_ms: i64,
-        playing: bool,
-    },
+    Set(Shown),
     Clear,
 }
 
@@ -60,9 +66,7 @@ fn send(update: Update) {
             .spawn(move || {
                 for update in rx {
                     match update {
-                        Update::Set { name, artist, album, album_art, elapsed_ms, duration_ms, playing } => {
-                            apply_activity(name, artist, album, album_art, elapsed_ms, duration_ms, playing)
-                        }
+                        Update::Set(shown) => apply_activity(shown),
                         Update::Clear => apply_clear(),
                     }
                 }
@@ -88,8 +92,9 @@ pub fn set_discord_activity(
     elapsed_ms: i64,
     duration_ms: i64,
     playing: bool,
+    state: Option<String>,
 ) {
-    send(Update::Set { name, artist, album, album_art, elapsed_ms, duration_ms, playing });
+    send(Update::Set(Shown { name, artist, album, album_art, state, elapsed_ms, duration_ms, playing }));
 }
 
 #[tauri::command]
@@ -97,15 +102,8 @@ pub fn clear_discord_activity() {
     send(Update::Clear);
 }
 
-fn apply_activity(
-    name: String,
-    artist: String,
-    album: String,
-    album_art: Option<String>,
-    elapsed_ms: i64,
-    duration_ms: i64,
-    playing: bool,
-) {
+fn apply_activity(shown: Shown) {
+    let Shown { name, artist, album, album_art, state, elapsed_ms, duration_ms, playing } = shown;
     let Ok(mut guard) = CLIENT.lock() else {
         return;
     };
@@ -124,7 +122,11 @@ fn apply_activity(
         t
     };
     let name = fit(&name);
-    let state = fit(&if artist.trim().is_empty() { "Local file".to_string() } else { format!("by {artist}") });
+    let state = fit(&match state.filter(|s| !s.trim().is_empty()) {
+        Some(state) => state,
+        None if artist.trim().is_empty() => "Local file".to_string(),
+        None => format!("by {artist}"),
+    });
     let album = if album.trim().is_empty() { String::new() } else { fit(&album) };
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

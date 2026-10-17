@@ -68,7 +68,7 @@
    * The loaded track is normally a Spotify track; local files reuse the same
    * slot with an `isLocal`/`path` marker (the Spotify fields go unused and the
    * transport routes on `isLocal`), so the type carries those as optional.
-   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, remembered?: boolean, stationName?: string, path?: string, sampleRate?: number, kbps?: number }) | undefined}
+   * @type {(SpotifyTrack & { isLocal?: boolean, isStream?: boolean, remembered?: boolean, stationName?: string, songTitle?: string, path?: string, sampleRate?: number, kbps?: number }) | undefined}
    */
   let loadedTrack = $state();
   let volume = $state(initialVolume());
@@ -635,19 +635,22 @@
     }
     const base = path.split(/[\\/]/).pop() ?? path;
     const isStream = /^https?:\/\//i.test(path);
+    // a station by its name until it says which song it's on
+    const stationName = isStream ? meta?.station || meta?.name || base : "";
     reconnects = 0;
     loadedTrack = /** @type {any} */ ({
       isLocal: true,
       isStream,
+      stationName,
       path,
-      name: meta?.name ?? base,
+      name: isStream ? stationName : (meta?.name ?? base),
       artist: meta?.artist ?? "",
       album: meta?.album ?? "",
       albumArt: null,
       durationInMs: meta?.durationInMs ?? 0,
       sampleRate: meta?.sampleRate ?? 0,
       kbps: meta?.kbps ?? 0,
-      displayName: meta?.displayName ?? base,
+      displayName: isStream ? stationName : (meta?.displayName ?? base),
       displayDuration: durationToString(meta?.durationInMs ?? 0),
       unavailable: false,
     });
@@ -759,15 +762,26 @@
         } else if (ev && ev.StreamInfo && loadedTrack?.isStream) {
           // a station said its name, or moved on to another song
           const { station, title, kbps, sample_rate } = ev.StreamInfo;
-          const name = title || station || loadedTrack.name;
+          // its name: the guide's (or the one it was kept with); a pasted
+          // link's server until the station says its own
+          const host = (() => {
+            try {
+              return new URL(loadedTrack.path ?? "").host;
+            } catch {
+              return "";
+            }
+          })();
+          const known = loadedTrack.stationName && loadedTrack.stationName !== host;
+          const stationName = (known ? loadedTrack.stationName : station || loadedTrack.stationName) || "";
           loadedTrack = /** @type {any} */ ({
             ...loadedTrack,
-            name,
-            artist: title ? station : "",
+            name: title || stationName,
+            artist: title ? stationName : "",
+            songTitle: title,
+            stationName,
             kbps: kbps || loadedTrack.kbps,
             sampleRate: sample_rate || loadedTrack.sampleRate,
-            displayName: title && station ? `${title} (${station})` : name,
-            stationName: station || loadedTrack.stationName,
+            displayName: title && stationName ? `${title} (${stationName})` : title || stationName,
           });
           emitWindowEvent("playerWindow", { StreamInfo: { path: loadedTrack?.path ?? "", station, title } });
         }
@@ -913,10 +927,13 @@
       invoke("clear_discord_activity").catch(() => {});
       return;
     }
+    // a radio station: its song (or its name), then that it's radio and which
+    const radio = !!track.isStream;
     invoke("set_discord_activity", {
       name: track.name,
       artist: track.artist,
-      album: track.album || (track.isStream ? "Radio station" : track.isLocal ? "Local file" : ""),
+      state: radio ? (track.songTitle && track.stationName ? `📻 ${track.stationName}` : "📻 Radio station") : null,
+      album: radio ? (track.songTitle ? "Radio station" : "") : track.album || (track.isLocal ? "Local file" : ""),
       albumArt: track.albumArt ?? null,
       playlistIndex: playlistPos.index,
       playlistLength: playlistPos.length,
@@ -1097,6 +1114,7 @@
           const l = event.LocalTrackLoaded;
           loadLocalFile(l.path, {
             name: l.name,
+            station: l.station,
             displayName: l.name,
             durationInMs: l.durationMs,
             sampleRate: l.sampleRate ?? 0,

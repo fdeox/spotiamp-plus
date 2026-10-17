@@ -228,6 +228,9 @@ export class LocalRow extends PlaylistRow {
     isLocal = true
     /** A radio station's link (Ctrl+L) rather than a file. */
     isStream = false
+    /** A station's own name (the guide's, or its server's until it says
+     *  one), apart from the song it's on, which its displayName follows. */
+    stationName = ""
 
     /**
      * @param {string} path
@@ -243,6 +246,7 @@ export class LocalRow extends PlaylistRow {
         this.isStream = isStreamLink(path);
         const base = path.split(/[\\/]/).pop() ?? path;
         const name = meta?.name || (this.isStream ? stationHost(path) : base.replace(/\.[^.]+$/, "") || base);
+        if (this.isStream) this.stationName = name;
         this.displayName = meta?.artist ? `${meta.artist} - ${name}` : name;
         this.durationMs = meta?.durationMs ?? 0;
         this.displayDuration = this.durationMs ? durationToString(this.durationMs) : "";
@@ -256,6 +260,7 @@ export class LocalRow extends PlaylistRow {
             LocalTrackLoaded: {
                 path: this.path,
                 name: this.displayName,
+                station: this.isStream ? this.stationName : undefined,
                 durationMs: this.durationMs,
                 sampleRate: this.sampleRate,
                 kbps: this.kbps,
@@ -572,6 +577,8 @@ export class Playlist {
                     for (const r of this.rows) {
                         if (r instanceof LocalRow && r.path === info.path) {
                             r.displayName = info.title || info.station || r.displayName;
+                            // a pasted link known by its server: the name it gives itself
+                            if (info.station && r.stationName === stationHost(r.path)) r.stationName = info.station;
                         }
                     }
                 } else if (event.QueueRequested !== undefined) {
