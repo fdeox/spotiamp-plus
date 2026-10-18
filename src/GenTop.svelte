@@ -1,9 +1,11 @@
 <script>
   // A generic window's titlebar built the way Winamp builds one from GEN.BMP:
   // the corners, the end caps either side of the title, the fills between
-  // them (the title stays centred), and the title in the skin's own letters,
-  // focused or not. It covers the window's tile titlebar, which is what's
-  // left showing for a skin without a usable GEN.BMP (no --skin-gen).
+  // them (the title stays centred), and the title in the skin's own letters.
+  // Always the focused row, like the player, EQ and playlist: the unfocused
+  // one is dimmed, and these windows sat dimmed next to them most of the time.
+  // It covers the window's tile titlebar, which is what's left showing for a
+  // skin without a usable GEN.BMP (no --skin-gen).
   import { onMount } from "svelte";
   import { SKIN_APPLIED } from "$lib/common.svelte.js";
 
@@ -20,10 +22,7 @@
   let drawn = $state(false);
   /** @type {number[][] | null} */
   let letters = $state(null);
-  /** @type {number[][] | null} */
-  let letters2 = $state(null);
   let named = $state("");
-  let focused = $state(true);
 
   /** "x:w x:w …" → 26 [x, w] pairs, or null */
   function parse(/** @type {string} */ value) {
@@ -36,7 +35,6 @@
     const style = getComputedStyle(document.body);
     drawn = style.getPropertyValue("--skin-gen").trim().startsWith("url(");
     letters = parse(style.getPropertyValue("--skin-genletters").trim());
-    letters2 = parse(style.getPropertyValue("--skin-genletters2").trim()) ?? letters;
     named = titleVar
       ? style.getPropertyValue(`--skin-${titleVar}`).trim().replace(/^"(.*)"$/, "$1")
       : "";
@@ -44,17 +42,8 @@
 
   onMount(() => {
     read();
-    focused = document.hasFocus();
-    const onFocus = () => (focused = true);
-    const onBlur = () => (focused = false);
     window.addEventListener(SKIN_APPLIED, read);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener(SKIN_APPLIED, read);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
-    };
+    return () => window.removeEventListener(SKIN_APPLIED, read);
   });
 
   const text = $derived(named || title);
@@ -62,7 +51,7 @@
   // [x, width] on the sheet per letter; a space is a 5 px gap (x -1), and
   // anything GEN.BMP has no letter for (an apostrophe) is left out
   const glyphs = $derived.by(() => {
-    const set = focused ? letters : letters2;
+    const set = letters;
     if (!set) return null;
     const out = [];
     for (const ch of text.toUpperCase()) {
@@ -75,7 +64,7 @@
 </script>
 
 {#if drawn}
-  <div class="gt" class:blur={!focused}>
+  <div class="gt">
     <div class="gt-piece gt-left"></div>
     <div class="gt-fill"></div>
     <div class="gt-piece gt-end"></div>
@@ -86,7 +75,7 @@
             class="gt-letter"
             class:space={x < 0}
             style:width="{w}px"
-            style:background-position="-{x}px -{focused ? 88 : 96}px"
+            style:background-position="-{x}px -88px"
           ></span>
         {/each}
       {:else}
@@ -102,8 +91,8 @@
 {/if}
 
 <style>
-  /* GEN.BMP's titlebar: the focused row at y=0, the unfocused one at y=21,
-     each piece 25x20 — top-left at x=0, the left end cap 26, (the title's
+  /* GEN.BMP's titlebar: the focused row at y=0 (the unfocused one at y=21
+     isn't used), each piece 25x20: top-left at x=0, the left end cap 26, (the title's
      fill 52), the right end cap 78, (the fill between 104), top-right with
      its close button 130. The two fills come as tiles of their own. */
   .gt {
@@ -115,11 +104,6 @@
     --row: 0px;
     --bar: var(--skin-genbar);
     --mid: var(--skin-genmid);
-  }
-  .gt.blur {
-    --row: -21px;
-    --bar: var(--skin-genbar2);
-    --mid: var(--skin-genmid2);
   }
   .gt-piece {
     flex: 0 0 25px;

@@ -503,17 +503,15 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         {
             let b64 = base64::engine::general_purpose::STANDARD.encode(png);
             sprites.insert("gen".into(), format!("data:image/png;base64,{b64}"));
-            // the focused window's letters, then the unfocused one's
-            for (var, y) in [("genletters", 88u32), ("genletters2", 96)] {
-                if let Some(letters) = gen_letters(&sheet, y) {
-                    sprites.insert(var.into(), letters);
-                }
+            // the focused window's letters (the windows always look focused)
+            if let Some(letters) = gen_letters(&sheet, 88) {
+                sprites.insert("genletters".into(), letters);
             }
             // the two repeating tiles on their own (a slice of a sprite sheet
             // can't repeat in CSS): the fill between the pieces, and the one
-            // behind the title, each focused (y=0) and not (y=21)
-            for (var, x, y) in [("genbar", 104u32, 0u32), ("genbar2", 104, 21), ("genmid", 52, 0), ("genmid2", 52, 21)] {
-                let tile = image::DynamicImage::ImageRgb8(sheet.clone()).crop_imm(x, y, 25, 20);
+            // behind the title, from the focused row (y=0)
+            for (var, x) in [("genbar", 104u32), ("genmid", 52)] {
+                let tile = image::DynamicImage::ImageRgb8(sheet.clone()).crop_imm(x, 0, 25, 20);
                 let mut png = Vec::new();
                 if tile.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).is_ok() {
                     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
