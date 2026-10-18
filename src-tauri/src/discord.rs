@@ -132,11 +132,11 @@ fn apply_activity(shown: Shown) {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    // start + end give Discord a Spotify-style progress bar
-    let start = now - elapsed_ms / 1000;
-    let timestamps = activity::Timestamps::new()
-        .start(start)
-        .end(start + duration_ms / 1000);
+    let (start, end) = times(now, elapsed_ms, duration_ms);
+    let mut timestamps = activity::Timestamps::new().start(start);
+    if let Some(end) = end {
+        timestamps = timestamps.end(end);
+    }
 
     // real album cover as the big image (with the app logo tucked in the
     // corner); fall back to just the logo when there's no cover art
@@ -163,7 +163,7 @@ fn apply_activity(shown: Shown) {
         .state(&state)
         .assets(assets)
         .buttons(buttons);
-    if playing && duration_ms > 0 {
+    if playing {
         act = act.timestamps(timestamps);
     }
 
@@ -190,5 +190,26 @@ fn apply_clear() {
         && client.clear_activity().is_ok()
     {
         let _ = client.recv();
+    }
+}
+
+/// When it started and, for a song with a length, when it ends: start + end
+/// give Discord a Spotify-style progress bar. A radio station has no length,
+/// so it gets the start alone and Discord counts up how long it's been on
+/// (with no time at all it showed one that only moved when the card opened).
+fn times(now: i64, elapsed_ms: i64, duration_ms: i64) -> (i64, Option<i64>) {
+    let start = now - elapsed_ms / 1000;
+    (start, (duration_ms > 0).then(|| start + duration_ms / 1000))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_song_ends_and_a_station_only_starts() {
+        assert_eq!(times(1000, 42_000, 180_000), (958, Some(1138)));
+        assert_eq!(times(1000, 42_000, 0), (958, None));
+        assert_eq!(times(1000, 0, 0), (1000, None));
     }
 }
