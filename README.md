@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/fdeox/spotiamp-plus?label=download&color=ff8a00" alt="Latest release"></a>
-  <a href="../../releases"><img src="https://img.shields.io/github/downloads/fdeox/spotiamp-plus/total?color=ffb000" alt="Downloads"></a>
+  <a href="../../releases"><img src="https://img.shields.io/github/downloads/fdeox/spotiamp-plus/total?label=downloads&color=ffb000" alt="Downloads"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 and 11">
   <a href="https://discord.gg/8Rq5Xycny4"><img src="https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -91,17 +91,21 @@ Skins come the full Winamp way, on every window, the Library too: their own
 own letters**, the visualizer's colours and, if you like, the skin's font
 (*Skins → Use the skin's font*).
 
-| Spotiamp+ | Bento Classified | Winamp3 Classified |
-| :-------: | :--------------: | :----------------: |
-| ![](docs/screenshots/spotiamp.jpg) | ![](docs/screenshots/winampbento.jpg) | ![](docs/screenshots/winamp3.jpg) |
+| Spotiamp+ | Bento Classified | Winamp3 Classified | Winamp5 Classified |
+| :-------: | :--------------: | :----------------: | :----------------: |
+| ![](docs/screenshots/spotiamp.jpg) | ![](docs/screenshots/winampbento.jpg) | ![](docs/screenshots/winamp3.jpg) | ![](docs/screenshots/winamp5.jpg) |
 
-| Winamp5 Classified | Nucleo NLog | Sony CDX-MP3 |
-| :----------------: | :---------: | :----------: |
-| ![](docs/screenshots/winamp5.jpg) | ![](docs/screenshots/Nucleo%20Nlog.jpg) | ![](docs/screenshots/Sony%20CDX-MP3.jpg) |
+| Nucleo NLog | Sony CDX-MP3 | Sony Esprit V2 | Classic |
+| :---------: | :----------: | :------------: | :-----: |
+| ![](docs/screenshots/Nucleo%20Nlog.jpg) | ![](docs/screenshots/Sony%20CDX-MP3.jpg) | ![](docs/screenshots/Sony%20Esprit%20V2.jpg) | ![](docs/screenshots/classic2.jpg) |
 
-| Sony Esprit V2 | Classic | Amber |
-| :------------: | :-----: | :---: |
-| ![](docs/screenshots/Sony%20Esprit%20V2.jpg) | ![](docs/screenshots/classic2.jpg) | ![](docs/screenshots/amber.jpg) |
+### Classic in colour
+
+Classic also comes in three colours of its own:
+
+| Cherry | Amber | Emerald |
+| :----: | :---: | :-----: |
+| ![](docs/screenshots/cherry.jpg) | ![](docs/screenshots/amber.jpg) | ![](docs/screenshots/emerald.jpg) |
 
 ## 🎆 Visualizers
 
