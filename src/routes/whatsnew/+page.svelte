@@ -19,9 +19,11 @@
       "<b>Drag music files from Windows Explorer</b> onto the playlist (they're added) or the main window (they play), a whole folder too.",
       "<b>Ctrl+L</b> opens a link, like Winamp's <i>Open location</i>: paste a Spotify song, album or playlist, or an <b>internet radio station</b> (SHOUTcast, Icecast, HLS, a .pls or .m3u). A station plays through the EQ and the visualizers, with the name of the song it's on.",
       "Stations in <b>full quality</b>: AAC+ (HE-AAC) ones played muffled, at half their rate and some in mono; now they play whole, in stereo. A station that drops is connected again (up to three tries).",
+      "Stations everywhere: <b>Discord</b> shows one as radio, with its name 📻; a playlist saved as <b>.m3u</b> keeps its stations (with their names), and they keep their names in the playlist after a restart.",
       "<b>Long lists are quick</b>: in a playlist of 1400 songs a click used to take a sixth of a second to show; now it's instant, and so are select all, delete and Q. The Library keeps up with any size too: tens of thousands of songs scroll and filter at once.",
-      "<b>Last.fm</b>: what you play goes on your Last.fm profile. Right-click, <i>Last.fm</i>, <i>Connect your Last.fm…</i> and allow Spotiamp+ on Last.fm's page. Songs scrobble once half of them (or 4 minutes) has played; without internet they wait and go later.",
+      "<b>Last.fm</b>: what you play goes on your Last.fm profile. Right-click, <i>Last.fm</i>, <i>Connect your Last.fm…</i> and allow Spotiamp+ on Last.fm's page. Songs scrobble once half of them (or 4 minutes) has played, and a song on repeat counts every time, as on Spotify; without internet they wait and go later.",
       "A file without tags shows its name without the .mp3 at the end.",
+      "Fixed: your settings could be lost if Spotiamp+ closed right while saving them; a jump in a song made while Spotify's connection was dropping was lost; switching radio stations quickly showed an error.",
     ],
     "0.7.7": [
       "<b>Lala's wardrobe</b> 👕 20 outfits for her, from sneakers and caps to a hoodie, a guitar and a crown, each opened by one of your listening badges. Put them on and take them off in <i>Listening stats</i>, <i>WARDROBE</i> (or right-click Lala: <i>Wardrobe…</i>); one per slot, and they stay on whatever she's up to.",
