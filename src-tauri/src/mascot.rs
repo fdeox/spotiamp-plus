@@ -236,7 +236,10 @@ fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
         .build()
         .inspect(|window| {
             #[cfg(target_os = "windows")]
-            crate::app_window::watch_for_renderer_crash(window);
+            {
+                crate::app_window::watch_for_renderer_crash(window);
+                crate::app_window::ignore_text_size(window);
+            }
         })
 }
 

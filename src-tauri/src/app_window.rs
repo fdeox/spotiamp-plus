@@ -62,8 +62,38 @@ pub fn build_frameless_window(
         .build()
         .inspect(|window| {
             #[cfg(target_os = "windows")]
-            watch_for_renderer_crash(window);
+            {
+                watch_for_renderer_crash(window);
+                ignore_text_size(window);
+            }
         })
+}
+
+/// Windows' "Text size" setting (Accessibility) makes WebView2 draw a page
+/// bigger on top of the screen's scale, but the windows are sized for the
+/// screen's scale alone: the page was cut off on the right and at the bottom
+/// (#13, at 100 % scaling with bigger text). They draw at the screen's scale
+/// only, like Winamp's (Ctrl+D is how Spotiamp+ gets bigger), and take a new
+/// screen's scale when moved onto one.
+#[cfg(target_os = "windows")]
+pub(crate) fn ignore_text_size(window: &WebviewWindow) {
+    fn apply(window: &WebviewWindow, scale: f64) {
+        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller3;
+        use windows::core::Interface;
+        let _ = window.with_webview(move |webview| unsafe {
+            if let Ok(controller) = webview.controller().cast::<ICoreWebView2Controller3>() {
+                let _ = controller.SetShouldDetectMonitorScaleChanges(false);
+                let _ = controller.SetRasterizationScale(scale);
+            }
+        });
+    }
+    apply(window, window.scale_factor().unwrap_or(1.0));
+    let this = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } = event {
+            apply(&this, *scale_factor);
+        }
+    });
 }
 
 /// The big "!" error page: when a window's WebView2 renderer process dies (seen

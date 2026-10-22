@@ -54,7 +54,10 @@ fn build(app: &AppHandle) -> Result<WebviewWindow, tauri::Error> {
         .inspect(|window| {
             let _ = window.set_ignore_cursor_events(true);
             #[cfg(target_os = "windows")]
-            crate::app_window::watch_for_renderer_crash(window);
+            {
+                crate::app_window::watch_for_renderer_crash(window);
+                crate::app_window::ignore_text_size(window);
+            }
         })
 }
 
