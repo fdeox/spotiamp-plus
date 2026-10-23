@@ -29,18 +29,29 @@ pub async fn get_lyrics_lrclib(artist: String, title: String, duration_ms: u32) 
         .user_agent(concat!("Spotiamp+/", env!("CARGO_PKG_VERSION"), " (https://github.com/fdeox/spotiamp-plus)"))
         .build()
         .map_err(|e| e.to_string())?;
-    let text = client
-        .get(API)
-        .query(&[("artist_name", artist.as_str()), ("track_name", title.as_str())])
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
-        .map_err(|e| e.to_string())?;
-    // an answer that isn't a list (LRCLIB down for a moment) isn't kept
-    let Ok(Value::Array(results)) = serde_json::from_str::<Value>(&text) else {
-        return Err("LRCLIB didn't answer".into());
+    let ask = || async {
+        let text = client
+            .get(API)
+            .query(&[("artist_name", artist.as_str()), ("track_name", title.as_str())])
+            .send()
+            .await
+            .ok()?
+            .text()
+            .await
+            .ok()?;
+        match serde_json::from_str::<Value>(&text) {
+            Ok(Value::Array(results)) => Some(results),
+            _ => None,
+        }
+    };
+    // an answer that isn't a list ("busy, retry in a moment") gets one more
+    // try, and isn't kept: the song is asked about again when it comes back
+    let results = match ask().await {
+        Some(results) => results,
+        None => {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            ask().await.ok_or("LRCLIB didn't answer")?
+        }
     };
     let found = pick(&results, duration_ms).and_then(|(r, synced)| lyrics_of(r, synced));
     if let Ok(mut cache) = FOUND.lock() {
