@@ -1610,7 +1610,7 @@
         class:pinned
         data-no-drag
         onclick={togglePin}
-        title={pinned ? "Unpin — resume auto-cycling" : "Pin — keep this pattern"}
+        title={pinned ? "Unpin: change patterns again" : "Pin: keep this pattern"}
         aria-label={pinned ? "Unpin visualizer" : "Pin visualizer"}
       >{pinned ? "● PINNED" : "○ PIN"}</button>
     </div>

@@ -1631,7 +1631,7 @@
     <button
       class="update-pill"
       onclick={checkForUpdates}
-      title="Spotiamp+ {updateAvailable} is available — click to update"
+      title="Spotiamp+ {updateAvailable} is available: click to update"
     >
       ⬆ v{updateAvailable}
     </button>
@@ -1830,7 +1830,7 @@
     class="pl-btn"
     style:--pl-btn-x="11px"
     onclick={openLibraryWindow}
-    aria-label="Add — open library"
+    aria-label="Add: open the Library"
     title="open library"
   ></button>
   <button

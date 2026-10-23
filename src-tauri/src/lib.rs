@@ -444,9 +444,9 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                 }
                 if stuck {
                     last_forced = Some(std::time::Instant::now());
-                    log::warn!("Songs keep failing to load (Spotify not answering) — reconnecting…");
+                    log::warn!("Songs keep failing to load (Spotify not answering), reconnecting…");
                 } else {
-                    log::warn!("Spotify session dropped — reconnecting…");
+                    log::warn!("Spotify session dropped, reconnecting…");
                 }
                 // the window notes whether a song was playing, to carry on
                 // with it once the connection is back

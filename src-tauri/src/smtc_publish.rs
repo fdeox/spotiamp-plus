@@ -46,7 +46,7 @@ fn controls() -> &'static Mutex<Option<SystemMediaTransportControls>> {
 /// headset buttons, not the ability to play music.
 pub fn init(app: &AppHandle) {
     if crate::settings::Settings::current().controller_mode {
-        log::info!("smtc: not publishing — Spotify owns the session in controller mode");
+        log::info!("smtc: not publishing, Spotify owns the session in controller mode");
         return;
     }
     let Some(window) = app.get_webview_window("player") else {

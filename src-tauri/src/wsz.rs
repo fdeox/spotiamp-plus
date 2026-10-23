@@ -261,7 +261,7 @@ fn extract_wsz_bytes(bytes: &[u8]) -> Result<(), String> {
         }
     }
     if !found_main {
-        return Err("No MAIN.BMP in the archive — not a Winamp 2.x skin".into());
+        return Err("No MAIN.BMP in the archive, so it isn't a Winamp 2.x skin".into());
     }
     std::fs::write(dir.join(SKIN_FILE_LIST), written.join("\n"))
         .map_err(|e| format!("Could not save the skin's file list ({e})"))?;

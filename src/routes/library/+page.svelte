@@ -1132,7 +1132,7 @@
         class:active={activeNode === "liked"}
         role="button"
         tabindex="0"
-        title="your Spotify Liked Songs — double-click to load all"
+        title="your Spotify Liked Songs: double-click to load them all"
         onclick={selectLiked}
         ondblclick={loadLikedIntoMain}
         onkeydown={(e) => e.key === "Enter" && selectLiked()}
