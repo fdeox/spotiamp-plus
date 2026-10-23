@@ -24,6 +24,7 @@ mod milkdrop;
 mod mascot;
 mod stats_window;
 mod taskbar;
+mod global_keys;
 mod decoding;
 mod diagnostics;
 mod whatsnew_window;
@@ -402,6 +403,8 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
     // registered once that window exists.
     #[cfg(target_os = "windows")]
     smtc_publish::init(app_handle);
+    #[cfg(target_os = "windows")]
+    global_keys::apply(app_handle, settings::Settings::current().player.global_hotkeys);
 
     let player = Arc::new(tokio::sync::Mutex::new(SpotifyPlayer::new(session)));
     app_handle.manage(player.clone());
@@ -628,6 +631,7 @@ pub fn run() {
             player_window::get_player_settings,
             player_window::set_normalization,
             taskbar::set_taskbar_extras,
+            global_keys::set_global_hotkeys,
             taskbar::taskbar_update,
             diagnostics::copy_diagnostics,
             whatsnew_window::show_whats_new,

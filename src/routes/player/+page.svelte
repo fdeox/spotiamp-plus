@@ -1248,12 +1248,19 @@
     // the in-window shortcuts below — the difference is only where the press
     // came from. Registered on the Rust side for the Premium path only; in
     // controller mode Spotify answers these keys itself.
+    // The global hotkeys (global_keys.rs) come the same way, with a few more.
     const mediaKeySubscription = listen("mediaKey", (event) => {
       switch (event.payload) {
         case "playpause": playerState === "playing" ? pause() : play(); break;
+        case "play": play(); break;
+        case "pause": pause(); break;
         case "next": emitNextPressed(); break;
         case "previous": emitPreviousPressed(); break;
         case "stop": stop(); break;
+        case "volumeup": volume = Math.min(100, volume + 5); break;
+        case "volumedown": volume = Math.max(0, volume - 5); break;
+        case "forward5": if (loadedTrack) seek(Math.min(loadedTrack.durationInMs, seekPosition + 5000)); break;
+        case "back5": if (loadedTrack) seek(Math.max(0, seekPosition - 5000)); break;
       }
     });
 

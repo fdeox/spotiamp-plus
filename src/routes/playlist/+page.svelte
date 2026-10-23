@@ -273,6 +273,14 @@
   let alwaysOnTop = $state(false);
   let normalizeVolume = $state(false);
   let taskbarExtras = $state(false);
+  // Winamp's global hotkeys (Ctrl+Alt with Ins, Home, End, PgUp, PgDn and the
+  // arrows), wherever you are. Opt-in.
+  let globalHotkeys = $state(false);
+  async function toggleGlobalHotkeys() {
+    globalHotkeys = !globalHotkeys;
+    await invoke("set_global_hotkeys", { enabled: globalHotkeys }).catch(() => {});
+    if (globalHotkeys) showToast("Ctrl+Alt + Ins play · Home pause · End stop · PgUp/PgDn previous/next · arrows volume and jump");
+  }
   // Song title on the taskbar button, progress across it, and prev/play/next
   // under its thumbnail. Opt-in.
   async function toggleTaskbarExtras() {
@@ -299,6 +307,7 @@
       alwaysOnTop = Boolean(settings?.always_on_top);
       normalizeVolume = Boolean(settings?.normalize);
       taskbarExtras = Boolean(settings?.taskbar_extras);
+      globalHotkeys = Boolean(settings?.global_hotkeys);
       osdEnabled = Boolean(settings?.osd);
       mascotOn = settings?.mascot !== false;
       mascotSize = settings?.mascot_size ?? 56;
@@ -589,6 +598,7 @@
       sep,
       { text: "Always on top", checked: alwaysOnTop, action: toggleAlwaysOnTop },
       { text: "Taskbar extras (title, progress, buttons)", checked: taskbarExtras, action: toggleTaskbarExtras },
+      { text: "Global hotkeys (Ctrl+Alt+…)", checked: globalHotkeys, action: toggleGlobalHotkeys },
       ...(controllerMode
         ? []
         : [{ text: "Show the song on screen when it changes", checked: osdEnabled, action: toggleOsd }]),

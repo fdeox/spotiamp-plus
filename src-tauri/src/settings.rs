@@ -192,6 +192,9 @@ pub struct PlayerSettings {
     /// Keep every Spotiamp+ window above other applications.
     #[serde(default)]
     pub always_on_top: bool,
+    /// Winamp's global hotkeys (Ctrl+Alt+Insert and friends, global_keys.rs).
+    #[serde(default)]
+    pub global_hotkeys: bool,
     /// Player scale as a percentage (100 = 1x, 150, 200 = double size, 300).
     /// `Option`/`serde(default)` so old files load; `None` means "fall back to
     /// `double_size_active`". Stored as an int because `f32` isn't `Hash` (and
@@ -299,6 +302,7 @@ impl Default for PlayerSettings {
             audio_device: None,
             windowshade_active: false,
             always_on_top: false,
+            global_hotkeys: false,
             player_zoom_pct: None,
             show_eq: false,
             resume: None,

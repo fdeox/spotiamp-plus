@@ -137,6 +137,15 @@
       ],
     },
     {
+      title: "Anywhere (Windows menu: Global hotkeys)",
+      keys: [
+        ["Ctrl+Alt+Ins / Home / End", "Play, pause, stop"],
+        ["Ctrl+Alt+PgUp / PgDn", "Previous, next"],
+        ["Ctrl+Alt+↑ ↓", "Volume"],
+        ["Ctrl+Alt+← →", "Seek 5 seconds"],
+      ],
+    },
+    {
       title: "Playlist",
       keys: [
         ["J", "Jump to a track by name"],
