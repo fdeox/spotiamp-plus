@@ -92,6 +92,7 @@ pub fn set_loved(uris: Vec<String>, loved: bool, app: tauri::AppHandle) -> usize
     if changed > 0 {
         // true when songs were loved (the llama shows a heart), false unloved
         let _ = app.emit("lovedChanged", loved);
+        crate::lastfm::love_on_lastfm(&app, uris, loved);
     }
     changed
 }

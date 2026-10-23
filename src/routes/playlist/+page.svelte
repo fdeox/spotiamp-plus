@@ -445,8 +445,8 @@
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
   // Last.fm (lastfm.rs): signed in or not, for the menu
-  /** @type {{ available: boolean, user: string | null, scrobbling: boolean, waiting: number }} */
-  let lastfm = { available: false, user: null, scrobbling: false, waiting: 0 };
+  /** @type {{ available: boolean, user: string | null, scrobbling: boolean, love: boolean, waiting: number }} */
+  let lastfm = { available: false, user: null, scrobbling: false, love: false, waiting: 0 };
   async function loadLastfm() {
     lastfm = await invoke("lastfm_status").catch(() => lastfm);
   }
@@ -468,6 +468,11 @@
         text: "Scrobble what I play",
         checked: lastfm.scrobbling,
         action: () => invoke("lastfm_set_scrobbling", { on: !lastfm.scrobbling }).catch(() => {}),
+      },
+      {
+        text: "Love songs there too (♡)",
+        checked: lastfm.love,
+        action: () => invoke("lastfm_set_love", { on: !lastfm.love }).catch(() => {}),
       },
       ...(lastfm.waiting ? [{ text: `${lastfm.waiting} waiting to go out (no internet?)`, enabled: false }] : []),
       sep,

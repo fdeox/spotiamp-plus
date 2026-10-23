@@ -5,6 +5,7 @@
 //! own page in the browser; what's kept here is the session it hands back
 //! (config/lastfm.json), never a password. Scrobbles that can't go out (no
 //! internet, Last.fm busy) wait in config/lastfm-queue.json for the next try.
+//! Loved songs (♡) can be loved on Last.fm too (0.7.9), if you turn it on.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -42,6 +43,9 @@ struct Session {
     key: String,
     #[serde(default = "on")]
     scrobbling: bool,
+    /// Songs loved here (♡) are loved on Last.fm too. Off unless asked for.
+    #[serde(default)]
+    love: bool,
 }
 
 fn on() -> bool {
@@ -67,6 +71,7 @@ pub struct LastfmStatus {
     available: bool,
     user: Option<String>,
     scrobbling: bool,
+    love: bool,
     /// Scrobbles waiting to go out.
     waiting: usize,
 }
@@ -194,6 +199,7 @@ pub fn lastfm_status() -> LastfmStatus {
     LastfmStatus {
         available: credentials().is_some(),
         scrobbling: session.as_ref().is_some_and(|s| s.scrobbling),
+        love: session.as_ref().is_some_and(|s| s.love),
         user: session.map(|s| s.user),
         waiting: queue().len(),
     }
@@ -225,7 +231,8 @@ pub async fn lastfm_connect(app_handle: AppHandle) -> Result<String, String> {
                 let (Some(user), Some(session_key)) = (s["name"].as_str(), s["key"].as_str()) else {
                     return Err("Last.fm sent no session".into());
                 };
-                write_json(session_path(), &Session { user: user.to_string(), key: session_key.to_string(), scrobbling: true });
+                let session = Session { user: user.to_string(), key: session_key.to_string(), scrobbling: true, love: false };
+                write_json(session_path(), &session);
                 log::info!("Last.fm: signed in");
                 let _ = app_handle.emit("lastfmChanged", ());
                 return Ok(user.to_string());
@@ -254,6 +261,48 @@ pub fn lastfm_set_scrobbling(on: bool, app_handle: AppHandle) {
         write_json(session_path(), &s);
         let _ = app_handle.emit("lastfmChanged", ());
     }
+}
+
+#[tauri::command]
+pub fn lastfm_set_love(on: bool, app_handle: AppHandle) {
+    if let Some(mut s) = session() {
+        s.love = on;
+        write_json(session_path(), &s);
+        let _ = app_handle.emit("lastfmChanged", ());
+    }
+}
+
+/// Songs just loved (or unloved) here: the same on Last.fm, when that's on.
+/// Their names come from Spotify, the way scrobbles name them (the first
+/// artist), so the love lands on the same song. A love that can't go out is
+/// let go: it's not worth a queue.
+pub(crate) fn love_on_lastfm(app: &AppHandle, uris: Vec<String>, loved: bool) {
+    use tauri::Manager;
+    let Some(session) = session().filter(|s| s.love) else { return };
+    let player = app.state::<crate::spotify::SharedPlayer>().inner().clone();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let spotify = player.lock().await.session_handle();
+        let uris: Vec<_> = uris.iter().filter_map(|u| librespot::core::SpotifyUri::from_uri(u).ok()).collect();
+        let Ok(tracks) = crate::spotify::fetch_tracks(&spotify, &uris).await else {
+            log::warn!("Last.fm: couldn't name the loved songs, so they weren't loved there");
+            return;
+        };
+        let method = if loved { "track.love" } else { "track.unlove" };
+        for track in tracks.iter().flatten() {
+            let Some(artist) = track.artists.first() else { continue };
+            let params = BTreeMap::from([
+                ("sk".to_string(), session.key.clone()),
+                ("artist".to_string(), clean(&artist.name)),
+                ("track".to_string(), clean(&track.name)),
+            ]);
+            match call(method, params, true).await {
+                Ok(_) => {}
+                Err(Failure::SignedOut) => return signed_out(&app),
+                Err(e) => log::warn!("Last.fm: {method} didn't go ({})", e.say()),
+            }
+        }
+    });
 }
 
 /// Text as Last.fm should see it: no padding zeros or spaces around it.

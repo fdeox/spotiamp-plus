@@ -711,6 +711,7 @@ pub fn run() {
             lastfm::lastfm_connect,
             lastfm::lastfm_disconnect,
             lastfm::lastfm_set_scrobbling,
+            lastfm::lastfm_set_love,
             lastfm::lastfm_now_playing,
             lastfm::lastfm_scrobble,
             local_library::local_library_add_folder,
