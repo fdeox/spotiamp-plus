@@ -24,7 +24,7 @@ Web interface (6)
   @tauri-apps/plugin-updater 2.10.1            MIT OR Apache-2.0
   svelte 5.56.2                                MIT
 
-Rust crates (442)
+Rust crates (443)
 -----------------
   adler2 2.0.1                                 0BSD OR MIT OR Apache-2.0
   aes 0.8.4                                    MIT OR Apache-2.0
@@ -220,6 +220,7 @@ Rust crates (442)
   once_cell_polyfill 1.70.2                    MIT OR Apache-2.0
   open 5.3.5                                   MIT
   option-ext 0.2.0                             MPL-2.0
+  opus-decoder 0.1.1                           MIT OR Apache-2.0
   parking_lot 0.12.5                           MIT OR Apache-2.0
   parking_lot_core 0.9.12                      MIT OR Apache-2.0
   pbkdf2 0.12.2                                MIT OR Apache-2.0
@@ -482,6 +483,7 @@ above, whose standard text is among the texts below:
   librespot-oauth 0.8.0 (MIT)
   librespot-playback 0.8.0 (MIT)
   librespot-protocol 0.8.0 (MIT)
+  opus-decoder 0.1.1 (MIT OR Apache-2.0)
   priority-queue 2.7.0 (LGPL-3.0-or-later OR MPL-2.0)
   selectors 0.36.1 (MPL-2.0)
   symphonia 0.5.5 (MPL-2.0)

@@ -1,14 +1,15 @@
 //! What turns a file's or a station's bytes into sound (0.7.8). AAC goes to
 //! rusty_aac, which decodes HE-AAC whole: its high band (SBR) and its stereo
 //! (PS). symphonia's AAC decoder plays only the core, so an AAC+ station came
-//! out at 22 kHz, dull, and some even in mono. Everything else, and AAC that
-//! rusty_aac won't take, stays with symphonia.
+//! out at 22 kHz, dull, and some even in mono. Opus (0.7.9), which symphonia
+//! reads out of Ogg but has no decoder for, goes to opus-decoder. Everything
+//! else, and AAC that rusty_aac won't take, stays with symphonia.
 
 use std::io::Read;
 use std::path::PathBuf;
 
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_AAC};
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_AAC, CODEC_TYPE_OPUS};
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo, Track};
 use symphonia::core::units::Time;
 
@@ -41,6 +42,18 @@ pub(crate) enum Source {
     /// AAC in ADTS frames (a station, an .aac file): rusty_aac takes them
     /// whole, headers and all.
     Adts { frames: AdtsFrames, decoder: rusty_aac::AacDecoder },
+    /// Opus in Ogg (an .opus file, a station): symphonia reads, opus-decoder
+    /// decodes, always at 48 kHz.
+    Opus {
+        format: Box<dyn FormatReader>,
+        track_id: u32,
+        decoder: OpusDecoder,
+        head: OpusHead,
+        /// Samples (per channel) still to drop: the encoder's own lead-in at
+        /// the start, a little warm-up after a seek.
+        skip: usize,
+        pcm: Vec<f32>,
+    },
 }
 
 impl Source {
@@ -58,6 +71,13 @@ impl Source {
             && let Ok(decoder) = rusty_aac::AacDecoder::with_config_bytes(config)
         {
             return Ok(Source::Mp4Aac { format, track_id: track.id, config: config.to_vec(), decoder });
+        }
+        if params.codec == CODEC_TYPE_OPUS {
+            let head = params.extra_data.as_deref().and_then(OpusHead::parse).ok_or("unreadable Opus header")?;
+            let decoder = OpusDecoder::new(&head)?;
+            let pcm = vec![0.0; OPUS_MAX_FRAME * head.channels];
+            let skip = head.pre_skip;
+            return Ok(Source::Opus { format, track_id: track.id, decoder, head, skip, pcm });
         }
         let decoder = symphonia::default::get_codecs()
             .make(params, &DecoderOptions::default())
@@ -80,6 +100,7 @@ impl Source {
             Source::Symphonia { .. } => "symphonia",
             Source::Mp4Aac { .. } => "AAC in MP4, rusty_aac",
             Source::Adts { .. } => "AAC (ADTS), rusty_aac",
+            Source::Opus { .. } => "Opus, opus-decoder",
         }
     }
 
@@ -115,6 +136,21 @@ impl Source {
                 Some(frame) => aac(decoder.decode(&frame, None), out),
                 None => Next::End,
             },
+            Source::Opus { format, track_id, decoder, head, skip, pcm } => loop {
+                let Ok(packet) = format.next_packet() else { return Next::End };
+                if packet.track_id() != *track_id {
+                    continue;
+                }
+                let Ok(n) = decoder.decode(&packet.data, pcm) else { return Next::Skip };
+                let drop = (*skip).min(n);
+                *skip -= drop;
+                if drop == n {
+                    continue; // all lead-in: on to the next packet
+                }
+                let ch = head.channels;
+                out.extend(pcm[drop * ch..n * ch].iter().map(|s| s * head.gain));
+                return Next::Audio { rate: 48_000, channels: ch };
+            },
         }
     }
 
@@ -140,6 +176,79 @@ impl Source {
                 *frames = fresh;
                 *decoder = rusty_aac::AacDecoder::new();
             }
+            Source::Opus { format, track_id, decoder, head, skip, .. } => {
+                let _ = format.seek(SeekMode::Accurate, to(*track_id));
+                decoder.reset();
+                // Opus needs 80 ms to settle after a jump (RFC 7845)
+                *skip = if ms == 0 { head.pre_skip } else { 3840 };
+            }
+        }
+    }
+}
+
+/// The longest Opus packet, per channel: 120 ms at 48 kHz.
+const OPUS_MAX_FRAME: usize = 5760;
+
+/// What an Ogg Opus stream's first packet (OpusHead, RFC 7845) says.
+pub(crate) struct OpusHead {
+    channels: usize,
+    /// Samples at the start that are the encoder's lead-in, not sound.
+    pre_skip: usize,
+    /// The volume to play at (the header's output gain, mostly 0 dB).
+    gain: f32,
+    /// More than one Opus stream per packet (channel mapping 1): streams,
+    /// how many of them are stereo, and which goes where.
+    streams: Option<(usize, usize, Vec<u8>)>,
+}
+
+impl OpusHead {
+    fn parse(b: &[u8]) -> Option<OpusHead> {
+        if b.len() < 19 || &b[..8] != b"OpusHead" {
+            return None;
+        }
+        let channels = b[9] as usize;
+        let pre_skip = u16::from_le_bytes([b[10], b[11]]) as usize;
+        let gain_q8 = i16::from_le_bytes([b[16], b[17]]);
+        let gain = 10f32.powf(gain_q8 as f32 / (20.0 * 256.0));
+        let streams = match b[18] {
+            0 => None,
+            _ if b.len() >= 21 + channels => Some((b[19] as usize, b[20] as usize, b[21..21 + channels].to_vec())),
+            _ => return None,
+        };
+        // surround isn't played (yet): mono and stereo, as nearly every file is
+        (1..=2).contains(&channels).then_some(OpusHead { channels, pre_skip, gain, streams })
+    }
+}
+
+/// One Opus stream, or several in each packet.
+pub(crate) enum OpusDecoder {
+    Single(Box<opus_decoder::OpusDecoder>),
+    Multi(opus_decoder::OpusMultistreamDecoder),
+}
+
+impl OpusDecoder {
+    fn new(head: &OpusHead) -> Result<OpusDecoder, String> {
+        let err = |e: opus_decoder::OpusError| format!("Opus: {e:?}");
+        Ok(match &head.streams {
+            None | Some((1, _, _)) => OpusDecoder::Single(Box::new(opus_decoder::OpusDecoder::new(48_000, head.channels).map_err(err)?)),
+            Some((streams, coupled, mapping)) => OpusDecoder::Multi(
+                opus_decoder::OpusMultistreamDecoder::new(48_000, head.channels, *streams, *coupled, mapping).map_err(err)?,
+            ),
+        })
+    }
+
+    /// Samples per channel decoded into `pcm` (interleaved).
+    fn decode(&mut self, packet: &[u8], pcm: &mut [f32]) -> Result<usize, opus_decoder::OpusError> {
+        match self {
+            OpusDecoder::Single(d) => d.decode_float(packet, pcm, false),
+            OpusDecoder::Multi(d) => d.decode_float(packet, pcm, false),
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            OpusDecoder::Single(d) => d.reset(),
+            OpusDecoder::Multi(d) => d.reset(),
         }
     }
 }
@@ -255,6 +364,32 @@ impl AdtsFrames {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An Opus header: stereo with its lead-in and gain, two-stream stereo,
+    /// and surround (not played) turned down.
+    #[test]
+    fn opus_headers() {
+        let head = |channels: u8, gain: i16, family: u8, rest: &[u8]| {
+            let mut b = b"OpusHead".to_vec();
+            b.push(1);
+            b.push(channels);
+            b.extend_from_slice(&312u16.to_le_bytes());
+            b.extend_from_slice(&48_000u32.to_le_bytes());
+            b.extend_from_slice(&gain.to_le_bytes());
+            b.push(family);
+            b.extend_from_slice(rest);
+            b
+        };
+        let h = OpusHead::parse(&head(2, 0, 0, &[])).expect("stereo");
+        assert_eq!((h.channels, h.pre_skip, h.gain, h.streams.is_none()), (2, 312, 1.0, true));
+        let loud = OpusHead::parse(&head(1, 6 * 256, 0, &[])).expect("mono");
+        assert!((loud.gain - 1.995).abs() < 0.01);
+        let two = OpusHead::parse(&head(2, 0, 1, &[2, 0, 0, 1])).expect("two streams");
+        assert_eq!(two.streams, Some((2, 0, vec![0, 1])));
+        assert!(OpusDecoder::new(&two).is_ok());
+        assert!(OpusHead::parse(&head(6, 0, 1, &[4, 2, 0, 4, 1, 2, 3, 5])).is_none());
+        assert!(OpusHead::parse(b"OpusTags").is_none());
+    }
 
     /// A tone made into AAC-LC ADTS by rusty_aac's own encoder.
     fn tone_adts(seconds: f32) -> Vec<u8> {

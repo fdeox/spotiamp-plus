@@ -1,8 +1,8 @@
 //! The Library's Radio (0.7.8): stations to find and keep. The guide is
 //! radio-browser.info, a free and open directory of tens of thousands of
 //! stations. Only stations Spotiamp+ can really play are shown: ones the
-//! directory found working at its last check, in MP3, AAC or Ogg Vorbis (not
-//! Opus, which comes as "OGG" too), streamed whole or in pieces (HLS, whose
+//! directory found working at its last check, in MP3, AAC or Ogg (Vorbis, and
+//! Opus since 0.7.9), streamed whole or in pieces (HLS, whose
 //! sound the directory often can't name: it's AAC or MP3 nearly always, and
 //! 38 of the 40 most listened in Turkey played; the other two were gone).
 //! "Your stations" are the ones that played here, newest first.
@@ -54,13 +54,12 @@ fn playable(s: &Value) -> bool {
     let num = |k: &str| s.get(k).and_then(Value::as_i64).unwrap_or(0);
     let url = text("url_resolved");
     let codec = text("codec").to_ascii_uppercase();
-    let opus = format!("{} {}", text("name"), url).to_ascii_lowercase().contains("opus");
     let pieces = num("hls") == 1;
     num("lastcheckok") == 1
         && (url.starts_with("http://") || url.starts_with("https://"))
         && match codec.as_str() {
             "MP3" | "AAC" | "AAC+" => true,
-            "OGG" => !opus && !pieces,
+            "OGG" | "OPUS" => !pieces,
             "UNKNOWN" => pieces,
             _ => false,
         }
@@ -266,12 +265,12 @@ mod tests {
         let none = Default::default();
         let got: Vec<String> = keep_playable(vec![list.clone()], 10, &none).into_iter().map(|s| s.name).collect();
         // most listened first, each stream once; pieces (HLS) too, even unnamed
-        assert_eq!(got, ["Pieces", "Vorbis FM", "Plus", "Jazz"]);
+        assert_eq!(got, ["Pieces", "Jazz HD Opus", "Vorbis FM", "Plus", "Jazz"]);
         let unnamed = |hls| keep_playable(vec![vec![s("UNKNOWN", hls, 1, "U", "http://a/u", 1)]], 1, &none).len();
         assert_eq!((unnamed(1), unnamed(0)), (1, 0));
         // one whose server turned us away: left out
         let refused = ["http://a/vorbis".to_string()].into_iter().collect();
         let got: Vec<String> = keep_playable(vec![list], 10, &refused).into_iter().map(|s| s.name).collect();
-        assert_eq!(got, ["Pieces", "Plus", "Jazz"]);
+        assert_eq!(got, ["Pieces", "Jazz HD Opus", "Plus", "Jazz"]);
     }
 }

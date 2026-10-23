@@ -63,6 +63,9 @@ md-5 = "0.10"
 # AAC with HE-AAC's high band and stereo (decoding.rs): symphonia plays only
 # the core, so AAC+ stations sounded dull
 rusty_aac = "1.1"
+# Opus files and stations (decoding.rs): symphonia reads Ogg Opus but has no
+# decoder for it; this one is pure Rust
+opus-decoder = "0.1.1"
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 discord-rich-presence = "0.2"
 
