@@ -51,8 +51,11 @@
   // idle | loading | ok | none
   let status = $state("idle");
 
-  /** @type {string | null} */
+  /** The song shown: its Spotify uri, or the key of an own song or a radio
+   * song (lyrics from LRCLIB). @type {string | null} */
   let curUri = null;
+  /** A radio song can't be jumped in. */
+  let seekable = $state(true);
   let posMs = $state(0);
   let playing = false;
   let anchorMs = 0;
@@ -79,9 +82,14 @@
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   });
 
-  /** @param {string | null} uri */
-  async function loadLyrics(uri) {
-    if (!uri) {
+  /**
+   * @param {string | null} uri a Spotify song's
+   * @param {{ key: string, artist: string, title: string, durationMs: number } | null} song
+   *   an own song or a radio song, by its name
+   */
+  async function loadLyrics(uri, song) {
+    const key = uri ?? song?.key ?? null;
+    if (!key) {
       status = "none";
       lines = [];
       return;
@@ -89,14 +97,16 @@
     status = "loading";
     lines = [];
     try {
-      const data = await invoke("get_lyrics", { uri });
-      if (uri !== curUri) return; // switched away mid-fetch
+      const data = uri
+        ? await invoke("get_lyrics", { uri })
+        : await invoke("get_lyrics_lrclib", { artist: song?.artist, title: song?.title, durationMs: song?.durationMs ?? 0 });
+      if (key !== curUri) return; // switched away mid-fetch
       lines = data.lines;
       synced = data.synced;
       provider = data.provider;
       status = lines.length ? "ok" : "none";
     } catch (e) {
-      if (uri === curUri) {
+      if (key === curUri) {
         lines = [];
         status = "none";
       }
@@ -124,9 +134,11 @@
       anchorAt = performance.now();
       playing = e.playing;
       if (!playing) posMs = e.positionMs;
-      if (e.uri !== curUri) {
-        curUri = e.uri;
-        loadLyrics(e.uri);
+      const key = e.uri ?? e.song?.key ?? null;
+      if (key !== curUri) {
+        curUri = key;
+        seekable = !e.song?.live;
+        loadLyrics(e.uri, e.song ?? null);
       }
     }).then((u) => (unsub = u));
 
@@ -143,7 +155,7 @@
   // player's next tick.
   /** @param {number} timeMs */
   function jumpTo(timeMs) {
-    if (!synced || !curUri) return;
+    if (!synced || !curUri || !seekable) return;
     emitWindowEvent("lyricsSeek", { uri: curUri, positionMs: timeMs });
     anchorMs = timeMs;
     anchorAt = performance.now();
@@ -203,9 +215,9 @@
           class="lyr-line"
           class:active={i === activeIndex}
           class:past={synced && i < activeIndex}
-          class:seekable={synced}
+          class:seekable={synced && seekable}
           data-i={i}
-          title={synced ? "Click to jump here" : undefined}
+          title={synced && seekable ? "Click to jump here" : undefined}
           onclick={() => jumpTo(line.time_ms)}
         >
           {line.text || "♪"}

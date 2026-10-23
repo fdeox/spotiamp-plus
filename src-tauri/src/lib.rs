@@ -36,6 +36,7 @@ mod lists;
 mod local_library;
 mod local_player;
 mod loopback;
+mod lrclib;
 mod lyrics_window;
 mod oauth;
 mod player_window;
@@ -620,6 +621,7 @@ pub fn run() {
             player_window::get_liked_songs,
             player_window::get_radio,
             player_window::get_lyrics,
+            lrclib::get_lyrics_lrclib,
             player_window::play,
             player_window::pause,
             player_window::stop,

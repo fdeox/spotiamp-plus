@@ -28,6 +28,9 @@ operating it, except for the following:
   stay right.
 - **Internet radio stations** you play (from the Library or with Ctrl+L):
   Spotiamp+ connects to that station's own server to play it.
+- **LRCLIB** (lrclib.net), a free lyrics database, for the Lyrics window when
+  one of your own songs or a radio song plays: its artist and title, to find
+  its lyrics. Spotify songs get Spotify's own lyrics.
 
 ## What stays on your computer
 

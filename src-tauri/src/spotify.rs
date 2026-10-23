@@ -583,7 +583,7 @@ pub enum PlayError {
 // ---------------------------------------------------------------------------
 
 /// One line of lyrics sent to the frontend (start time + text).
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 pub struct LyricsLine {
     pub time_ms: u32,
     pub text: String,
@@ -591,7 +591,7 @@ pub struct LyricsLine {
 
 /// Lyrics for a track. `synced` = the provider gave per-line timestamps, so the
 /// frontend can highlight/scroll in time with playback.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 pub struct LyricsData {
     pub synced: bool,
     pub provider: String,

@@ -778,6 +778,7 @@
             }
           })();
           const known = loadedTrack.stationName && loadedTrack.stationName !== host;
+          if (title && title !== loadedTrack.songTitle) radioSongAt = seekPosition;
           const stationName = (known ? loadedTrack.stationName : station || loadedTrack.stationName) || "";
           loadedTrack = /** @type {any} */ ({
             ...loadedTrack,
@@ -927,6 +928,24 @@
     }
   }
 
+  // When the station named the song playing now (its lyrics are timed from there).
+  let radioSongAt = 0;
+  /**
+   * An own song or a radio song, by name, for its lyrics from LRCLIB (0.7.9):
+   * a file's tags, or a station's "Artist - Title". Null for a Spotify song
+   * (Spotify's own lyrics) and for anything without both names.
+   */
+  function lyricsSong() {
+    const t = loadedTrack;
+    if (!t?.isLocal) return null;
+    if (t.isStream) {
+      const m = /^(.+?)\s+-\s+(.+)$/.exec(t.songTitle ?? "");
+      return m ? { key: `radio:${t.songTitle}`, artist: m[1].trim(), title: m[2].trim(), durationMs: 0, live: true } : null;
+    }
+    if (!t.artist || !t.name) return null;
+    return { key: `file:${t.path ?? t.name}`, artist: t.artist, title: t.name, durationMs: t.durationInMs ?? 0, live: false };
+  }
+
   function pushDiscordPresence() {
     const track = loadedTrack;
     if (playerState !== "playing" || !track?.name) {
@@ -1063,10 +1082,14 @@
       // rather than let those windows show the previous song's words/cover.
       const nowUri = loadedTrack?.isLocal ? null : currentTrackUri;
       // feed the lyrics window the current track + position each tick; it
-      // interpolates locally between ticks for smooth line highlighting
+      // interpolates locally between ticks for smooth line highlighting. An
+      // own song or a radio song goes by its name (lyrics from LRCLIB); a
+      // radio song's time counts from when the station named it.
+      const song = lyricsSong();
       emitWindowEvent("lyrics", {
         uri: nowUri,
-        positionMs: Math.round(seekPosition),
+        song,
+        positionMs: Math.round(song?.live ? seekPosition - radioSongAt : seekPosition),
         playing: playerState == "playing",
       });
       // and the album-art window the current track; it fetches the cover on a
@@ -1159,7 +1182,7 @@
     // seek in).
     const lyricsSeekSubscription = subscribeToWindowEvent("lyricsSeek", (e) => {
       const nowUri = loadedTrack?.isLocal ? null : currentTrackUri;
-      if (!e.uri || e.uri !== nowUri) return;
+      if (!e.uri || e.uri !== (nowUri ?? lyricsSong()?.key)) return;
       if (playerState != "playing" && playerState != "paused") return;
       seek(Math.max(0, e.positionMs));
     });
