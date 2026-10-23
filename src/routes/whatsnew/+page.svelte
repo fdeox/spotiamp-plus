@@ -13,6 +13,15 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.9": [
+      "<b>Lyrics for your own songs and radio songs</b> 🎤 Songs from your music folders and the ones a radio station plays get their lyrics too, in time with the music, from LRCLIB, a free and open lyrics database (Spotify songs keep Spotify's own). A file needs its artist and title tags; a station needs to name its songs.",
+      "<b>Opus</b> plays: .opus files, and Opus radio stations, so the Library's Radio lists those too.",
+      "<b>Global hotkeys</b>, Winamp's own: Ctrl+Alt with Insert, Home and End plays, pauses and stops, Page Up and Page Down go to the previous and next song, and the arrows change the volume and jump 5 seconds, from any program. Turn them on under <i>Windows</i>, <i>Global hotkeys</i>.",
+      "<b>Last.fm</b>: the songs you love (♡) can be loved on Last.fm too. Right-click, <i>Last.fm</i>, <i>Love songs there too</i>.",
+      "The <b>Cherry, Amber and Emerald</b> skins: the volume and balance are in the skin's own colour now, dark when quiet and bright when loud, instead of a rainbow of colours (and the balance was a solid block).",
+      "Every window's titlebar is lit, like the player's: the Library, lyrics, visualizer and album art looked faded whenever another window had the focus.",
+      "Fixed: windows cut off on the right and at the bottom when Windows' text size (Accessibility) is above 100%; a radio station's time on Discord stood still instead of counting up.",
+    ],
     "0.7.8": [
       "<b>Local Media</b> in the Library 🎵 Add your music folders once (right-click <i>Local Media</i>, <i>Add a folder…</i>) and every song in them is there, with its artist, album and length, to sort, filter as you type, and play or drag into the playlist like the rest. New files show up by themselves. In <b>Free Mode</b> too: the Library opens there with Local Media (and <b>L</b> or the menu opens it).",
       "<b>Radio</b> in the Library 📻 Search thousands of stations by name or genre, see the most listened ones (everywhere, or in your country), and find the ones you've played under <i>Your stations</i>. Only stations Spotiamp+ can really play are listed.",
