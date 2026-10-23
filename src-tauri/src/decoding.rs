@@ -53,6 +53,9 @@ pub(crate) enum Source {
         /// the start, a little warm-up after a seek.
         skip: usize,
         pcm: Vec<f32>,
+        /// Where its times begin: 0 in a file from an encoder, far on in a
+        /// recorded stream (symphonia's seek by time doesn't add it).
+        start_ts: u64,
     },
 }
 
@@ -77,7 +80,8 @@ impl Source {
             let decoder = OpusDecoder::new(&head)?;
             let pcm = vec![0.0; OPUS_MAX_FRAME * head.channels];
             let skip = head.pre_skip;
-            return Ok(Source::Opus { format, track_id: track.id, decoder, head, skip, pcm });
+            let start_ts = params.start_ts;
+            return Ok(Source::Opus { format, track_id: track.id, decoder, head, skip, pcm, start_ts });
         }
         let decoder = symphonia::default::get_codecs()
             .make(params, &DecoderOptions::default())
@@ -136,7 +140,7 @@ impl Source {
                 Some(frame) => aac(decoder.decode(&frame, None), out),
                 None => Next::End,
             },
-            Source::Opus { format, track_id, decoder, head, skip, pcm } => loop {
+            Source::Opus { format, track_id, decoder, head, skip, pcm, .. } => loop {
                 let Ok(packet) = format.next_packet() else { return Next::End };
                 if packet.track_id() != *track_id {
                     continue;
@@ -176,8 +180,9 @@ impl Source {
                 *frames = fresh;
                 *decoder = rusty_aac::AacDecoder::new();
             }
-            Source::Opus { format, track_id, decoder, head, skip, .. } => {
-                let _ = format.seek(SeekMode::Accurate, to(*track_id));
+            Source::Opus { format, track_id, decoder, head, skip, start_ts, .. } => {
+                let ts = *start_ts + ms as u64 * 48;
+                let _ = format.seek(SeekMode::Accurate, SeekTo::TimeStamp { ts, track_id: *track_id });
                 decoder.reset();
                 // Opus needs 80 ms to settle after a jump (RFC 7845)
                 *skip = if ms == 0 { head.pre_skip } else { 3840 };
