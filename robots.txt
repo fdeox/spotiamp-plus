@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://fdeox.github.io/spotiamp-plus/sitemap.xml

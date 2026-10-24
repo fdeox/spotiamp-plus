@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotiamp+: Winamp, playing Spotify</title>
+  <meta name="description" content="Spotiamp+ is a free, open source Winamp-style player for Spotify on Windows: real Winamp skins, the 10-band equalizer, MilkDrop visuals, your own music, internet radio and Last.fm.">
+  <link rel="canonical" href="https://fdeox.github.io/spotiamp-plus/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Spotiamp+: Winamp, playing Spotify">
+  <meta property="og:description" content="Real Winamp skins, the equalizer, MilkDrop and full keyboard control for Spotify. Free and open source.">
+  <meta property="og:url" content="https://fdeox.github.io/spotiamp-plus/">
+  <meta property="og:image" content="https://fdeox.github.io/spotiamp-plus/assets/social.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#08080a">
+  <link rel="icon" href="assets/icon-64.png">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="top">
+    <a class="brand" href="#"><img src="assets/icon-64.png" alt="" width="28" height="28"><span>Spotiamp<b>+</b></span></a>
+    <span class="links">
+      <a href="#skins">Skins</a>
+      <a href="#milkdrop">MilkDrop</a>
+      <a href="#music">Your music</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/fdeox/spotiamp-plus">GitHub</a>
+      <a class="button small" href="https://github.com/fdeox/spotiamp-plus/releases/latest">Download</a>
+    </span>
+  </nav>
+
+  <header class="hero">
+    <canvas class="spectrum" aria-hidden="true"></canvas>
+    <div class="hero-text">
+      <p class="pill">Free · Open source · Windows 10 and 11</p>
+      <h1>Winamp, <span class="grad">playing Spotify.</span></h1>
+      <p class="lead">Real Winamp skins, the 10-band equalizer, MilkDrop and full keyboard control, for your Spotify. The music plays in the app itself: no web player, no browser tab.</p>
+      <div class="cta">
+        <a class="button big" href="https://github.com/fdeox/spotiamp-plus/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16" /></svg>
+          Download for Windows
+        </a>
+        <a class="button ghost big" href="https://github.com/fdeox/spotiamp-plus">View on GitHub</a>
+      </div>
+      <p class="meta"><span class="version">v0.7.8</span> · free · MIT license · <a href="https://discord.gg/8Rq5Xycny4">join the Discord</a></p>
+    </div>
+    <figure class="screen" aria-label="Spotiamp+ in its skins">
+      <div class="screen-glow" aria-hidden="true"></div>
+      <img class="shot on" src="assets/skin-spotiamp.webp" alt="Spotiamp+ in its own skin, every window open" width="1090" height="748">
+      <figcaption><span class="lcd">SPOTIAMP+</span></figcaption>
+    </figure>
+  </header>
+
+  <section class="strip" aria-label="In short">
+    <div><b>11</b><span>skins built in</span></div>
+    <div><b>1000s</b><span>more in the Skin Museum</span></div>
+    <div><b>534</b><span>MilkDrop presets</span></div>
+    <div><b>10</b><span>band equalizer</span></div>
+    <div><b>0 €</b><span>forever, open source</span></div>
+  </section>
+
+  <section id="skins" class="section">
+    <div class="head">
+      <p class="kicker">Skins</p>
+      <h2>Every classic Winamp skin. <span class="grad">Every window.</span></h2>
+      <p>Eleven come with it. Thousands more are one click away in the built-in Skin Museum, and any Winamp 2 skin (<code>.wsz</code>) you have works too. Skins dress every window, the Library included: their cursors, their window shapes, their titlebars and fonts.</p>
+    </div>
+    <div class="skin-picker">
+      <div class="chips" role="tablist" aria-label="Pick a skin">
+        <button class="chip on" data-skin="spotiamp" role="tab" aria-selected="true">Spotiamp+</button>
+        <button class="chip" data-skin="classic" role="tab">Classic</button>
+        <button class="chip" data-skin="bento" role="tab">Bento Classified</button>
+        <button class="chip" data-skin="winamp3" role="tab">Winamp3 Classified</button>
+        <button class="chip" data-skin="winamp5" role="tab">Winamp5 Classified</button>
+        <button class="chip" data-skin="nucleo" role="tab">Nucleo NLog</button>
+        <button class="chip" data-skin="sonycdx" role="tab">Sony CDX-MP3</button>
+        <button class="chip" data-skin="esprit" role="tab">Sony Esprit V2</button>
+        <button class="chip" data-skin="cherry" role="tab">Cherry</button>
+        <button class="chip" data-skin="amber" role="tab">Amber</button>
+        <button class="chip" data-skin="emerald" role="tab">Emerald</button>
+      </div>
+      <figure class="skin-view">
+        <img src="assets/skin-spotiamp.webp" alt="Spotiamp+ in the Spotiamp+ skin" width="1090" height="748" loading="lazy">
+      </figure>
+      <p class="credit">The Classified skins are by Victhor; the Sony and Nucleo skins by their authors. All rights stay with them.</p>
+    </div>
+  </section>
+
+  <section id="milkdrop" class="section split">
+    <div class="media">
+      <img src="assets/milkdrop.webp" alt="MilkDrop moving with the music, full screen" width="480" height="291" loading="lazy">
+    </div>
+    <div class="text">
+      <p class="kicker">MilkDrop</p>
+      <h2>The visuals you remember, <span class="grad">for real.</span></h2>
+      <p>Real MilkDrop presets, drawn by projectM and moving with every beat. <b>534 presets</b> come with it, 183 of them by Incubo, among them takes on Spotiamp+'s own patterns. Press <kbd>M</kbd> in the visualizer, double-click for full screen, heart your favourites, or drop in your own <code>.milk</code> files.</p>
+      <p>Prefer something lighter? The visualizer has its own patterns too, and the main window's spectrum is drawn the Winamp way, in the skin's own colours.</p>
+    </div>
+  </section>
+
+  <section id="lala" class="section lala">
+    <div class="head">
+      <p class="kicker">Meet Lala</p>
+      <h2>A little llama <span class="grad">lives on your player.</span></h2>
+      <p>She dances to the beat, naps when the music stops, cheers for new badges and pops over to your other windows when she's bored. Your listening badges open 20 outfits for her, and on Halloween and over the New Year she wears a costume.</p>
+    </div>
+    <img class="lala-strip" src="assets/lala.webp" alt="Lala dancing in her outfits" width="1269" height="273" loading="lazy">
+  </section>
+
+  <section id="music" class="section">
+    <div class="head">
+      <p class="kicker">Your music</p>
+      <h2>Spotify, your own files <span class="grad">and the radio.</span></h2>
+    </div>
+    <div class="cards three">
+      <article class="card">
+        <h3>Spotify</h3>
+        <p>Premium plays right in Spotiamp+. A Free account gets Free Mode: Spotiamp+ becomes the Winamp face of the Spotify app and drives it. Your playlists, Liked Songs and search are all in the Library.</p>
+      </article>
+      <article class="card">
+        <h3>Local Media</h3>
+        <p>Add your music folders once and every song is in the Library, with artist, album and length, to sort and filter as you type. MP3, FLAC, M4A, WAV and OGG, next to your Spotify songs.</p>
+      </article>
+      <article class="card">
+        <h3>Internet radio</h3>
+        <p>Thousands of stations by name or genre, the most listened ones near you, and any stream link with <kbd>Ctrl</kbd>+<kbd>L</kbd>. AAC+ and HLS in full quality, through the EQ and the visualizers.</p>
+      </article>
+    </div>
+    <div class="shots two">
+      <img src="assets/library-local.webp" alt="Local Media in the Library" loading="lazy">
+      <img src="assets/library-radio.webp" alt="The Library's Radio" loading="lazy">
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="head">
+      <p class="kicker">And the rest</p>
+      <h2>Everything Winamp did, <span class="grad">and then some.</span></h2>
+    </div>
+    <div class="cards">
+      <article class="card icon"><div class="ico eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <h3>The equalizer</h3><p>Ten bands and a preamp, presets, Winamp's own <code>.eqf</code> files, and AUTO: a curve for a song or an artist comes back whenever they play.</p></article>
+      <article class="card icon"><div class="ico" aria-hidden="true">♪</div>
+        <h3>Synced lyrics</h3><p>The words light up as they're sung, in their own window, in three sizes. Click a line to jump there.</p></article>
+      <article class="card icon"><div class="ico" aria-hidden="true">◎</div>
+        <h3>Last.fm</h3><p>What you play goes on your Last.fm profile. Without internet the scrobbles wait and go later.</p></article>
+      <article class="card icon"><div class="ico" aria-hidden="true">✦</div>
+        <h3>Listening stats</h3><p>Your top songs and artists, badges to earn, streaks, and a Rewind of your year every December.</p></article>
+      <article class="card icon"><div class="ico" aria-hidden="true">◐</div>
+        <h3>On Discord</h3><p>Your friends see what you're playing, with its cover. A radio station shows as one, with its name.</p></article>
+      <article class="card icon"><div class="ico" aria-hidden="true">↻</div>
+        <h3>Updates itself</h3><p>A new version shows up as a button when you open it. One click, and your settings and layout stay.</p></article>
+    </div>
+  </section>
+
+  <section class="section keys-section">
+    <div class="head">
+      <p class="kicker">Your hands remember</p>
+      <h2>The keys you learned <span class="grad">in 1999.</span></h2>
+    </div>
+    <div class="keys">
+      <div class="key"><kbd>Z</kbd><span>Previous</span></div>
+      <div class="key"><kbd>X</kbd><span>Play</span></div>
+      <div class="key"><kbd>C</kbd><span>Pause</span></div>
+      <div class="key"><kbd>V</kbd><span>Stop</span></div>
+      <div class="key"><kbd>B</kbd><span>Next</span></div>
+    </div>
+    <p class="keys-more">Arrows for volume and seeking, <kbd>J</kbd> to find a song, <kbd>Ctrl</kbd>+<kbd>D</kbd> for double size, and <kbd>F1</kbd> for every key.</p>
+  </section>
+
+  <section id="faq" class="section faq">
+    <div class="head">
+      <p class="kicker">Questions</p>
+      <h2>Good to know</h2>
+    </div>
+    <details><summary>Do I need Spotify Premium?</summary><p>For Spotiamp+ to play the music itself, yes: that only works with Premium. A Free account gets Free Mode, where Spotiamp+ drives the official Spotify app (keep it open) and the Winamp windows show and control what it plays. Your own files and the radio work either way.</p></details>
+    <details><summary>Windows says it protected my PC. Is it safe?</summary><p>Spotiamp+ isn't code-signed (certificates are costly), so SmartScreen warns about any new download like it. Click <b>More info</b>, then <b>Run anyway</b>. The whole source is open on GitHub, and every release is built from it.</p></details>
+    <details><summary>Does it see my Spotify password?</summary><p>No. You log in on Spotify's own page in your browser, and Spotiamp+ only gets a token. Nothing about you is sent anywhere else: see the <a href="https://github.com/fdeox/spotiamp-plus/blob/main/PRIVACY.md">privacy policy</a>.</p></details>
+    <details><summary>Is this made by Spotify or Winamp?</summary><p>No. Spotiamp+ is an independent, open source project, not affiliated with or endorsed by Spotify or Winamp. It grew out of Ted Steen's <a href="https://github.com/tedsteen/Spotiamp">Spotiamp</a>.</p></details>
+    <details><summary>Mac, Linux, phones?</summary><p>Windows 10 and 11 (64-bit) for now.</p></details>
+    <details><summary>Something doesn't work. What now?</summary><p>Come say hi on <a href="https://discord.gg/8Rq5Xycny4">Discord</a> or open an <a href="https://github.com/fdeox/spotiamp-plus/issues">issue on GitHub</a>, with your Spotiamp+ and Windows versions.</p></details>
+  </section>
+
+  <section class="final">
+    <img src="assets/icon-192.png" alt="" width="96" height="96" loading="lazy">
+    <h2>Boost your music.</h2>
+    <p>Free, open source, and a few seconds to install.</p>
+    <div class="cta">
+      <a class="button big" href="https://github.com/fdeox/spotiamp-plus/releases/latest">Download Spotiamp+</a>
+      <a class="button ghost big" href="https://discord.gg/8Rq5Xycny4">Join the Discord</a>
+    </div>
+  </section>
+
+  <footer>
+    <p>Spotiamp+ is free software under the MIT license, made by <a href="https://github.com/fdeox">fdeox</a>. MilkDrop by projectM, presets by their authors and Incubo.</p>
+    <p class="small">Not affiliated with or endorsed by Spotify AB or Winamp. Spotify is a trademark of Spotify AB.</p>
+    <p class="small"><a href="https://github.com/fdeox/spotiamp-plus">GitHub</a> · <a href="https://discord.gg/8Rq5Xycny4">Discord</a> · <a href="https://github.com/fdeox/spotiamp-plus/blob/main/PRIVACY.md">Privacy</a></p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
