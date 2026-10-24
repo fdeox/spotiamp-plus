@@ -26,7 +26,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *   player: { event: { Paused: { uri: string, position_ms: number }, Playing: { uri: string, position_ms: number }, Stopped: { uri: string }, EndOfTrack: { uri: string }, Unavailable: { uri: string }, PositionCorrection: { uri: string, position_ms: number }, PositionChanged: { uri: string, position_ms: number }, Seeked: { uri: string, position_ms: number } } },
  *   trackPosition: { event: { index: number, length: number } },
  *   lyrics: { event: { uri: string | null, positionMs: number, playing: boolean,
- *     song: { key: string, artist: string, title: string, durationMs: number, live: boolean } | null } },
+ *     song: { key: string, artist: string, title: string, durationMs: number, live: boolean, timed?: boolean } | null } },
  *   uiScale: { event: { scale: number } },
  *   art: { event: { uri: string | null, playing: boolean, title: string } },
  *   lyricsSeek: { event: { uri: string, positionMs: number } },

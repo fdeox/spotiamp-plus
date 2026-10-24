@@ -14,7 +14,7 @@
   /** @type {Record<string, string[]>} */
   const NOTES = {
     "0.7.9": [
-      "<b>Lyrics for your own songs and radio songs</b> 🎤 Songs from your music folders and the ones a radio station plays get their lyrics too, in time with the music, from LRCLIB, a free and open lyrics database (Spotify songs keep Spotify's own). A file needs its artist and title tags; a station needs to name its songs.",
+      "<b>Lyrics for your own songs and radio songs</b> 🎤 Songs from your music folders and the ones a radio station plays get their lyrics too, in time with the music, from LRCLIB, a free and open lyrics database (Spotify songs keep Spotify's own). A file needs its artist and title tags; a station needs to name its songs. A station's words run from when it names the song: tuned in halfway, or out of time? Click the line being sung and they follow from there.",
       "<b>Opus</b> plays: .opus files, and Opus radio stations, so the Library's Radio lists those too.",
       "<b>Global hotkeys</b>, Winamp's own: Ctrl+Alt with Insert, Home and End plays, pauses and stops, Page Up and Page Down go to the previous and next song, and the arrows change the volume and jump 5 seconds, from any program. Turn them on under <i>Windows</i>, <i>Global hotkeys</i>.",
       "<b>Last.fm</b>: the songs you love (♡) can be loved on Last.fm too. Right-click, <i>Last.fm</i>, <i>Love songs there too</i>.",

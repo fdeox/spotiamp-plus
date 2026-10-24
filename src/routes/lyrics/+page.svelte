@@ -56,6 +56,9 @@
   let curUri = null;
   /** A radio song can't be jumped in. */
   let seekable = $state(true);
+  /** Whether a radio song's start is known (not for the one playing at
+   * tune-in, until a click on the line being sung). */
+  let inTime = $state(true);
   let posMs = $state(0);
   let playing = false;
   let anchorMs = 0;
@@ -65,7 +68,7 @@
 
   // last line whose start time has passed (only meaningful for synced lyrics)
   const activeIndex = $derived.by(() => {
-    if (!synced || status !== "ok") return -1;
+    if (!synced || !inTime || status !== "ok") return -1;
     let idx = -1;
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].time_ms <= posMs + 250) idx = i;
@@ -134,6 +137,7 @@
       anchorAt = performance.now();
       playing = e.playing;
       if (!playing) posMs = e.positionMs;
+      inTime = !e.song?.live || Boolean(e.song?.timed);
       const key = e.uri ?? e.song?.key ?? null;
       if (key !== curUri) {
         curUri = key;
@@ -150,16 +154,18 @@
 
   const close = () => invoke("set_lyrics_window_visible", { visible: false });
 
-  // Click a line of synced lyrics to jump the song there. The position moves
-  // here straight away so the highlight follows without waiting for the
-  // player's next tick.
+  // Click a line of synced lyrics to jump the song there; a radio song's,
+  // to say it's the one being sung now (the player times the words from
+  // there). The position moves here straight away so the highlight follows
+  // without waiting for the player's next tick.
   /** @param {number} timeMs */
   function jumpTo(timeMs) {
-    if (!synced || !curUri || !seekable) return;
+    if (!synced || !curUri) return;
     emitWindowEvent("lyricsSeek", { uri: curUri, positionMs: timeMs });
     anchorMs = timeMs;
     anchorAt = performance.now();
     posMs = timeMs;
+    inTime = true;
   }
 
   /** @param {HTMLElement} element */
@@ -209,15 +215,18 @@
     {:else if status === "none"}
       <div class="lyr-msg">No lyrics for this track.</div>
     {:else}
+      {#if synced && !inTime}
+        <div class="lyr-hint">Click the line being sung to follow along</div>
+      {/if}
       {#each lines as line, i}
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div
           class="lyr-line"
           class:active={i === activeIndex}
           class:past={synced && i < activeIndex}
-          class:seekable={synced && seekable}
+          class:seekable={synced}
           data-i={i}
-          title={synced && seekable ? "Click to jump here" : undefined}
+          title={synced ? (seekable ? "Click to jump here" : "Out of time? Click the line being sung") : undefined}
           onclick={() => jumpTo(line.time_ms)}
         >
           {line.text || "♪"}
@@ -406,6 +415,12 @@
     margin-top: 14px;
     font-size: calc(8px * var(--px-crisp, 1));
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 35%, transparent);
+  }
+
+  .lyr-hint {
+    margin-bottom: 10px;
+    font-size: calc(8px * var(--px-crisp, 1));
+    color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 60%, transparent);
   }
 
   /* bottom-right resize grip */

@@ -17,7 +17,9 @@ const API: &str = "https://lrclib.net/api/search";
 static FOUND: LazyLock<Mutex<HashMap<String, Option<LyricsData>>>> = LazyLock::new(Default::default);
 
 /// Lyrics for `artist` - `title`; `duration_ms` (0 when unknown, as for a
-/// radio song) picks the version that's the same length.
+/// radio song) picks the version that's the same length. Not found as named,
+/// they're asked for once more by the plain names (first artist, title
+/// without brackets): stations send "BENGÜ FEAT. MUSTAFA CECELİ - KERVAN".
 #[tauri::command]
 pub async fn get_lyrics_lrclib(artist: String, title: String, duration_ms: u32) -> Result<LyricsData, String> {
     let key = format!("{}\u{1}{}\u{1}{}", artist.to_lowercase(), title.to_lowercase(), duration_ms / 1000);
@@ -29,10 +31,25 @@ pub async fn get_lyrics_lrclib(artist: String, title: String, duration_ms: u32) 
         .user_agent(concat!("Spotiamp+/", env!("CARGO_PKG_VERSION"), " (https://github.com/fdeox/spotiamp-plus)"))
         .build()
         .map_err(|e| e.to_string())?;
+    let mut found = lookup(&client, &artist, &title, duration_ms).await?;
+    let (plain_artist, plain_title) = plain_names(&artist, &title);
+    if found.is_none() && (plain_artist != artist || plain_title != title) {
+        found = lookup(&client, &plain_artist, &plain_title, duration_ms).await?;
+    }
+    if let Ok(mut cache) = FOUND.lock() {
+        cache.insert(key, found.clone());
+    }
+    found.ok_or_else(|| "no lyrics".into())
+}
+
+/// One search. LRCLIB is often busy ("503, retry in a moment"): asked up to
+/// four times, 2, 4 and 8 s apart, then given up on without keeping the
+/// answer, so the song is asked about again when it comes back.
+async fn lookup(client: &reqwest::Client, artist: &str, title: &str, duration_ms: u32) -> Result<Option<LyricsData>, String> {
     let ask = || async {
         let text = client
             .get(API)
-            .query(&[("artist_name", artist.as_str()), ("track_name", title.as_str())])
+            .query(&[("artist_name", artist), ("track_name", title)])
             .send()
             .await
             .ok()?
@@ -44,20 +61,46 @@ pub async fn get_lyrics_lrclib(artist: String, title: String, duration_ms: u32) 
             _ => None,
         }
     };
-    // an answer that isn't a list ("busy, retry in a moment") gets one more
-    // try, and isn't kept: the song is asked about again when it comes back
-    let results = match ask().await {
-        Some(results) => results,
-        None => {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            ask().await.ok_or("LRCLIB didn't answer")?
+    let mut wait = 2;
+    let results = loop {
+        if let Some(results) = ask().await {
+            break results;
         }
+        if wait > 8 {
+            return Err("LRCLIB didn't answer".into());
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        wait *= 2;
     };
-    let found = pick(&results, duration_ms).and_then(|(r, synced)| lyrics_of(r, synced));
-    if let Ok(mut cache) = FOUND.lock() {
-        cache.insert(key, found.clone());
+    Ok(pick(&results, duration_ms).and_then(|(r, synced)| lyrics_of(r, synced)))
+}
+
+/// The names as LRCLIB knows them: the first artist only ("Sibel Can /
+/// Eypio", "X feat. Y", "X & Y", "X, Y", "X x Y") and the title without what's
+/// in brackets ("(Radio Edit)", "[Live]") or a "feat." of its own.
+fn plain_names(artist: &str, title: &str) -> (String, String) {
+    // the separators are ASCII, so a lowercase copy keeps every byte offset
+    let cut = |text: &str, marks: &[&str]| {
+        let lower = text.to_ascii_lowercase();
+        let at = marks.iter().filter_map(|m| lower.find(m)).min().unwrap_or(text.len());
+        text[..at].trim().to_string()
+    };
+    const FEAT: [&str; 6] = [" feat.", " feat ", " ft.", " ft ", " featuring ", " (feat"];
+    let mut artist_marks = FEAT.to_vec();
+    artist_marks.extend([" / ", " & ", ", ", " x ", " vs. ", " vs "]);
+    let artist = cut(artist, &artist_marks);
+    let mut bare = String::new();
+    let mut depth = 0;
+    for c in title.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' if depth > 0 => depth -= 1,
+            _ if depth == 0 => bare.push(c),
+            _ => {}
+        }
     }
-    found.ok_or_else(|| "no lyrics".into())
+    let title = cut(&bare, &FEAT);
+    (artist, title.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
 /// The version to use, and whether in time: with a known length, the synced
@@ -148,6 +191,17 @@ mod tests {
         let lines = parse_lrc("[ar:Someone]\n[00:32.71] I'm holding on\n[00:10.5][01:02.003]Again\n[00:40]\nnot a line");
         let got: Vec<(u32, &str)> = lines.iter().map(|l| (l.time_ms, l.text.as_str())).collect();
         assert_eq!(got, [(10_500, "Again"), (32_710, "I'm holding on"), (40_000, ""), (62_003, "Again")]);
+    }
+
+    #[test]
+    fn plain_names_as_stations_send_them() {
+        let got = |a: &str, t: &str| plain_names(a, t);
+        let pair = |a: &str, t: &str| (a.to_string(), t.to_string());
+        assert_eq!(got("BENGÜ FEAT. MUSTAFA CECELİ", "KERVAN"), pair("BENGÜ", "KERVAN"));
+        assert_eq!(got("Sibel Can / Eypio", "Kiyamam"), pair("Sibel Can", "Kiyamam"));
+        assert_eq!(got("Tarkan", "Şımarık (Radio Edit) [2024]"), pair("Tarkan", "Şımarık"));
+        assert_eq!(got("Daft Punk", "Get Lucky feat. Pharrell Williams"), pair("Daft Punk", "Get Lucky"));
+        assert_eq!(got("intizar", "Nazar Boncuğum"), pair("intizar", "Nazar Boncuğum"));
     }
 
     #[test]

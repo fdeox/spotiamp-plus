@@ -778,7 +778,12 @@
             }
           })();
           const known = loadedTrack.stationName && loadedTrack.stationName !== host;
-          if (title && title !== loadedTrack.songTitle) radioSongAt = seekPosition;
+          if (title && title !== loadedTrack.songTitle) {
+            radioSongAt = seekPosition;
+            // the song a station is in the middle of when tuned in started
+            // who knows when: its words wait for a click on the line sung
+            radioSongTimed = seekPosition > 5000;
+          }
           const stationName = (known ? loadedTrack.stationName : station || loadedTrack.stationName) || "";
           loadedTrack = /** @type {any} */ ({
             ...loadedTrack,
@@ -930,6 +935,9 @@
 
   // When the station named the song playing now (its lyrics are timed from there).
   let radioSongAt = 0;
+  // Whether that's known: not for the song playing at tune-in, until a click
+  // on the line being sung in the Lyrics window.
+  let radioSongTimed = false;
   /**
    * An own song or a radio song, by name, for its lyrics from LRCLIB (0.7.9):
    * a file's tags, or a station's "Artist - Title". Null for a Spotify song
@@ -940,7 +948,9 @@
     if (!t?.isLocal) return null;
     if (t.isStream) {
       const m = /^(.+?)\s+-\s+(.+)$/.exec(t.songTitle ?? "");
-      return m ? { key: `radio:${t.songTitle}`, artist: m[1].trim(), title: m[2].trim(), durationMs: 0, live: true } : null;
+      return m
+        ? { key: `radio:${t.songTitle}`, artist: m[1].trim(), title: m[2].trim(), durationMs: 0, live: true, timed: radioSongTimed }
+        : null;
     }
     if (!t.artist || !t.name) return null;
     return { key: `file:${t.path ?? t.name}`, artist: t.artist, title: t.name, durationMs: t.durationInMs ?? 0, live: false };
@@ -1184,6 +1194,14 @@
       const nowUri = loadedTrack?.isLocal ? null : currentTrackUri;
       if (!e.uri || e.uri !== (nowUri ?? lyricsSong()?.key)) return;
       if (playerState != "playing" && playerState != "paused") return;
+      // a radio song can't be jumped in: the line clicked is the one being
+      // sung now, so its words are timed from there (a station names a song
+      // late, or a radio edit is shorter)
+      if (lyricsSong()?.live) {
+        radioSongAt = seekPosition - e.positionMs;
+        radioSongTimed = true;
+        return;
+      }
       seek(Math.max(0, e.positionMs));
     });
 
