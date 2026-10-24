@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://fdeox.github.io/spotiamp-plus/</loc></url>
+  <url><loc>https://fdeox.github.io/spotiamp-plus/</loc><lastmod>2026-10-24</lastmod></url>
+  <url><loc>https://fdeox.github.io/spotiamp-plus/winamp-for-spotify/</loc><lastmod>2026-10-24</lastmod></url>
+  <url><loc>https://fdeox.github.io/spotiamp-plus/spotify-winamp-skins/</loc><lastmod>2026-10-24</lastmod></url>
+  <url><loc>https://fdeox.github.io/spotiamp-plus/milkdrop-for-spotify/</loc><lastmod>2026-10-24</lastmod></url>
+  <url><loc>https://fdeox.github.io/spotiamp-plus/spotify-equalizer-windows/</loc><lastmod>2026-10-24</lastmod></url>
 </urlset>

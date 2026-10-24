@@ -16,6 +16,23 @@
   <link rel="icon" href="assets/icon-64.png">
   <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="stylesheet" href="style.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Spotiamp+",
+    "description": "A free, open source Winamp-style player for Spotify on Windows: real Winamp skins, a 10-band equalizer, MilkDrop visuals, your own music, internet radio and Last.fm.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Windows 10, Windows 11",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "downloadUrl": "https://github.com/fdeox/spotiamp-plus/releases/latest",
+    "url": "https://fdeox.github.io/spotiamp-plus/",
+    "image": "https://fdeox.github.io/spotiamp-plus/assets/skin-spotiamp.webp",
+    "screenshot": "https://fdeox.github.io/spotiamp-plus/assets/skin-classic.webp",
+    "license": "https://opensource.org/licenses/MIT",
+    "author": { "@type": "Person", "name": "fdeox", "url": "https://github.com/fdeox" }
+  }
+  </script>
 </head>
 <body>
   <nav class="top">
@@ -24,6 +41,7 @@
       <a href="#skins">Skins</a>
       <a href="#milkdrop">MilkDrop</a>
       <a href="#music">Your music</a>
+      <a href="#windows">Windows</a>
       <a href="#faq">FAQ</a>
       <a href="https://github.com/fdeox/spotiamp-plus">GitHub</a>
       <a class="button small" href="https://github.com/fdeox/spotiamp-plus/releases/latest">Download</a>
@@ -43,7 +61,7 @@
         </a>
         <a class="button ghost big" href="https://github.com/fdeox/spotiamp-plus">View on GitHub</a>
       </div>
-      <p class="meta"><span class="version">v0.7.8</span> · free · MIT license · <a href="https://discord.gg/8Rq5Xycny4">join the Discord</a></p>
+      <p class="meta"><span class="version">v0.7.8</span> · free · MIT license<span class="stars" hidden> · <a href="https://github.com/fdeox/spotiamp-plus/stargazers">★ <span class="star-count"></span> on GitHub</a></span> · <a href="https://discord.gg/8Rq5Xycny4">join the Discord</a></p>
     </div>
     <figure class="screen" aria-label="Spotiamp+ in its skins">
       <div class="screen-glow" aria-hidden="true"></div>
@@ -133,24 +151,47 @@
     </div>
   </section>
 
-  <section class="section">
+  <section id="windows" class="section">
     <div class="head">
-      <p class="kicker">And the rest</p>
-      <h2>Everything Winamp did, <span class="grad">and then some.</span></h2>
+      <p class="kicker">A closer look</p>
+      <h2>Every window, <span class="grad">just like you remember.</span></h2>
+      <p>Pixel for pixel, the way Winamp drew them, and each one docks to the others like it did.</p>
     </div>
-    <div class="cards">
-      <article class="card icon"><div class="ico eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <h3>The equalizer</h3><p>Ten bands and a preamp, presets, Winamp's own <code>.eqf</code> files, and AUTO: a curve for a song or an artist comes back whenever they play.</p></article>
-      <article class="card icon"><div class="ico" aria-hidden="true">♪</div>
-        <h3>Synced lyrics</h3><p>The words light up as they're sung, in their own window, in three sizes. Click a line to jump there.</p></article>
+    <div class="bento">
+      <article class="tile wide">
+        <img class="px" src="assets/win-player.webp" alt="The main window, in the Spotiamp+ skin" width="550" height="232" loading="lazy">
+        <div><h3>The main window</h3><p>The song scrolling in the skin's own letters, kbps and kHz, the spectrum or the oscilloscope, shuffle and repeat, a windowshade mode and <kbd>Ctrl</kbd>+<kbd>D</kbd> for double size.</p></div>
+      </article>
+      <article class="tile wide">
+        <img class="px" src="assets/win-eq.webp" alt="The 10-band equalizer" width="550" height="232" loading="lazy">
+        <div><h3>The equalizer</h3><p>Ten bands and a preamp, presets, Winamp's own <code>.eqf</code> files, and AUTO: a curve for a song or an artist comes back whenever they play.</p></div>
+      </article>
+      <article class="tile">
+        <img class="px" src="assets/win-art.webp" alt="The album art window" width="532" height="590" loading="lazy">
+        <div><h3>Album art</h3><p>The cover in a window of its own, square at any size.</p></div>
+      </article>
+      <article class="tile">
+        <img class="px" src="assets/win-visualizer.webp" alt="The visualizer window" width="532" height="390" loading="lazy">
+        <div><h3>The visualizer</h3><p>A hundred patterns of its own, and MilkDrop one key away. Double-click for full screen.</p></div>
+      </article>
+      <article class="tile">
+        <img class="px" src="assets/win-playlist.webp" alt="The playlist window" width="550" height="522" loading="lazy">
+        <div><h3>The playlist</h3><p>Drag songs in from anywhere, find one with <kbd>J</kbd>, queue one with <kbd>Q</kbd>, and save your lists.</p></div>
+      </article>
+      <article class="tile full">
+        <img class="px" src="assets/win-lyrics.webp" alt="The lyrics window" width="1074" height="112" loading="lazy">
+        <div><h3>Synced lyrics</h3><p>The words light up as they're sung, in three sizes. Click a line to jump there.</p></div>
+      </article>
+    </div>
+    <div class="cards four">
       <article class="card icon"><div class="ico" aria-hidden="true">◎</div>
-        <h3>Last.fm</h3><p>What you play goes on your Last.fm profile. Without internet the scrobbles wait and go later.</p></article>
+        <h3>Last.fm</h3><p>What you play goes on your Last.fm profile, even after a spell without internet.</p></article>
       <article class="card icon"><div class="ico" aria-hidden="true">✦</div>
-        <h3>Listening stats</h3><p>Your top songs and artists, badges to earn, streaks, and a Rewind of your year every December.</p></article>
+        <h3>Listening stats</h3><p>Your top songs and artists, badges, streaks, and a Rewind of your year.</p></article>
       <article class="card icon"><div class="ico" aria-hidden="true">◐</div>
-        <h3>On Discord</h3><p>Your friends see what you're playing, with its cover. A radio station shows as one, with its name.</p></article>
+        <h3>On Discord</h3><p>Friends see what you're playing, with its cover. Radio shows with the station's name.</p></article>
       <article class="card icon"><div class="ico" aria-hidden="true">↻</div>
-        <h3>Updates itself</h3><p>A new version shows up as a button when you open it. One click, and your settings and layout stay.</p></article>
+        <h3>Updates itself</h3><p>A new version shows up as a button. One click, and everything stays as it was.</p></article>
     </div>
   </section>
 
@@ -195,6 +236,7 @@
   <footer>
     <p>Spotiamp+ is free software under the MIT license, made by <a href="https://github.com/fdeox">fdeox</a>. MilkDrop by projectM, presets by their authors and Incubo.</p>
     <p class="small">Not affiliated with or endorsed by Spotify AB or Winamp. Spotify is a trademark of Spotify AB.</p>
+    <p class="small more"><a href="winamp-for-spotify/">Winamp for Spotify</a> · <a href="spotify-winamp-skins/">Winamp skins for Spotify</a> · <a href="milkdrop-for-spotify/">MilkDrop for Spotify</a> · <a href="spotify-equalizer-windows/">A Spotify equalizer for Windows</a></p>
     <p class="small"><a href="https://github.com/fdeox/spotiamp-plus">GitHub</a> · <a href="https://discord.gg/8Rq5Xycny4">Discord</a> · <a href="https://github.com/fdeox/spotiamp-plus/blob/main/PRIVACY.md">Privacy</a></p>
   </footer>
 

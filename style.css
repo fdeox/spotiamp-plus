@@ -260,6 +260,31 @@ h3 { margin: 0 0 8px; font-size: 19px; }
 .shots.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 .shots img { border-radius: 12px; border: 1px solid var(--line); }
 
+/* close-ups: the windows, pixel for pixel */
+.bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+.tile {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border-radius: var(--radius);
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 101, 18, 0.10), transparent 60%), linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.tile:hover { border-color: rgba(255, 101, 18, 0.45); transform: translateY(-2px); }
+.tile.wide { grid-column: span 3; }
+.tile.full { grid-column: span 6; }
+.tile img { width: 100%; max-width: 100%; margin: 0 auto; border-radius: 4px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); }
+.tile:not(.wide):not(.full) img { max-height: 300px; width: auto; }
+.tile p { margin: 0; color: var(--muted); font-size: 15.5px; }
+.px { image-rendering: pixelated; }
+.cards.four { grid-template-columns: repeat(4, 1fr); margin-top: 16px; }
+.meta .stars { color: var(--amber); }
+footer .more a { color: var(--muted); }
+footer .more a:hover { color: var(--text); }
+
 /* keys */
 .keys { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
 .key { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -293,6 +318,24 @@ footer { margin-top: 60px; padding: 32px 16px 48px; text-align: center; color: v
 footer p { margin: 6px 0; }
 footer .small { font-size: 13px; opacity: 0.8; }
 
+/* topic pages */
+.page-hero { max-width: 900px; margin: 0 auto; padding: 80px 16px 24px; text-align: center; }
+.page-hero .lead { margin-left: auto; margin-right: auto; }
+.page-hero .cta { justify-content: center; }
+.page-hero::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: 520px; background: radial-gradient(700px 360px at 50% 20%, rgba(255, 101, 18, 0.16), transparent 70%); }
+.prose { max-width: 820px; margin: 0 auto; padding: 24px 16px 0; }
+.prose h2 { font-size: clamp(26px, 3.2vw, 34px); margin-top: 56px; }
+.prose p, .prose li { color: #c6c6d0; }
+.ticks { list-style: none; padding: 0; }
+.ticks li { position: relative; padding-left: 30px; margin: 12px 0; }
+.ticks li::before { content: "▶"; position: absolute; left: 0; top: 1px; color: var(--orange); font-size: 13px; }
+.wide-shot { margin: 32px 0 0; }
+.wide-shot img { width: 100%; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(255, 101, 18, 0.12); }
+.wide-shot.small img { width: auto; margin: 0 auto; }
+.shot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 32px; }
+.shot-grid img { border-radius: 10px; border: 1px solid var(--line); }
+.topic .final { margin-top: 80px; }
+
 /* reveal on scroll */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.7s ease, transform 0.7s ease; }
 .reveal.seen { opacity: 1; transform: none; }
@@ -306,7 +349,10 @@ footer .small { font-size: 13px; opacity: 0.8; }
   .chips { flex-direction: row; flex-wrap: wrap; }
   .credit { grid-column: 1; }
   .split { grid-template-columns: 1fr; gap: 28px; }
-  .cards, .cards.three { grid-template-columns: 1fr 1fr; }
+  .cards, .cards.three, .cards.four { grid-template-columns: 1fr 1fr; }
+  .bento { grid-template-columns: 1fr 1fr; }
+  .tile, .tile.wide { grid-column: span 1; }
+  .tile.full { grid-column: span 2; }
   .strip { grid-template-columns: repeat(3, 1fr); }
   .strip div { border: 1px solid var(--line) !important; border-radius: 12px !important; }
   .strip { gap: 8px; }
@@ -314,7 +360,9 @@ footer .small { font-size: 13px; opacity: 0.8; }
 @media (max-width: 640px) {
   body { font-size: 16px; }
   .links a:not(.button) { display: none; }
-  .cards, .cards.three, .shots.two { grid-template-columns: 1fr; }
+  .cards, .cards.three, .cards.four, .shots.two { grid-template-columns: 1fr; }
+  .bento { grid-template-columns: 1fr; }
+  .tile, .tile.wide, .tile.full { grid-column: span 1; }
   .strip { grid-template-columns: 1fr 1fr; }
   .strip div:last-child { grid-column: span 2; }
   .section { padding-top: 80px; }

@@ -116,12 +116,24 @@
     })
     .catch(() => {});
 
+  // --- the stars on GitHub, next to the version
+  fetch("https://api.github.com/repos/fdeox/spotiamp-plus")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((repo) => {
+      const stars = repo?.stargazers_count;
+      const link = document.querySelector(".stars");
+      if (!link || !stars) return;
+      link.querySelector(".star-count").textContent = stars;
+      link.hidden = false;
+    })
+    .catch(() => {});
+
   // --- sections fade in as you scroll to them
   if (!reduced && "IntersectionObserver" in window) {
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); }
     }, { rootMargin: "0px 0px -8% 0px" });
-    for (const el of document.querySelectorAll(".section .head, .card, .skin-picker, .split .media, .split .text, .lala-strip, .shots, .keys, .faq details, .final")) {
+    for (const el of document.querySelectorAll(".section .head, .card, .tile, .skin-picker, .split .media, .split .text, .lala-strip, .shots, .keys, .faq details, .final")) {
       el.classList.add("reveal");
       io.observe(el);
     }
