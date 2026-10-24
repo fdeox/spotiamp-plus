@@ -681,6 +681,68 @@ pub(crate) fn set_owner(follower_hwnd: isize, owner_hwnd: isize) {
             owner_hwnd,
         );
     }
+    if owner_hwnd != 0 {
+        keep_off_taskbar(follower_hwnd, false);
+    }
+}
+
+/// tao gives every window WS_EX_APPWINDOW, and puts it back each time it
+/// shows, minimizes or restores one (or turns always on top on or off). That
+/// style beats ownership: an owned window still had a taskbar thumbnail and
+/// an Alt+Tab entry of its own, so Spotiamp+ came up as a dozen windows. It
+/// comes off now, and again whenever tao asks for it while the window has an
+/// owner; `always`: for good, a window never meant to be switched to (the
+/// OSD). MUST run on the window's (the main) thread.
+#[cfg(target_os = "windows")]
+pub(crate) fn keep_off_taskbar(hwnd: isize, always: bool) {
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::System::Com::{
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+    };
+    use windows::Win32::UI::Shell::{DefSubclassProc, ITaskbarList, SetWindowSubclass, TaskbarList};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, STYLESTRUCT, SetWindowLongPtrW,
+        WM_STYLECHANGING, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    const SUBCLASS_ID: usize = 0x5350_544b; // "SPTK"
+
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        always: usize,
+    ) -> LRESULT {
+        unsafe {
+            if msg == WM_STYLECHANGING && wparam.0 as i32 == GWL_EXSTYLE.0 {
+                let owned = GetWindow(hwnd, GW_OWNER).is_ok_and(|o| !o.is_invalid());
+                if always != 0 || owned {
+                    let style = &mut *(lparam.0 as *mut STYLESTRUCT);
+                    style.styleNew &= !WS_EX_APPWINDOW.0;
+                    if always != 0 {
+                        style.styleNew |= WS_EX_TOOLWINDOW.0;
+                    }
+                }
+            }
+            DefSubclassProc(hwnd, msg, wparam, lparam)
+        }
+    }
+
+    unsafe {
+        let hwnd = HWND(hwnd as *mut core::ffi::c_void);
+        let _ = SetWindowSubclass(hwnd, Some(proc), SUBCLASS_ID, always as usize);
+        // set again for the filter above to take the style off now
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !(WS_EX_APPWINDOW.0 as isize));
+        // the taskbar only looks again when a window is shown
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if let Ok(list) = CoCreateInstance::<_, ITaskbarList>(&TaskbarList, None, CLSCTX_INPROC_SERVER)
+            && list.HrInit().is_ok()
+        {
+            let _ = list.DeleteTab(hwnd);
+        }
+    }
 }
 
 /// Make every open window owned by the player, docked or not, like Winamp's:

@@ -57,6 +57,13 @@ fn build(app: &AppHandle) -> Result<WebviewWindow, tauri::Error> {
             {
                 crate::app_window::watch_for_renderer_crash(window);
                 crate::app_window::ignore_text_size(window);
+                // nothing to switch to with Alt+Tab
+                let osd = window.clone();
+                let _ = window.run_on_main_thread(move || {
+                    if let Ok(hwnd) = osd.hwnd() {
+                        crate::app_window::keep_off_taskbar(hwnd.0 as isize, true);
+                    }
+                });
             }
         })
 }
