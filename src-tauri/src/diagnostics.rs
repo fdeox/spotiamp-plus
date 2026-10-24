@@ -43,17 +43,23 @@ fn build(error: Option<&str>) -> String {
         if player.normalize { "on" } else { "off" },
         if player.taskbar_extras { "on" } else { "off" },
     ));
-    if let Some(error) = error.filter(|e| !e.trim().is_empty()) {
-        out.push_str("\nError shown:\n");
-        out.push_str(error.trim());
-        out.push('\n');
-    }
-
     let log = read_log();
     let spotify_user = log
         .lines()
         .rev()
         .find_map(|l| l.split("Authenticated as '").nth(1)?.split('\'').next().map(str::to_string));
+    if !settings.controller_mode {
+        out.push_str(&format!("Audio quality: {} kbps\n", player.quality_kbps()));
+        // the plan, logged at sign-in (some don't stream 320 kbps)
+        if let Some(account) = log.lines().rev().find_map(|l| l.split("Spotify account: ").nth(1)) {
+            out.push_str(&format!("Account: {account}\n"));
+        }
+    }
+    if let Some(error) = error.filter(|e| !e.trim().is_empty()) {
+        out.push_str("\nError shown:\n");
+        out.push_str(error.trim());
+        out.push('\n');
+    }
     let recent: Vec<&str> = log
         .lines()
         .filter(|l| l.contains(" WARN ") || l.contains(" ERROR "))

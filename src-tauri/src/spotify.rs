@@ -125,11 +125,16 @@ impl SpotifySession {
         .await;
         match &connected {
             Ok(()) => {
-                tauri::async_runtime::spawn(async {
+                crate::settings::Settings::current_mut().signed_out = false;
+                let session = self.inner.clone();
+                tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                    let mut settings = crate::settings::Settings::current_mut();
-                    settings.pending_connect = false;
-                    settings.connect_deaths = 0;
+                    {
+                        let mut settings = crate::settings::Settings::current_mut();
+                        settings.pending_connect = false;
+                        settings.connect_deaths = 0;
+                    }
+                    log_account(&session);
                 });
             }
             Err(_) => crate::settings::Settings::current_mut().pending_connect = false,
@@ -216,6 +221,12 @@ impl SpotifySession {
             url: auth_url.clone(),
             e,
         })?;
+        // Logged out: Spotify's page would sign the same account straight
+        // back in from its cookies, so they go first.
+        #[cfg(target_os = "windows")]
+        if crate::settings::Settings::current().signed_out {
+            crate::app_window::delete_cookies(&window);
+        }
 
         window.on_window_event({
             let token_received = token_received.clone();
@@ -298,7 +309,11 @@ impl SpotifyPlayer {
             // playback clock instead of free-running and drifting from the
             // actual position (which left the seek bar short at end of track).
             position_update_interval: Some(Duration::from_secs(1)),
-            bitrate: Bitrate::Bitrate320,
+            bitrate: match Settings::current().player.quality_kbps() {
+                96 => Bitrate::Bitrate96,
+                160 => Bitrate::Bitrate160,
+                _ => Bitrate::Bitrate320,
+            },
             gapless: true,
             normalisation: Settings::current().player.normalize,
             normalisation_type: NormalisationType::default(),
@@ -469,6 +484,13 @@ impl SpotifyPlayer {
         self.rebuild_player()
     }
 
+    /// Set the streaming quality (96, 160 or 320 kbps). Read when the player
+    /// is built, so it's rebuilt like for normalize.
+    pub fn set_quality(&mut self, kbps: u16) -> PlayerEventChannel {
+        Settings::current_mut().player.quality = Some(kbps);
+        self.rebuild_player()
+    }
+
     fn rebuild_player(&mut self) -> PlayerEventChannel {
         self.player.stop();
         self.replace_player(Self::build_player(
@@ -531,6 +553,20 @@ pub fn list_output_devices() -> Vec<String> {
         Ok(devices) => devices.filter_map(|device| device.name().ok()).collect(),
         Err(_) => Vec::new(),
     }
+}
+
+/// What kind of Premium the account has, for diagnostic info: songs that
+/// won't load can be the plan (some don't stream 320 kbps). Only the plan's
+/// own fields: nothing about the person, not even the country (which
+/// "financial-product" names, so it stays out).
+fn log_account(session: &Session) {
+    const KEYS: [&str; 5] = ["type", "name", "catalogue", "high-bitrate", "streaming"];
+    let attributes = session.user_data().attributes;
+    let known: Vec<String> = KEYS
+        .iter()
+        .filter_map(|k| attributes.get(*k).filter(|v| !v.is_empty()).map(|v| format!("{k}={v}")))
+        .collect();
+    log::info!("Spotify account: {} ({} attributes)", known.join(", "), attributes.len());
 }
 
 /// Spotify turned the saved login down (expired or revoked), as opposed to

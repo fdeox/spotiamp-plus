@@ -543,6 +543,13 @@ export class Playlist {
         // (the main window's F, the Library).
         this.loadLoved();
         listen("lovedChanged", () => this.loadLoved()).catch(() => {});
+        // Spotify kept turning songs down at 320 kbps (some Premium plans
+        // don't stream it): the player is back at 160, try the song again.
+        listen("qualityLowered", () => {
+            this.loadFailures = 0;
+            this.notify("Songs wouldn't load at 320 kbps, so Spotiamp+ plays them at 160 now (Audio > Quality)");
+            this.loadedRow?.play();
+        }).catch(() => {});
 
         const playerWindowSubscription = subscribeToWindowEvent(
             "playerWindow",

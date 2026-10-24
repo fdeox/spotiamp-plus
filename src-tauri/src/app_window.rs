@@ -96,6 +96,23 @@ pub(crate) fn ignore_text_size(window: &WebviewWindow) {
     });
 }
 
+/// Forget every site's cookies, Spotify's sign-in among them. All the
+/// windows share one WebView2 profile; the app's own pages keep nothing in
+/// cookies (their state is in localStorage, which stays).
+#[cfg(target_os = "windows")]
+pub(crate) fn delete_cookies(window: &WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_2;
+    use windows::core::Interface;
+    let _ = window.with_webview(move |webview| unsafe {
+        let Ok(core) = webview.controller().CoreWebView2() else {
+            return;
+        };
+        if let Ok(manager) = core.cast::<ICoreWebView2_2>().and_then(|c| c.CookieManager()) {
+            let _ = manager.DeleteAllCookies();
+        }
+    });
+}
+
 /// The big "!" error page: when a window's WebView2 renderer process dies (seen
 /// after a long idle / a sleep-resume) WebView2 swaps the page for its own error
 /// screen and leaves it there until the app restarts. Catch that, log why (kind,

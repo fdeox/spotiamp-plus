@@ -272,6 +272,8 @@
   // --- always on top ---
   let alwaysOnTop = $state(false);
   let normalizeVolume = $state(false);
+  // Spotify's streaming quality in kbps (Audio > Quality)
+  let audioQuality = $state(320);
   let taskbarExtras = $state(false);
   // Winamp's global hotkeys (Ctrl+Alt with Ins, Home, End, PgUp, PgDn and the
   // arrows), wherever you are. Opt-in.
@@ -306,6 +308,7 @@
       const settings = await invoke("get_player_settings");
       alwaysOnTop = Boolean(settings?.always_on_top);
       normalizeVolume = Boolean(settings?.normalize);
+      audioQuality = [96, 160].includes(settings?.quality) ? settings.quality : 320;
       taskbarExtras = Boolean(settings?.taskbar_extras);
       globalHotkeys = Boolean(settings?.global_hotkeys);
       osdEnabled = Boolean(settings?.osd);
@@ -627,6 +630,14 @@
     const audioItems = [
       { text: "Normalize volume", checked: normalizeVolume, action: toggleNormalize },
       {
+        text: "&Quality",
+        items: [[320, "Very high"], [160, "High"], [96, "Normal"]].map(([kbps, label]) => ({
+          text: `${label} (${kbps} kbps)`,
+          checked: audioQuality === kbps,
+          action: () => pickQuality(/** @type {number} */ (kbps)),
+        })),
+      },
+      {
         text: "&Output device",
         items: [
           { text: "System default", checked: !currentAudioDevice, action: () => pickAudioDevice(null) },
@@ -691,7 +702,9 @@
         })),
       },
       sep,
-      ...(controllerMode ? [{ text: "Premium sign-in…", action: switchToPremium }] : []),
+      ...(controllerMode
+        ? [{ text: "Premium sign-in…", action: switchToPremium }]
+        : [{ text: "Log out of Spotify…", action: logOut }]),
       { text: "&Help", items: helpItems },
     ];
   }
@@ -730,6 +743,15 @@
   async function toggleNormalize() {
     normalizeVolume = !normalizeVolume;
     await invoke("set_normalization", { enabled: normalizeVolume }).catch(() => {});
+    await emit("audioDeviceChanged", {});
+  }
+
+  // Streaming quality: some Premium plans don't stream 320 kbps. Read when
+  // the player is built, so the song is picked up again like after normalize.
+  /** @param {number} kbps */
+  async function pickQuality(kbps) {
+    audioQuality = kbps;
+    await invoke("set_audio_quality", { kbps }).catch(() => {});
     await emit("audioDeviceChanged", {});
   }
 
@@ -1089,6 +1111,18 @@
   // normal OAuth + librespot path.
   async function switchToPremium() {
     await invoke("leave_controller_mode").catch(() => {});
+    await relaunch().catch(() => {});
+  }
+  // Log out: the saved login goes and Spotiamp+ starts again at the sign-in,
+  // where any account can sign in (Spotify's page forgets the old one too).
+  async function logOut() {
+    const sure = await ask("Log out of Spotify? Spotiamp+ restarts and asks you to sign in again.", {
+      title: "Spotiamp+",
+      kind: "info",
+      okLabel: "Log out",
+    });
+    if (!sure) return;
+    await invoke("log_out").catch(() => {});
     await relaunch().catch(() => {});
   }
   /** @param {string} skin */

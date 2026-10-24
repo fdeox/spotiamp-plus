@@ -227,11 +227,37 @@ pub fn init_logging() {
             builder.target(env_logger::Target::Pipe(Box::new(file)));
         }
     }
-    builder.init();
+    let logger = builder.build();
+    let max_level = logger.filter();
+    if log::set_boxed_logger(Box::new(WatchedLogger(logger))).is_ok() {
+        log::set_max_level(max_level);
+    }
     log::info!(
         "Spotiamp+ {} starting",
         option_env!("CARGO_PKG_VERSION").unwrap_or("?")
     );
+}
+
+/// The logger, listening for one librespot line on the way: Spotify turning
+/// a song's key down ("error audio key 0 1"), which librespot only logs.
+struct WatchedLogger(env_logger::Logger);
+
+impl log::Log for WatchedLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.0.enabled(metadata)
+    }
+    fn log(&self, record: &log::Record) {
+        if record.level() == log::Level::Error
+            && record.target().starts_with("librespot_core::audio_key")
+            && record.args().to_string().starts_with("error audio key")
+        {
+            LAST_KEY_REFUSED_MS.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+        }
+        self.0.log(record);
+    }
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 /// Record a frontend error (window.onerror / unhandled rejection) in the log —
@@ -261,6 +287,18 @@ fn is_controller_mode() -> bool {
 #[tauri::command]
 fn leave_controller_mode() {
     settings::Settings::current_mut().controller_mode = false;
+}
+
+/// Log out of Spotify: the saved login goes, and at the next sign-in so do
+/// the login window's Spotify cookies, so any account can sign in. The
+/// frontend restarts the app right after.
+#[tauri::command]
+fn log_out() {
+    if let Some(dir) = settings::get_config_dir() {
+        let _ = std::fs::remove_file(dir.join("credentials.json"));
+    }
+    settings::Settings::current_mut().signed_out = true;
+    log::info!("Logged out of Spotify");
 }
 
 /// Controller ("free") mode: no librespot session at all — the player window
@@ -452,15 +490,20 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                 } else {
                     log::warn!("Spotify session dropped, reconnecting…");
                 }
+                // the new player is built at the new quality
+                let lowered = stuck && lower_quality_after_refusals();
                 // the window notes whether a song was playing, to carry on
-                // with it once the connection is back
-                let _ = app_handle.emit("spotifyDropped", ());
+                // with it once the connection is back (with a lower quality
+                // the playlist starts the failed song again itself)
+                if !lowered {
+                    let _ = app_handle.emit("spotifyDropped", ());
+                }
                 let result = player.lock().await.reconnect(&app_handle).await;
                 match result {
                     Ok(channel) => {
                         log::info!("Reconnected to Spotify.");
                         spawn_event_forwarder(player_window.clone(), channel);
-                        let _ = app_handle.emit("spotifyReconnected", ());
+                        let _ = app_handle.emit(if lowered { "qualityLowered" } else { "spotifyReconnected" }, ());
                     }
                     Err(e) => log::warn!("Reconnect failed (will retry in 10s): {e:?}"),
                 }
@@ -528,6 +571,47 @@ static FORCE_RECONNECT: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 /// When the last song failed to load (ms since the Unix epoch, 0 = never).
 static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// When Spotify last turned a song's key down (ms since the Unix epoch).
+static LAST_KEY_REFUSED_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// The 160 kbps try (lower_quality_after_refusals): 0 not tried, 1 trying,
+/// 2 settled either way.
+static QUALITY_TRIAL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Songs keep failing and Spotify is turning their keys down rather than
+/// not answering ("error audio key 0 1", seen on Discord): some Premium
+/// plans don't stream 320 kbps. Step down to 160 once; if songs then play,
+/// it stays (Audio > Quality shows it), and if they're turned down at 160
+/// too, it wasn't the quality and 320 comes back. True when lowered.
+fn lower_quality_after_refusals() -> bool {
+    use std::sync::atomic::Ordering;
+    if now_ms().saturating_sub(LAST_KEY_REFUSED_MS.load(Ordering::SeqCst)) > 30_000 {
+        return false;
+    }
+    let mut settings = settings::Settings::current_mut();
+    match (settings.player.quality_kbps(), QUALITY_TRIAL.load(Ordering::SeqCst)) {
+        (320, 0) => {
+            QUALITY_TRIAL.store(1, Ordering::SeqCst);
+            settings.player.quality = Some(160);
+            log::warn!("Spotify keeps turning songs down at 320 kbps; trying 160 kbps");
+            true
+        }
+        (160, 1) => {
+            QUALITY_TRIAL.store(2, Ordering::SeqCst);
+            settings.player.quality = None;
+            log::warn!("Turned down at 160 kbps too, so it isn't the quality; back to 320 kbps");
+            false
+        }
+        _ => false,
+    }
+}
+
 /// A song couldn't be loaded. Right after a launch Spotify sometimes stops
 /// answering the requests for songs' keys ("Audio key response timeout"), and
 /// librespot then skips song after song in silence. Two failures within 20 s
@@ -535,10 +619,7 @@ static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// row cost a needless reconnect of a second or two, at most once a minute.)
 fn note_unavailable() {
     use std::sync::atomic::Ordering;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    let now = now_ms();
     let previous = LAST_UNAVAILABLE_MS.swap(now, Ordering::SeqCst);
     if previous != 0 && now.saturating_sub(previous) < 20_000 {
         LAST_UNAVAILABLE_MS.store(0, Ordering::SeqCst);
@@ -573,6 +654,13 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
             if matches!(player_event, PlayerEvent::Unavailable { .. }) {
                 note_unavailable();
             }
+            if matches!(player_event, PlayerEvent::Playing { .. })
+                && QUALITY_TRIAL
+                    .compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+            {
+                log::info!("Songs play at 160 kbps; keeping it");
+            }
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
                 let _ = player_window.emit("player", player_event);
             }
@@ -602,6 +690,7 @@ pub fn run() {
             log_frontend_error,
             is_controller_mode,
             leave_controller_mode,
+            log_out,
             loopback::start_loopback,
             loopback::loopback_spectrum,
             loopback::loopback_waveform,
@@ -630,6 +719,7 @@ pub fn run() {
             player_window::stop,
             player_window::get_player_settings,
             player_window::set_normalization,
+            player_window::set_audio_quality,
             taskbar::set_taskbar_extras,
             global_keys::set_global_hotkeys,
             taskbar::taskbar_update,

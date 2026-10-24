@@ -244,9 +244,22 @@ pub struct PlayerSettings {
     /// volume is converted on loading, so it plays as loud as before.
     #[serde(default)]
     pub volume_curve: u8,
+    /// Spotify's streaming quality in kbps (96, 160 or 320); None = 320.
+    /// Some Premium plans don't stream 320, and songs then fail to load.
+    #[serde(default)]
+    pub quality: Option<u16>,
 }
 
 impl PlayerSettings {
+    /// The streaming quality in kbps: 96, 160 or 320.
+    pub fn quality_kbps(&self) -> u16 {
+        match self.quality {
+            Some(96) => 96,
+            Some(160) => 160,
+            _ => 320,
+        }
+    }
+
     fn convert_old_volume(&mut self) {
         if self.volume_curve < 2 {
             self.volume = crate::sink::volume_from_cubic(self.volume);
@@ -315,6 +328,7 @@ impl Default for PlayerSettings {
             mascot_inset: None,
             eq: EqSettings::default(),
             volume_curve: 2,
+            quality: None,
         }
     }
 }
@@ -367,6 +381,10 @@ pub struct Settings {
     /// two in a row mean the account gate, so only then is Free Mode offered.
     #[serde(default)]
     pub connect_deaths: u8,
+    /// Logged out (the menu's Log out): the next sign-in starts from a clean slate,
+    /// the login window's Spotify cookies gone, so any account can sign in.
+    #[serde(default)]
+    pub signed_out: bool,
     /// Remembered geometry for the on-demand windows (library / visualizer /
     /// lyrics / eq), keyed by window label — so reopening one brings it back
     /// where and how it was left. Player and playlist keep their own fields

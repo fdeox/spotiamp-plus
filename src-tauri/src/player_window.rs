@@ -128,6 +128,22 @@ pub async fn set_normalization(
     Ok(())
 }
 
+/// Spotify's streaming quality, 96, 160 or 320 kbps (Audio > Quality);
+/// rebuilds the player like normalize, and the track is picked up again.
+#[tauri::command]
+pub async fn set_audio_quality(
+    kbps: u16,
+    player: State<'_, SharedPlayer>,
+    app_handle: AppHandle,
+) -> Result<(), ()> {
+    let player_window = app_handle.get_webview_window("player").ok_or(())?;
+    let mut player = player.lock().await;
+    crate::retire_event_forwarders();
+    let channel = player.set_quality(kbps);
+    crate::spawn_event_forwarder(player_window, channel);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_double_size(active: bool) {
     Settings::current_mut().player.double_size_active = active;
