@@ -150,10 +150,11 @@ fn apply_activity(shown: Shown) {
     }
 
     // a single clickable button visible to anyone viewing your profile —
-    // Spotify's own presence can't do this
+    // Spotify's own presence can't do this. It opens the website, which shows
+    // the app off before the download (GitHub is one click on from there).
     let buttons = vec![activity::Button::new(
         "⚡  Get Spotiamp+",
-        "https://github.com/fdeox/spotiamp-plus",
+        "https://fdeox.github.io/spotiamp-plus/",
     )];
 
     // "Listening to Spotiamp+" (type 2), like Spotify — not "Playing"
