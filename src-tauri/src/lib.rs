@@ -568,6 +568,23 @@ pub(crate) fn quit() -> ! {
 /// Set when songs fail to load twice in a row within a short time; the
 /// connection watcher then reconnects without waiting for Spotify to drop us.
 static FORCE_RECONNECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// When the player was last rebuilt on the same session (quality, normalize,
+/// the output device), and whether the one retry that allows is used up.
+static PLAYER_REBUILT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static REBUILD_RETRIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// A player was rebuilt on the same session. librespot gives every player a
+/// tokio runtime of its own, and the session's HTTP client opens connections
+/// on whichever runtime asks: the old player's die with it but stay in the
+/// shared pool, so the song picked up again on the new player could draw a
+/// dead one ("DispatchGone"), fail to load and be skipped. Its first failure
+/// now loads it again instead (the dead connection is gone by then).
+pub(crate) fn note_player_rebuilt() {
+    use std::sync::atomic::Ordering;
+    PLAYER_REBUILT_MS.store(now_ms(), Ordering::SeqCst);
+    REBUILD_RETRIED.store(false, Ordering::SeqCst);
+}
 /// When the last song failed to load (ms since the Unix epoch, 0 = never).
 static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -650,6 +667,14 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
         while let Some(player_event) = channel.recv().await {
             if FORWARDER_GENERATION.load(Ordering::SeqCst) != generation {
                 break;
+            }
+            if let PlayerEvent::Unavailable { track_id, .. } = &player_event
+                && now_ms().saturating_sub(PLAYER_REBUILT_MS.load(Ordering::SeqCst)) < 20_000
+                && !REBUILD_RETRIED.swap(true, Ordering::SeqCst)
+            {
+                log::warn!("A song didn't load right after the player was rebuilt; loading it again");
+                let _ = player_window.emit("reloadAfterRebuild", track_id.to_uri().unwrap_or_default());
+                continue;
             }
             if matches!(player_event, PlayerEvent::Unavailable { .. }) {
                 note_unavailable();

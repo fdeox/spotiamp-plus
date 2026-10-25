@@ -492,6 +492,7 @@ impl SpotifyPlayer {
     }
 
     fn rebuild_player(&mut self) -> PlayerEventChannel {
+        crate::note_player_rebuilt();
         self.player.stop();
         self.replace_player(Self::build_player(
             &self.session.inner,

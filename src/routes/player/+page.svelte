@@ -552,6 +552,8 @@
   // The audio-output device was changed (from the playlist menu), which rebuilds
   // the player on a fresh sink. Reload the current track on the new device at the
   // same spot so the switch is heard without the user pressing play again.
+  /** The Spotify song last picked up again on a rebuilt player, and how. */
+  let lastReapply = /** @type {{ uri: string, positionMs: number, play: boolean } | null} */ (null);
   async function reapplyAfterDeviceChange() {
     if (!loadedTrack || loadedTrack.unavailable) return;
     const wasPlaying = playerState === "playing";
@@ -570,11 +572,8 @@
     // One load, at the same spot, already paused if it was paused. (It used
     // to be load + seek + pause: the seek made librespot load the track twice
     // and the pause let a moment of sound through.)
-    await invoke("load_track", {
-      uri: loadedTrack.uri.asString,
-      positionMs: position,
-      play: wasPlaying,
-    }).catch(() => {});
+    lastReapply = { uri: loadedTrack.uri.asString, positionMs: position, play: wasPlaying };
+    await invoke("load_track", lastReapply).catch(() => {});
   }
 
   /**
@@ -1381,6 +1380,12 @@
     const audioDeviceSubscription = listen("audioDeviceChanged", () =>
       reapplyAfterDeviceChange(),
     );
+    // the song didn't load on the player just rebuilt (lib.rs
+    // note_player_rebuilt): once more, at the same spot
+    const reloadSubscription = listen("reloadAfterRebuild", (e) => {
+      if (!lastReapply || lastReapply.uri !== e.payload || loadedTrack?.uri?.asString !== e.payload) return;
+      invoke("load_track", lastReapply).catch(() => {});
+    });
     // Spotify closes the connection now and then and the app reconnects by
     // itself; the song stopped there and stayed stopped ("the music stops by
     // itself"). If one was playing when it dropped, carry on with it, at the
@@ -1416,6 +1421,7 @@
       clearTimeout(whatsNewTimer);
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
+      reloadSubscription.then((unlisten) => unlisten());
       droppedSubscription.then((unlisten) => unlisten());
       seekToSubscription.then((unlisten) => unlisten());
       reconnectedSubscription.then((unlisten) => unlisten());
