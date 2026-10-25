@@ -68,6 +68,29 @@ fn keep_aside(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// The settings file as it was at launch. Going back to an older version
+/// dropped what newer ones save (loved songs, favourite skins…) the moment it
+/// saved; what this version doesn't know is now written back as it was.
+static AS_FOUND: OnceLock<serde_yaml::Value> = OnceLock::new();
+
+/// Put every key of `found` that `ours` lacks into it, at any depth of
+/// nested maps; a list is ours as a whole. (Every field this version knows is
+/// always written, so a missing key is one it doesn't know. A map whose keys
+/// are data, where taking one out means something, would need care here:
+/// the settings have none, they keep such things in lists.)
+fn keep_unknown(ours: &mut serde_yaml::Value, found: &serde_yaml::Value) {
+    if let (Some(ours), Some(found)) = (ours.as_mapping_mut(), found.as_mapping()) {
+        for (key, theirs) in found {
+            match ours.get_mut(key) {
+                Some(mine) => keep_unknown(mine, theirs),
+                None => {
+                    ours.insert(key.clone(), theirs.clone());
+                }
+            }
+        }
+    }
+}
+
 /// A line in the log on the first save and then at most every ten minutes,
 /// with the count: the log shows the settings being kept.
 fn note_saved() {
@@ -484,13 +507,30 @@ impl Settings {
             Settings::default()
         });
         settings.player.convert_old_volume();
+        // the file as it was, for what a newer version put in it
+        if let Some(found) = std::fs::read_to_string(&settings_file_path)
+            .ok()
+            .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok())
+        {
+            let _ = AS_FOUND.set(found);
+        }
         settings
+    }
+
+    /// The settings as YAML, with whatever a newer version saved that this
+    /// one doesn't know kept as it was.
+    fn to_yaml(&self) -> Result<String, String> {
+        let mut value = serde_yaml::to_value(self).map_err(|e| format!("Could not serialize ({e:?})"))?;
+        if let Some(found) = AS_FOUND.get() {
+            keep_unknown(&mut value, found);
+        }
+        serde_yaml::to_string(&value).map_err(|e| format!("Could not serialize ({e:?})"))
     }
 
     fn save(&self) {
         let settings_file_path = get_settings_file_path();
-        if let Err(e) = serde_yaml::to_string(self)
-            .map_err(|e| format!("Could not serialize ({e:?})"))
+        if let Err(e) = self
+            .to_yaml()
             .and_then(|text| write_whole(&settings_file_path, text.as_bytes()))
         {
             log::error!("Failed to save settings: {:?}", e);
@@ -510,6 +550,25 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a newer version saved stays, at the top and nested; what this
+    /// version knows is its own.
+    #[test]
+    fn a_newer_versions_settings_are_kept() {
+        let found: serde_yaml::Value = serde_yaml::from_str(
+            "skin: old\nfuture_list: [1, 2]\nplayer:\n  volume: 10\n  future_flag: true\nresume: null\n",
+        )
+        .unwrap();
+        let mut settings = Settings::default();
+        settings.skin = "amber".into();
+        let mut ours = serde_yaml::to_value(&settings).unwrap();
+        keep_unknown(&mut ours, &found);
+        let back: Settings = serde_yaml::from_value(ours.clone()).unwrap();
+        assert_eq!(back.skin, "amber");
+        assert_eq!(back.player.volume, settings.player.volume);
+        assert_eq!(ours["future_list"], serde_yaml::from_str::<serde_yaml::Value>("[1, 2]").unwrap());
+        assert_eq!(ours["player"]["future_flag"], serde_yaml::Value::Bool(true));
+    }
 
     /// Saved whole (and again over it), no leftovers; an unreadable file is
     /// copied aside as it was.
