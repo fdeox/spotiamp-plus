@@ -93,7 +93,9 @@ async fn ask(path: &str) -> Result<Vec<Value>, String> {
             return Ok(list);
         }
     }
-    Err("the radio guide didn't answer (no internet?)".into())
+    // its servers are down now and then for a while (all at once on
+    // 2026-10-25), so it's not always the internet
+    Err("The radio guide (radio-browser.info) isn't answering: no internet, or it's down for a while. Your stations still play.".into())
 }
 
 /// The stations whose server turned us away.
