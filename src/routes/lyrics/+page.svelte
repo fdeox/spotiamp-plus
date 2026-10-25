@@ -59,6 +59,11 @@
   /** Whether a radio song's start is known (not for the one playing at
    * tune-in, until a click on the line being sung). */
   let inTime = $state(true);
+  /** A radio song (its words stop at the song's end: a station can be slow to
+   * name the next one, or never does). */
+  let live = $state(false);
+  /** How long the song the words were timed to is, 0 = not known. */
+  let durationMs = $state(0);
   let posMs = $state(0);
   let playing = false;
   let anchorMs = 0;
@@ -66,9 +71,13 @@
   /** @type {HTMLElement | undefined} */
   let listEl;
 
+  // a radio song that has played to its end while the station still names
+  // it: its words stop there, back at the top
+  const over = $derived(live && inTime && durationMs > 0 && posMs > durationMs + 3000);
+
   // last line whose start time has passed (only meaningful for synced lyrics)
   const activeIndex = $derived.by(() => {
-    if (!synced || !inTime || status !== "ok") return -1;
+    if (!synced || !inTime || over || status !== "ok") return -1;
     let idx = -1;
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].time_ms <= posMs + 250) idx = i;
@@ -80,7 +89,9 @@
   // keep the active line centred
   $effect(() => {
     const i = activeIndex;
-    if (i < 0 || !listEl) return;
+    if (!listEl) return;
+    if (over) listEl.scrollTo({ top: 0, behavior: "smooth" });
+    if (i < 0) return;
     const el = listEl.querySelector(`[data-i="${i}"]`);
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
   });
@@ -107,6 +118,7 @@
       lines = data.lines;
       synced = data.synced;
       provider = data.provider;
+      durationMs = data.duration_ms ?? 0;
       status = lines.length ? "ok" : "none";
     } catch (e) {
       if (key === curUri) {
@@ -138,6 +150,7 @@
       playing = e.playing;
       if (!playing) posMs = e.positionMs;
       inTime = !e.song?.live || Boolean(e.song?.timed);
+      live = Boolean(e.song?.live);
       const key = e.uri ?? e.song?.key ?? null;
       if (key !== curUri) {
         curUri = key;
@@ -217,6 +230,8 @@
     {:else}
       {#if synced && !inTime}
         <div class="lyr-hint">Click the line being sung to follow along</div>
+      {:else if over}
+        <div class="lyr-hint">The song's over; the station hasn't named the next one yet</div>
       {/if}
       {#each lines as line, i}
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->

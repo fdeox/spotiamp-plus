@@ -632,6 +632,9 @@ pub struct LyricsData {
     pub synced: bool,
     pub provider: String,
     pub lines: Vec<LyricsLine>,
+    /// How long the song the words were timed to is (LRCLIB says): a radio
+    /// song's words stop there, should the station not name the next song.
+    pub duration_ms: Option<u32>,
 }
 
 pub async fn fetch_lyrics(session: &Session, uri: &str) -> Result<LyricsData, String> {
@@ -652,6 +655,7 @@ pub async fn fetch_lyrics(session: &Session, uri: &str) -> Result<LyricsData, St
                 text: line.words.clone(),
             })
             .collect(),
+        duration_ms: None,
     })
 }
 

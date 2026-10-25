@@ -135,13 +135,14 @@ fn pick(results: &[Value], duration_ms: u32) -> Option<(&Value, bool)> {
 
 fn lyrics_of(r: &Value, synced: bool) -> Option<LyricsData> {
     let text = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
+    let duration_ms = r.get("duration").and_then(Value::as_f64).filter(|d| *d > 0.0).map(|d| (d * 1000.0) as u32);
     let lines = if synced { parse_lrc(text("syncedLyrics")) } else { Vec::new() };
     if !lines.is_empty() {
-        return Some(LyricsData { synced: true, provider: "LRCLIB".into(), lines });
+        return Some(LyricsData { synced: true, provider: "LRCLIB".into(), lines, duration_ms });
     }
     let plain: Vec<LyricsLine> =
         text("plainLyrics").lines().map(|l| LyricsLine { time_ms: 0, text: l.trim().to_string() }).collect();
-    (!plain.is_empty()).then(|| LyricsData { synced: false, provider: "LRCLIB".into(), lines: plain })
+    (!plain.is_empty()).then(|| LyricsData { synced: false, provider: "LRCLIB".into(), lines: plain, duration_ms })
 }
 
 /// "[01:23.45] words" lines (a line can carry several times) into lines in
