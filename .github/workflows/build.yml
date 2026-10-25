@@ -39,6 +39,12 @@ jobs:
         shell: bash
         run: npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
+      # The unit tests (playlists, radio, lyrics, settings…). After the build:
+      # the pages the app embeds are only there once it has run.
+      - name: Run the tests
+        working-directory: src-tauri
+        run: cargo test --lib
+
       - uses: actions/upload-artifact@v4
         with:
           name: spotiamp-plus-installer
