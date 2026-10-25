@@ -21,8 +21,9 @@
       "<b>Audio quality</b>: right-click, <i>Audio</i>, <i>Quality</i>: Very high (320 kbps), High (160) or Normal (96). Some Premium plans don't stream 320 kbps and songs wouldn't load; if Spotify keeps turning them down, Spotiamp+ now switches to 160 by itself and says so.",
       "<b>Log out of Spotify</b>, at the bottom of the right-click menu, to sign in with another account.",
       "The <b>Cherry, Amber and Emerald</b> skins: the volume, the balance and the equalizer's sliders and graph are in the skin's own colour now, dark when low and bright when high, instead of a rainbow of colours (and the balance was a solid block).",
+      "<b>One window in Alt+Tab</b>, like Winamp: only the player shows there and on the taskbar, and the playlist, EQ, Library, lyrics, Lala and the rest come along with it, instead of a dozen windows each on their own.",
       "Every window's titlebar is lit, like the player's: the Library, lyrics, visualizer and album art looked faded whenever another window had the focus.",
-      "Fixed: windows cut off on the right and at the bottom when Windows' text size (Accessibility) is above 100%; a radio station's time on Discord stood still instead of counting up.",
+      "Fixed: windows cut off on the right and at the bottom when Windows' text size (Accessibility) is above 100%; a radio station's time on Discord stood still instead of counting up. And from now on, going back to an older version keeps what a newer one saved.",
     ],
     "0.7.8": [
       "<b>Local Media</b> in the Library 🎵 Add your music folders once (right-click <i>Local Media</i>, <i>Add a folder…</i>) and every song in them is there, with its artist, album and length, to sort, filter as you type, and play or drag into the playlist like the rest. New files show up by themselves. In <b>Free Mode</b> too: the Library opens there with Local Media (and <b>L</b> or the menu opens it).",
