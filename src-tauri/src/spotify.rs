@@ -511,11 +511,23 @@ impl SpotifyPlayer {
     /// waited for here, under the player lock, every command after it hung
     /// and the app showed "playing" with no sound (Bluetooth headphones
     /// dropping out, issue #9).
+    ///
+    /// It's given a moment to go, though. Each librespot player has a tokio
+    /// runtime of its own, and the connections the session's HTTP client
+    /// opened from it die with it but stay in the shared pool: a song loaded
+    /// on the new player before the old one was gone drew a dead one and sat
+    /// silent for 8 s (or was skipped). Gone, its connections are seen closed
+    /// and left alone. A player stuck on a vanished device isn't waited for.
     fn replace_player(&mut self, player: Arc<Player>) {
         let old = std::mem::replace(&mut self.player, player);
-        let _ = std::thread::Builder::new()
-            .name("old-player".into())
-            .spawn(move || drop(old));
+        let (gone_tx, gone_rx) = std::sync::mpsc::channel::<()>();
+        let spawned = std::thread::Builder::new().name("old-player".into()).spawn(move || {
+            drop(old);
+            let _ = gone_tx.send(());
+        });
+        if spawned.is_ok() && gone_rx.recv_timeout(Duration::from_millis(1500)).is_err() {
+            log::warn!("The old player is slow to go; carrying on without it");
+        }
     }
 
     pub fn seek(&self, position_ms: u32) {
