@@ -566,9 +566,10 @@
     const why = played
       ? "Songs played fine a moment ago, so this is Spotify holding back for a while after many " +
         "requests. It usually passes in a few minutes."
-      : "No song has played yet this time, which is how it goes for newer Spotify accounts: Spotify " +
-        "doesn't give their songs to apps built on librespot, the engine Spotiamp+ plays with (every " +
-        "such app is hit, not only Spotiamp+). It isn't your internet, your settings or your Premium.";
+      : "No song has played yet this time. Spotify does this to some accounts, mostly newer ones, in " +
+        "every app built on librespot, the engine Spotiamp+ plays with. With an older account it's " +
+        "usually Spotify holding back after many requests: closing Spotiamp+ for 10 to 15 minutes " +
+        "often clears it. It isn't your internet, your settings or your Premium.";
     const free = await ask(
       "Spotify keeps refusing to send this account's songs to Spotiamp+.\n\n" +
         why +
