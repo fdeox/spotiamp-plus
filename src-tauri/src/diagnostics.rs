@@ -54,6 +54,17 @@ fn build(error: Option<&str>) -> String {
         if let Some(account) = log.lines().rev().find_map(|l| l.split("Spotify account: ").nth(1)) {
             out.push_str(&format!("Account: {account}\n"));
         }
+        // the name's kind, never the name: newer accounts get long random
+        // ones, and Spotify keeps some newer accounts' songs to its own apps
+        if let Some(user) = &spotify_user {
+            out.push_str(&format!("Username: {}\n", username_kind(user)));
+        }
+        use std::sync::atomic::Ordering;
+        out.push_str(&format!(
+            "This run: Spotify songs started {} time(s), song keys refused {} time(s)\n",
+            crate::SONGS_STARTED_RUN.load(Ordering::SeqCst),
+            crate::KEYS_REFUSED_RUN.load(Ordering::SeqCst),
+        ));
     }
     if let Some(error) = error.filter(|e| !e.trim().is_empty()) {
         out.push_str("\nError shown:\n");
@@ -74,6 +85,18 @@ fn build(error: Option<&str>) -> String {
         out.push('\n');
     }
     scrub(&out, spotify_user.as_deref())
+}
+
+/// What kind of Spotify username it is, without saying it.
+fn username_kind(user: &str) -> String {
+    let len = user.chars().count();
+    if user.chars().all(|c| c.is_ascii_digit()) {
+        format!("numeric, {len} characters (an older Facebook sign-up)")
+    } else if len >= 25 && user.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        format!("random, {len} characters (newer accounts get these)")
+    } else {
+        format!("chosen, {len} characters (older accounts)")
+    }
 }
 
 /// The current log plus the previous one (it rotates at ~2 MB), oldest first.
@@ -263,6 +286,14 @@ fn write_clipboard(_text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn username_kinds() {
+        assert!(username_kind("31l77y2al5lnn4mxanzgxrfzcxpq").starts_with("random, 28"));
+        assert!(username_kind("drh8spxczmnxeqlywln0iptuo").starts_with("random, 25"));
+        assert!(username_kind("1167890123").starts_with("numeric"));
+        assert!(username_kind("fdeox").starts_with("chosen, 5"));
+    }
 
     #[test]
     fn paths_keep_only_the_extension() {

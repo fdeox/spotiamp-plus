@@ -252,6 +252,7 @@ impl log::Log for WatchedLogger {
             && record.args().to_string().starts_with("error audio key")
         {
             LAST_KEY_REFUSED_MS.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            KEYS_REFUSED_RUN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         self.0.log(record);
     }
@@ -599,6 +600,12 @@ static REFUSED_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU
 /// one is the account (Spotify gives newer accounts' keys to its own apps
 /// only), refused after songs played is the rate limit.
 static PLAYED_THIS_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// For diagnostic info: song keys Spotify refused this run, and how often a
+/// Spotify song started playing. Refused from the first song on, after a
+/// break, is an account Spotify blocks; refused after songs played, its rate
+/// limit.
+pub(crate) static KEYS_REFUSED_RUN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+pub(crate) static SONGS_STARTED_RUN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 /// When the last refused song came; a minute later a refusal starts over.
 static LAST_REFUSED_SONG_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -670,6 +677,7 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
             if matches!(player_event, PlayerEvent::Playing { .. }) {
                 REFUSED_STREAK.store(0, Ordering::SeqCst);
                 PLAYED_THIS_RUN.store(true, Ordering::SeqCst);
+                SONGS_STARTED_RUN.fetch_add(1, Ordering::SeqCst);
             }
             if let PlayerEvent::Unavailable { track_id, .. } = &player_event
                 && now_ms().saturating_sub(PLAYER_REBUILT_MS.load(Ordering::SeqCst)) < 20_000
