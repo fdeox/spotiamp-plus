@@ -289,6 +289,14 @@ fn leave_controller_mode() {
     settings::Settings::current_mut().controller_mode = false;
 }
 
+/// Free Mode, chosen while Spotify kept refusing the songs: the frontend
+/// restarts the app right after.
+#[tauri::command]
+fn enter_controller_mode() {
+    settings::Settings::current_mut().controller_mode = true;
+    log::info!("Switching to Free Mode");
+}
+
 /// Log out of Spotify: the saved login goes, and at the next sign-in so do
 /// the login window's Spotify cookies, so any account can sign in. The
 /// frontend restarts the app right after.
@@ -490,20 +498,15 @@ async fn start_app(app_handle: &AppHandle) -> Result<(), StartError> {
                 } else {
                     log::warn!("Spotify session dropped, reconnecting…");
                 }
-                // the new player is built at the new quality
-                let lowered = stuck && lower_quality_after_refusals();
                 // the window notes whether a song was playing, to carry on
-                // with it once the connection is back (with a lower quality
-                // the playlist starts the failed song again itself)
-                if !lowered {
-                    let _ = app_handle.emit("spotifyDropped", ());
-                }
+                // with it once the connection is back
+                let _ = app_handle.emit("spotifyDropped", ());
                 let result = player.lock().await.reconnect(&app_handle).await;
                 match result {
                     Ok(channel) => {
                         log::info!("Reconnected to Spotify.");
                         spawn_event_forwarder(player_window.clone(), channel);
-                        let _ = app_handle.emit(if lowered { "qualityLowered" } else { "spotifyReconnected" }, ());
+                        let _ = app_handle.emit("spotifyReconnected", ());
                     }
                     Err(e) => log::warn!("Reconnect failed (will retry in 10s): {e:?}"),
                 }
@@ -590,43 +593,16 @@ static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 
 /// When Spotify last turned a song's key down (ms since the Unix epoch).
 static LAST_KEY_REFUSED_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// The 160 kbps try (lower_quality_after_refusals): 0 not tried, 1 trying,
-/// 2 settled either way.
-static QUALITY_TRIAL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// Songs refused in a row (a song that plays starts it over).
+static REFUSED_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// When the last refused song came; a minute later a refusal starts over.
+static LAST_REFUSED_SONG_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-/// Songs keep failing and Spotify is turning their keys down rather than
-/// not answering ("error audio key 0 1", seen on Discord): some Premium
-/// plans don't stream 320 kbps. Step down to 160 once; if songs then play,
-/// it stays (Audio > Quality shows it), and if they're turned down at 160
-/// too, it wasn't the quality and 320 comes back. True when lowered.
-fn lower_quality_after_refusals() -> bool {
-    use std::sync::atomic::Ordering;
-    if now_ms().saturating_sub(LAST_KEY_REFUSED_MS.load(Ordering::SeqCst)) > 30_000 {
-        return false;
-    }
-    let mut settings = settings::Settings::current_mut();
-    match (settings.player.quality_kbps(), QUALITY_TRIAL.load(Ordering::SeqCst)) {
-        (320, 0) => {
-            QUALITY_TRIAL.store(1, Ordering::SeqCst);
-            settings.player.quality = Some(160);
-            log::warn!("Spotify keeps turning songs down at 320 kbps; trying 160 kbps");
-            true
-        }
-        (160, 1) => {
-            QUALITY_TRIAL.store(2, Ordering::SeqCst);
-            settings.player.quality = None;
-            log::warn!("Turned down at 160 kbps too, so it isn't the quality; back to 320 kbps");
-            false
-        }
-        _ => false,
-    }
 }
 
 /// A song couldn't be loaded. Right after a launch Spotify sometimes stops
@@ -668,6 +644,27 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
             if FORWARDER_GENERATION.load(Ordering::SeqCst) != generation {
                 break;
             }
+            // Spotify refused the song's key ("error audio key 0 1"). It does
+            // to some accounts in every librespot app (librespot #1649), and
+            // it behaves like a rate limit: it comes when keys are asked for
+            // quickly and stops after a wait. Skipping on (every skip asks
+            // for another key) or signing in again only kept it going; the
+            // window waits and asks for the same song again (songRefused).
+            if let PlayerEvent::Unavailable { track_id, .. } = &player_event
+                && now_ms().saturating_sub(LAST_KEY_REFUSED_MS.load(Ordering::SeqCst)) < 15_000
+            {
+                if now_ms().saturating_sub(LAST_REFUSED_SONG_MS.swap(now_ms(), Ordering::SeqCst)) > 60_000 {
+                    REFUSED_STREAK.store(0, Ordering::SeqCst);
+                }
+                let streak = REFUSED_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
+                log::warn!("Spotify refused this song's key ({streak} in a row); waiting before asking again");
+                let uri = track_id.to_uri().unwrap_or_default();
+                let _ = player_window.emit("songRefused", serde_json::json!({ "uri": uri, "streak": streak }));
+                continue;
+            }
+            if matches!(player_event, PlayerEvent::Playing { .. }) {
+                REFUSED_STREAK.store(0, Ordering::SeqCst);
+            }
             if let PlayerEvent::Unavailable { track_id, .. } = &player_event
                 && now_ms().saturating_sub(PLAYER_REBUILT_MS.load(Ordering::SeqCst)) < 20_000
                 && !REBUILD_RETRIED.swap(true, Ordering::SeqCst)
@@ -678,13 +675,6 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
             }
             if matches!(player_event, PlayerEvent::Unavailable { .. }) {
                 note_unavailable();
-            }
-            if matches!(player_event, PlayerEvent::Playing { .. })
-                && QUALITY_TRIAL
-                    .compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst)
-                    .is_ok()
-            {
-                log::info!("Songs play at 160 kbps; keeping it");
             }
             if let Some(player_event) = SpotiampPlayerEvent::from_player_event(player_event) {
                 let _ = player_window.emit("player", player_event);
@@ -715,6 +705,7 @@ pub fn run() {
             log_frontend_error,
             is_controller_mode,
             leave_controller_mode,
+            enter_controller_mode,
             log_out,
             loopback::start_loopback,
             loopback::loopback_spectrum,

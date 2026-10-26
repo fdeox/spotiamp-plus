@@ -22,6 +22,8 @@
   import NumberDisplay from "../../NumberDisplay.svelte";
   import { onMount, untrack } from "svelte";
   import { emit, listen } from "@tauri-apps/api/event";
+  import { ask } from "@tauri-apps/plugin-dialog";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { Visualizer } from "$lib/visualizer.svelte";
   import {
     currentMonitor,
@@ -224,11 +226,11 @@
   let tickerFlash = $state("");
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let tickerFlashTimer;
-  /** @param {string} text */
-  function flashTicker(text) {
+  /** @param {string} text @param {number} [ms] how long it stays */
+  function flashTicker(text, ms = 1800) {
     tickerFlash = text;
     clearTimeout(tickerFlashTimer);
-    tickerFlashTimer = setTimeout(() => (tickerFlash = ""), 1800);
+    tickerFlashTimer = setTimeout(() => (tickerFlash = ""), ms);
   }
 
   // F: love (or unlove) the playing song; it's kept in the Library's Loved songs.
@@ -552,8 +554,31 @@
   // The audio-output device was changed (from the playlist menu), which rebuilds
   // the player on a fresh sink. Reload the current track on the new device at the
   // same spot so the switch is heard without the user pressing play again.
+  // Spotify refusing songs (songRefused): how long to wait before asking
+  // again, the timer, and whether Free Mode was offered this run.
+  const REFUSED_WAITS = [3000, 5000, 10000];
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let refusedTimer;
+  let freeModeOffered = false;
+  async function offerFreeMode() {
+    freeModeOffered = true;
+    const free = await ask(
+      "Spotify keeps refusing to send this account's songs to Spotiamp+.\n\n" +
+        "It's a problem on Spotify's side that hits some accounts in every app built on librespot, " +
+        "the engine Spotiamp+ plays with. It isn't your internet, your settings or your Premium, and it " +
+        "often passes after a while.\n\n" +
+        "Free Mode plays everything meanwhile: Spotiamp+ drives the Spotify app and stays its Winamp face. " +
+        "Switch to Free Mode now? (Premium sign-in in the right-click menu brings you back.)",
+      { title: "Spotiamp+", kind: "warning", okLabel: "Free Mode", cancelLabel: "Not now" },
+    ).catch(() => false);
+    if (!free) return;
+    await invoke("enter_controller_mode").catch(() => {});
+    await relaunch().catch(() => {});
+  }
+
   /** The Spotify song last picked up again on a rebuilt player, and how. */
   let lastReapply = /** @type {{ uri: string, positionMs: number, play: boolean } | null} */ (null);
+  let lastReapplyAt = 0;
   async function reapplyAfterDeviceChange() {
     if (!loadedTrack || loadedTrack.unavailable) return;
     const wasPlaying = playerState === "playing";
@@ -573,6 +598,7 @@
     // to be load + seek + pause: the seek made librespot load the track twice
     // and the pause let a moment of sound through.)
     lastReapply = { uri: loadedTrack.uri.asString, positionMs: position, play: wasPlaying };
+    lastReapplyAt = Date.now();
     await invoke("load_track", lastReapply).catch(() => {});
   }
 
@@ -1380,6 +1406,28 @@
     const audioDeviceSubscription = listen("audioDeviceChanged", () =>
       reapplyAfterDeviceChange(),
     );
+    // Spotify refused the song's key (lib.rs: songRefused). It behaves like a
+    // rate limit, so no skipping on: wait 3, 5, then 10 s and ask for the same
+    // song again. Still refused after that: say what's going on, and offer
+    // Free Mode, which plays through the Spotify app.
+    const refusedSubscription = listen("songRefused", (e) => {
+      const { uri, streak } = /** @type {{ uri: string, streak: number }} */ (e.payload);
+      if (loadedTrack?.uri?.asString !== uri) return;
+      clearTimeout(refusedTimer);
+      const wait = REFUSED_WAITS[streak - 1];
+      if (wait) {
+        flashTicker(`SPOTIFY HELD THE SONG BACK, TRYING AGAIN IN ${wait / 1000} S`, wait);
+        // picked up again on a rebuilt player just now: from that spot
+        const fresh = lastReapply?.uri === uri && Date.now() - lastReapplyAt < 20_000;
+        const again = fresh && lastReapply ? lastReapply : { uri, positionMs: 0, play: true };
+        refusedTimer = setTimeout(() => {
+          if (loadedTrack?.uri?.asString === uri) invoke("load_track", again).catch(() => {});
+        }, wait);
+        return;
+      }
+      flashTicker("SPOTIFY WON'T SEND SONGS RIGHT NOW", 6000);
+      if (!freeModeOffered) offerFreeMode();
+    });
     // the song didn't load on the player just rebuilt (lib.rs
     // note_player_rebuilt): once more, at the same spot
     const reloadSubscription = listen("reloadAfterRebuild", (e) => {
@@ -1422,6 +1470,8 @@
       clearInterval(tickerInterval);
       audioDeviceSubscription.then((unlisten) => unlisten());
       reloadSubscription.then((unlisten) => unlisten());
+      refusedSubscription.then((unlisten) => unlisten());
+      clearTimeout(refusedTimer);
       droppedSubscription.then((unlisten) => unlisten());
       seekToSubscription.then((unlisten) => unlisten());
       reconnectedSubscription.then((unlisten) => unlisten());
