@@ -560,14 +560,19 @@
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let refusedTimer;
   let freeModeOffered = false;
-  async function offerFreeMode() {
+  /** @param {boolean} played whether a song played before, this run */
+  async function offerFreeMode(played) {
     freeModeOffered = true;
+    const why = played
+      ? "Songs played fine a moment ago, so this is Spotify holding back for a while after many " +
+        "requests. It usually passes in a few minutes."
+      : "No song has played yet this time, which is how it goes for newer Spotify accounts: Spotify " +
+        "doesn't give their songs to apps built on librespot, the engine Spotiamp+ plays with (every " +
+        "such app is hit, not only Spotiamp+). It isn't your internet, your settings or your Premium.";
     const free = await ask(
       "Spotify keeps refusing to send this account's songs to Spotiamp+.\n\n" +
-        "It's a problem on Spotify's side that hits some accounts in every app built on librespot, " +
-        "the engine Spotiamp+ plays with. It isn't your internet, your settings or your Premium, and it " +
-        "often passes after a while.\n\n" +
-        "Free Mode plays everything meanwhile: Spotiamp+ drives the Spotify app and stays its Winamp face. " +
+        why +
+        "\n\nFree Mode plays everything: Spotiamp+ drives the Spotify app and stays its Winamp face. " +
         "Switch to Free Mode now? (Premium sign-in in the right-click menu brings you back.)",
       { title: "Spotiamp+", kind: "warning", okLabel: "Free Mode", cancelLabel: "Not now" },
     ).catch(() => false);
@@ -1411,7 +1416,7 @@
     // song again. Still refused after that: say what's going on, and offer
     // Free Mode, which plays through the Spotify app.
     const refusedSubscription = listen("songRefused", (e) => {
-      const { uri, streak } = /** @type {{ uri: string, streak: number }} */ (e.payload);
+      const { uri, streak, played } = /** @type {{ uri: string, streak: number, played: boolean }} */ (e.payload);
       if (loadedTrack?.uri?.asString !== uri) return;
       clearTimeout(refusedTimer);
       const wait = REFUSED_WAITS[streak - 1];
@@ -1426,7 +1431,7 @@
         return;
       }
       flashTicker("SPOTIFY WON'T SEND SONGS RIGHT NOW", 6000);
-      if (!freeModeOffered) offerFreeMode();
+      if (!freeModeOffered) offerFreeMode(played);
     });
     // the song didn't load on the player just rebuilt (lib.rs
     // note_player_rebuilt): once more, at the same spot

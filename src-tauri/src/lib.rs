@@ -595,6 +595,10 @@ static LAST_UNAVAILABLE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 static LAST_KEY_REFUSED_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Songs refused in a row (a song that plays starts it over).
 static REFUSED_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Whether a Spotify song has played this run: refused from the very first
+/// one is the account (Spotify gives newer accounts' keys to its own apps
+/// only), refused after songs played is the rate limit.
+static PLAYED_THIS_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// When the last refused song came; a minute later a refusal starts over.
 static LAST_REFUSED_SONG_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -659,11 +663,13 @@ pub(crate) fn spawn_event_forwarder(player_window: WebviewWindow, mut channel: P
                 let streak = REFUSED_STREAK.fetch_add(1, Ordering::SeqCst) + 1;
                 log::warn!("Spotify refused this song's key ({streak} in a row); waiting before asking again");
                 let uri = track_id.to_uri().unwrap_or_default();
-                let _ = player_window.emit("songRefused", serde_json::json!({ "uri": uri, "streak": streak }));
+                let played = PLAYED_THIS_RUN.load(Ordering::SeqCst);
+                let _ = player_window.emit("songRefused", serde_json::json!({ "uri": uri, "streak": streak, "played": played }));
                 continue;
             }
             if matches!(player_event, PlayerEvent::Playing { .. }) {
                 REFUSED_STREAK.store(0, Ordering::SeqCst);
+                PLAYED_THIS_RUN.store(true, Ordering::SeqCst);
             }
             if let PlayerEvent::Unavailable { track_id, .. } = &player_event
                 && now_ms().saturating_sub(PLAYER_REBUILT_MS.load(Ordering::SeqCst)) < 20_000

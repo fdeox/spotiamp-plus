@@ -704,7 +704,10 @@
       sep,
       ...(controllerMode
         ? [{ text: "Premium sign-in…", action: switchToPremium }]
-        : [{ text: "Log out of Spotify…", action: logOut }]),
+        : [
+            { text: "Free Mode: play through the Spotify app…", action: switchToFree },
+            { text: "Log out of Spotify…", action: logOut },
+          ]),
       { text: "&Help", items: helpItems },
     ];
   }
@@ -1111,6 +1114,19 @@
   // normal OAuth + librespot path.
   async function switchToPremium() {
     await invoke("leave_controller_mode").catch(() => {});
+    await relaunch().catch(() => {});
+  }
+  // Free Mode by choice (Spotify refusing the account's songs, say): the
+  // Spotify app plays and Spotiamp+ is its Winamp face. Premium sign-in in
+  // this menu comes back.
+  async function switchToFree() {
+    const sure = await ask(
+      "Switch to Free Mode? Spotiamp+ restarts and then drives the Spotify app, which does the playing. " +
+        "Premium sign-in in this menu brings the built-in player back.",
+      { title: "Spotiamp+", kind: "info", okLabel: "Free Mode" },
+    );
+    if (!sure) return;
+    await invoke("enter_controller_mode").catch(() => {});
     await relaunch().catch(() => {});
   }
   // Log out: the saved login goes and Spotiamp+ starts again at the sign-in,
