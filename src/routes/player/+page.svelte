@@ -971,11 +971,17 @@
   let radioSongTimed = false;
   /**
    * An own song or a radio song, by name, for its lyrics from LRCLIB (0.7.9):
-   * a file's tags, or a station's "Artist - Title". Null for a Spotify song
-   * (Spotify's own lyrics) and for anything without both names.
+   * a file's tags, or a station's "Artist - Title". In Free Mode the Spotify
+   * app's song too, by the names it gives Windows. Null for a Spotify song we
+   * play (Spotify's own lyrics) and for anything without both names.
    */
   function lyricsSong() {
     const t = loadedTrack;
+    if (controllerMode && t && !t.isLocal) {
+      return t.artist && t.name
+        ? { key: `app:${t.artist} - ${t.name}`, artist: t.artist, title: t.name, durationMs: t.durationInMs ?? 0, live: false }
+        : null;
+    }
     if (!t?.isLocal) return null;
     if (t.isStream) {
       const m = /^(.+?)\s+-\s+(.+)$/.exec(t.songTitle ?? "");
@@ -1142,6 +1148,11 @@
         : "";
       emitWindowEvent("art", {
         uri: nowUri,
+        // Free Mode: the Spotify app's song, whose cover the app gives Windows
+        appSong:
+          controllerMode && loadedTrack && !loadedTrack.isLocal
+            ? { artist: loadedTrack.artist ?? "", title: loadedTrack.name ?? "" }
+            : null,
         playing: playerState == "playing",
         // for the fullscreen visualizer's song-title flash (local files too)
         title: nowTitle,

@@ -25,9 +25,21 @@ pub struct NowPlaying {
     pub playing: bool,
 }
 
+/// The cover the Spotify app gives its session, with the song it was read
+/// alongside: the app can name a new song a moment before its picture.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct Cover {
+    pub title: String,
+    pub artist: String,
+    /// A data: URL of the picture, empty when there's none.
+    pub data_url: String,
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::NowPlaying;
+    use super::{Cover, NowPlaying};
+    use base64::Engine;
+    use windows::Storage::Streams::DataReader;
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSession as MediaSession,
         GlobalSystemMediaTransportControlsSessionManager as Manager,
@@ -106,6 +118,45 @@ mod imp {
         out
     }
 
+    pub fn cover() -> Cover {
+        let Some(props) = session()
+            .and_then(|s| s.TryGetMediaPropertiesAsync().ok())
+            .and_then(|operation| operation.get().ok())
+        else {
+            return Cover::default();
+        };
+        Cover {
+            title: props.Title().map(|s| s.to_string()).unwrap_or_default(),
+            artist: props.Artist().map(|s| s.to_string()).unwrap_or_default(),
+            data_url: picture(&props).unwrap_or_default(),
+        }
+    }
+
+    fn picture(
+        props: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
+    ) -> Option<String> {
+        let stream = props.Thumbnail().ok()?.OpenReadAsync().ok()?.get().ok()?;
+        let size = stream.Size().ok()?;
+        // a cover is tens of KB; anything past a few MB isn't one
+        if size == 0 || size > 8 << 20 {
+            return None;
+        }
+        let reader = DataReader::CreateDataReader(&stream.GetInputStreamAt(0).ok()?).ok()?;
+        let read = reader.LoadAsync(size as u32).ok()?.get().ok()?;
+        let mut bytes = vec![0u8; read as usize];
+        reader.ReadBytes(&mut bytes).ok()?;
+        let kind = stream
+            .ContentType()
+            .map(|s| s.to_string())
+            .ok()
+            .filter(|s| s.starts_with("image/"))
+            .unwrap_or_else(|| "image/jpeg".into());
+        Some(format!(
+            "data:{kind};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))
+    }
+
     pub fn play() -> bool {
         session()
             .and_then(|s| s.TryPlayAsync().ok()?.get().ok())
@@ -144,9 +195,12 @@ mod imp {
 
 #[cfg(not(target_os = "windows"))]
 mod imp {
-    use super::NowPlaying;
+    use super::{Cover, NowPlaying};
     pub fn now_playing() -> NowPlaying {
         NowPlaying::default()
+    }
+    pub fn cover() -> Cover {
+        Cover::default()
     }
     pub fn play() -> bool {
         false
@@ -171,6 +225,14 @@ mod imp {
 #[tauri::command]
 pub async fn smtc_now_playing() -> NowPlaying {
     tauri::async_runtime::spawn_blocking(imp::now_playing)
+        .await
+        .unwrap_or_default()
+}
+
+/// Free Mode's Album art window: the Spotify app's cover for its song.
+#[tauri::command]
+pub async fn smtc_cover() -> Cover {
+    tauri::async_runtime::spawn_blocking(imp::cover)
         .await
         .unwrap_or_default()
 }

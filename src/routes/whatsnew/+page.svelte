@@ -19,6 +19,7 @@
       "<b>Global hotkeys</b>, Winamp's own: Ctrl+Alt with Insert, Home and End plays, pauses and stops, Page Up and Page Down go to the previous and next song, and the arrows change the volume and jump 5 seconds, from any program. Turn them on under <i>Windows</i>, <i>Global hotkeys</i>.",
       "<b>Last.fm</b>: the songs you love (♡) can be loved on Last.fm too. Right-click, <i>Last.fm</i>, <i>Love songs there too</i>.",
       "<b>When Spotify refuses songs</b> (it does to some accounts, in every app built on librespot, the engine Spotiamp+ plays with): Spotiamp+ no longer skips through your playlist, which only made it worse. It waits a few seconds and asks for the same song again, and if Spotify keeps at it, says so and offers Free Mode, which plays through the Spotify app.",
+      "<b>Free Mode gets lyrics and album art</b> 🎤 The song the Spotify app plays shows its words in time (from LRCLIB; click a line to jump there) and its cover, in the Lyrics and Album art windows (right-click, <i>Windows</i>).",
       "<b>Audio quality</b>: right-click, <i>Audio</i>, <i>Quality</i>: Very high (320 kbps), High (160) or Normal (96).",
       "<b>Log out of Spotify</b>, at the bottom of the right-click menu, to sign in with another account.",
       "The <b>Cherry, Amber and Emerald</b> skins: the volume, the balance and the equalizer's sliders and graph are in the skin's own colour now, dark when low and bright when high, instead of a rainbow of colours (and the balance was a solid block).",

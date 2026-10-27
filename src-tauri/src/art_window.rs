@@ -32,11 +32,6 @@ pub async fn set_art_window_visible(visible: bool, app_handle: AppHandle) -> Res
         crate::settings::Settings::current_mut().set_window_visible("art", false);
         return Ok(());
     }
-    // The cover comes from the librespot metadata the player fetches; controller
-    // mode has no such session, so the window stays closed whatever asked for it.
-    if visible && crate::settings::Settings::current().controller_mode {
-        return Ok(());
-    }
     let window = match app_handle.get_webview_window("art") {
         Some(window) => window,
         None => {

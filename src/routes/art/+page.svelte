@@ -44,6 +44,31 @@
     }
   }
 
+  /**
+   * Free Mode: the cover the Spotify app gives Windows for its song. The app
+   * can name a new song a moment before it has the new picture, so it's asked
+   * a few times over the first seconds and the last answer stays.
+   * @param {string} key
+   * @param {{ artist: string, title: string }} song
+   */
+  async function loadAppArt(key, song) {
+    status = "loading";
+    artUrl = "";
+    title = song.title;
+    artist = song.artist;
+    for (const wait of [0, 700, 1500, 3000]) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      if (key !== curUri) return;
+      const cover = /** @type {any} */ (await invoke("smtc_cover").catch(() => null));
+      if (key !== curUri) return;
+      if (cover?.data_url && cover.title === song.title && cover.artist === song.artist) {
+        artUrl = cover.data_url;
+        status = "ok";
+      }
+    }
+    if (!artUrl) status = "none";
+  }
+
   onMount(() => {
     REACTIVE_WINDOW_SIZE.setSize(275, 275);
     // Reopen at the size it was last left (falls back to the default above).
@@ -56,9 +81,12 @@
     /** @type {(() => void) | undefined} */
     let unsub;
     subscribeToWindowEvent("art", (e) => {
-      if (e.uri !== curUri) {
-        curUri = e.uri;
-        loadArt(e.uri);
+      const app = !e.uri && e.appSong?.title ? e.appSong : null;
+      const key = e.uri ?? (app ? `app:${app.artist} - ${app.title}` : null);
+      if (key !== curUri) {
+        curUri = key;
+        if (app && key) loadAppArt(key, app);
+        else loadArt(e.uri);
       }
     }).then((u) => (unsub = u));
 

@@ -728,6 +728,7 @@ pub fn run() {
             smtc_publish::smtc_set_playing,
             smtc_publish::smtc_set_stopped,
             smtc::smtc_now_playing,
+            smtc::smtc_cover,
             smtc::smtc_play,
             smtc::smtc_pause,
             smtc::smtc_next,

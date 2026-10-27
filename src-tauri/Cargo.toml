@@ -81,6 +81,8 @@ windows = { version = "0.61", features = [
     "Win32_Globalization",
     # Controller ("free") mode reads and drives the system media session.
     "Media_Control",
+    # ...and the cover picture the Spotify app gives its session
+    "Storage_Streams",
     # Publishing our own session: the headset buttons and the Windows media
     # panel. Interop is what binds a session to a plain desktop window handle.
     "Media",

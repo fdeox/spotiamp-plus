@@ -591,13 +591,11 @@
     const windowItems = [
       { text: "Library", accelerator: "L", action: openLibraryWindow },
       { text: "Visualizer", action: () => invoke("set_visualizer_window_visible", { visible: true }) },
+      { text: "Lyrics", action: () => invoke("set_lyrics_window_visible", { visible: true }) },
+      { text: "Album art", action: () => invoke("set_art_window_visible", { visible: true }) },
       ...(controllerMode
         ? []
-        : [
-            { text: "Lyrics", action: () => invoke("set_lyrics_window_visible", { visible: true }) },
-            { text: "Album art", action: () => invoke("set_art_window_visible", { visible: true }) },
-            { text: "Listening stats", action: () => invoke("set_stats_window_visible", { visible: true }) },
-          ]),
+        : [{ text: "Listening stats", action: () => invoke("set_stats_window_visible", { visible: true }) }]),
       sep,
       { text: "Always on top", checked: alwaysOnTop, action: toggleAlwaysOnTop },
       { text: "Taskbar extras (title, progress, buttons)", checked: taskbarExtras, action: toggleTaskbarExtras },
