@@ -559,8 +559,7 @@ mod tests {
             "skin: old\nfuture_list: [1, 2]\nplayer:\n  volume: 10\n  future_flag: true\nresume: null\n",
         )
         .unwrap();
-        let mut settings = Settings::default();
-        settings.skin = "amber".into();
+        let settings = Settings { skin: "amber".into(), ..Default::default() };
         let mut ours = serde_yaml::to_value(&settings).unwrap();
         keep_unknown(&mut ours, &found);
         let back: Settings = serde_yaml::from_value(ours.clone()).unwrap();

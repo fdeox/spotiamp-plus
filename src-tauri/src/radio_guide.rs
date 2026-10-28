@@ -78,24 +78,66 @@ fn station(s: &Value) -> Station {
     }
 }
 
-/// One query to the directory (`path` with its parameters), trying the next
-/// server when one doesn't answer.
-async fn ask(path: &str) -> Result<Vec<Value>, String> {
+/// How long a list query waits on one server before the next one is asked
+/// too: its servers are slow at times (12 s and more on 2026-10-29), and the
+/// first good answer wins.
+const HEDGE: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// One query to the directory (`path` with its parameters).
+async fn ask(path: &str, list: bool) -> Result<Value, String> {
+    let servers: Vec<String> = SERVERS.iter().map(|s| s.to_string()).collect();
+    ask_from(&servers, path, list, HEDGE).await
+}
+
+/// `ask` of these servers. A `list` query goes to the next server when one
+/// fails or answers no list, or hasn't answered within `hedge`; anything else
+/// (counting a play) only once one has failed, so it's never counted twice.
+async fn ask_from(servers: &[String], path: &str, list: bool, hedge: std::time::Duration) -> Result<Value, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
+        // a server that's gone doesn't hold the next one up for long
+        .connect_timeout(std::time::Duration::from_secs(5))
         .user_agent(concat!("Spotiamp+/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
-    for server in SERVERS {
-        let Ok(response) = client.get(format!("{server}{path}")).send().await else { continue };
-        let Ok(text) = response.text().await else { continue };
-        if let Ok(Value::Array(list)) = serde_json::from_str::<Value>(&text) {
-            return Ok(list);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut out = 0;
+    for (i, server) in servers.iter().enumerate() {
+        let (client, tx, server, url) = (client.clone(), tx.clone(), server.clone(), format!("{server}{path}"));
+        tauri::async_runtime::spawn(async move {
+            let started = std::time::Instant::now();
+            let answer = match client.get(url).send().await {
+                Ok(response) => response.text().await.map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = tx.send((server, answer, started.elapsed().as_millis()));
+        });
+        out += 1;
+        // past the last server, or one at a time: wait for what's out (each
+        // gives up after 12 s)
+        let patience = if list && i + 1 < servers.len() { hedge } else { std::time::Duration::from_secs(13) };
+        let until = tokio::time::Instant::now() + patience;
+        while out > 0 {
+            let Ok(Some((server, answer, ms))) = tokio::time::timeout_at(until, rx.recv()).await else { break };
+            out -= 1;
+            match answer.map(|text| serde_json::from_str::<Value>(&text)) {
+                Ok(Ok(value)) if !list || value.is_array() => return Ok(value),
+                Ok(_) => log::warn!("radio guide: {server} answered something else ({ms} ms)"),
+                Err(e) => log::warn!("radio guide: {server} didn't answer ({ms} ms): {e}"),
+            }
         }
     }
     // its servers are down now and then for a while (all at once on
     // 2026-10-25), so it's not always the internet
     Err("The radio guide (radio-browser.info) isn't answering: no internet, or it's down for a while. Your stations still play.".into())
+}
+
+/// A list of stations from the directory.
+async fn ask_list(path: &str) -> Result<Vec<Value>, String> {
+    Ok(match ask(path, true).await? {
+        Value::Array(list) => list,
+        _ => Vec::new(),
+    })
 }
 
 /// The stations whose server turned us away.
@@ -146,7 +188,7 @@ pub async fn radio_search(query: String) -> Result<Vec<Station>, String> {
         format!("/json/stations/search?name={q}&{COMMON}"),
         format!("/json/stations/search?tag={q}&{COMMON}"),
     );
-    let (by_name, by_tag) = tokio::join!(ask(&name_path), ask(&tag_path));
+    let (by_name, by_tag) = tokio::join!(ask_list(&name_path), ask_list(&tag_path));
     match (by_name, by_tag) {
         (Err(e), Err(_)) => Err(e),
         (by_name, by_tag) => Ok(keep_playable(vec![by_name.unwrap_or_default(), by_tag.unwrap_or_default()], 100, &unplayable())),
@@ -160,7 +202,7 @@ pub async fn radio_popular(country: Option<String>) -> Result<Vec<Station>, Stri
         Some(c) => format!("/json/stations/search?countrycode={}&{COMMON}", encode(&c)),
         None => format!("/json/stations/search?{COMMON}"),
     };
-    Ok(keep_playable(vec![ask(&path).await?], 100, &unplayable()))
+    Ok(keep_playable(vec![ask_list(&path).await?], 100, &unplayable()))
 }
 
 /// Your stations: the ones that played here, newest first.
@@ -199,9 +241,10 @@ pub async fn radio_remember(station: Station) {
         list.truncate(KEEP);
         uuid
     };
-    // the directory counts what's played, to rank its stations
+    // the directory counts what's played, to rank its stations (once: its
+    // answer is a note, not a list)
     if !uuid.is_empty() {
-        let _ = ask(&format!("/json/url/{}", encode(&uuid))).await;
+        let _ = ask(&format!("/json/url/{}", encode(&uuid)), false).await;
     }
 }
 
@@ -246,6 +289,58 @@ pub fn radio_forget(url: String) {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::io::{Read, Write};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A stand-in directory server: answers `body` after `delay`, counting
+    /// the requests it got.
+    fn server(body: &'static str, delay_ms: u64) -> (String, Arc<AtomicUsize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counted = hits.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                counted.fetch_add(1, Ordering::SeqCst);
+                std::thread::spawn(move || {
+                    let mut request = [0u8; 2048];
+                    let _ = stream.read(&mut request);
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                    let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                });
+            }
+        });
+        (url, hits)
+    }
+
+    #[test]
+    fn a_slow_server_doesnt_hold_the_list_up() {
+        let (slow, _) = server("[1]", 3000);
+        let (quick, _) = server("[2]", 0);
+        let started = std::time::Instant::now();
+        let got = tauri::async_runtime::block_on(ask_from(&[slow, quick], "/", true, std::time::Duration::from_millis(200)));
+        assert_eq!(got, Ok(json!([2])));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn a_list_query_moves_on_from_an_answer_without_a_list() {
+        let (wrong, _) = server("{\"error\": 1}", 0);
+        let (right, _) = server("[3]", 0);
+        let got = tauri::async_runtime::block_on(ask_from(&[wrong, right], "/", true, std::time::Duration::from_secs(5)));
+        assert_eq!(got, Ok(json!([3])));
+    }
+
+    #[test]
+    fn a_play_is_counted_once() {
+        let (first, first_hits) = server("{\"ok\": true}", 500);
+        let (second, second_hits) = server("{\"ok\": true}", 0);
+        let got = tauri::async_runtime::block_on(ask_from(&[first, second], "/", false, std::time::Duration::from_millis(100)));
+        assert_eq!(got, Ok(json!({ "ok": true })));
+        assert_eq!((first_hits.load(Ordering::SeqCst), second_hits.load(Ordering::SeqCst)), (1, 0));
+    }
 
     #[test]
     fn only_what_plays_is_listed() {
