@@ -7,6 +7,7 @@
   <a href="../../releases"><img src="https://img.shields.io/github/downloads/fdeox/spotiamp-plus/total?label=downloads&color=ffb000" alt="Downloads"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 and 11">
   <a href="https://discord.gg/8Rq5Xycny4"><img src="https://img.shields.io/badge/Discord-join%20the%20community-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://fdeox.github.io/spotiamp-plus/"><img src="https://img.shields.io/badge/website-fdeox.github.io-ff8a00" alt="Website"></a>
 </p>
 
 A Winamp-style desktop player for **Spotify**: the classic skinned windows, real
@@ -19,9 +20,10 @@ Spotify Premium account natively (no browser). **Your own music files** and
 </p>
 
 > **Premium** streams directly (playback via
-> [librespot](https://github.com/librespot-org/librespot)); **Free** accounts get
-> **Free Mode**, where Spotiamp+ becomes the Winamp face of the official Spotify
-> app and drives it. Login always uses Spotify's own page.
+> [librespot](https://github.com/librespot-org/librespot)); **Free** accounts, and
+> accounts Spotify won't serve to librespot, get **Free Mode**, where Spotiamp+
+> becomes the Winamp face of the official Spotify app and drives it, with lyrics
+> and album art. Login always uses Spotify's own page.
 
 ## Highlights
 
@@ -30,9 +32,9 @@ Spotify Premium account natively (no browser). **Your own music files** and
 - 📻 Thousands of internet radio stations, in full quality
 - 🎨 Any classic Winamp skin, from the built-in Skin Museum or a `.wsz` file
 - 🎆 MilkDrop with 534 presets, plus 100 more visualizer patterns
-- 🎤 Synced lyrics, album art and a real 10-band equalizer
+- 🎤 Synced lyrics (for your own songs and radio too), album art and a real 10-band equalizer
 - 🦙 Lala, a little llama who lives on your player
-- 🎧 Last.fm scrobbling, Discord presence, listening stats and badges
+- 🎧 Last.fm scrobbling, Discord presence, global hotkeys, listening stats and badges
 
 ## 🎵 Music
 
@@ -46,7 +48,7 @@ one next, **J** to jump to a song by name, and right-click for an *Instant mix*
 of 20 songs like it. Spotiamp+ picks up where you left off, and reconnects by
 itself if Spotify drops the session.
 
-**Your own files.** MP3, FLAC, M4A (AAC or Apple Lossless), WAV and OGG play
+**Your own files.** MP3, FLAC, M4A (AAC or Apple Lossless), WAV, OGG and Opus play
 right alongside Spotify, through the same EQ and visualizers, with their own
 tags, kbps and kHz. Add files or a folder (**O** / **Shift+O**), or **drag them
 from Windows Explorer**: onto the playlist to add them, onto the main window to
@@ -61,7 +63,7 @@ name or genre, see the most listened ones (everywhere, or in your country), and
 find the ones you've played under *Your stations*. Only stations that really
 play are listed. **Ctrl+L** (or *Playlist → Open a link…*) takes any station's
 link (SHOUTcast, Icecast, HLS, a `.pls` or an `.m3u`) or a Spotify song, album
-or playlist. Stations play in full quality (HE-AAC / AAC+ too), through the EQ
+or playlist. Stations play in full quality (HE-AAC / AAC+ and Opus too), through the EQ
 and the visualizers, with the name of the song they're on, and one that drops
 is connected again.
 
@@ -72,7 +74,8 @@ is connected again.
 **Last.fm.** Right-click → *Last.fm* → *Connect your Last.fm…*, allow
 Spotiamp+ on Last.fm's page, and what you play is scrobbled (once half the song,
 or 4 minutes, has played; a song on repeat counts every time). Without internet
-the scrobbles wait and go later.
+the scrobbles wait and go later. The songs you love (♡) can be loved on Last.fm
+too (*Last.fm → Love songs there too*).
 
 ## 🎨 Skins
 
@@ -146,7 +149,11 @@ New Year she wears a Santa hat.
 ## 🎚️ Lyrics, album art, EQ and stats
 
 - **Lyrics**: synced lyrics that follow the song; click a line to jump there.
-- **Album art**: the cover in its own window, docked like the others.
+  Spotify songs get Spotify's own; your own files, radio songs and Free Mode get
+  theirs from [LRCLIB](https://lrclib.net). A radio song's words run from when
+  the station names it: click the line being sung to bring them in time.
+- **Album art**: the cover in its own window, docked like the others (in Free
+  Mode too).
 - **10-band equalizer**: Winamp's EQ window with a real DSP behind it, preamp,
   presets, `.EQF` files (yours or Winamp's), and **AUTO**: a curve saved for a
   song or an artist comes back whenever they play. Plus a balance slider.
@@ -173,7 +180,12 @@ New Year she wears a Santa hat.
   stations, in order
 - 🖱️ **Song menus**: right-click a song to play it next, love it, add it to a
   list, copy its link or show a file in its folder
-- 🔊 **Normalize volume** and pick the **output device** (right-click → *Audio*)
+- 🔊 **Audio quality** (320, 160 or 96 kbps), **normalize volume** and the
+  **output device** (right-click → *Audio*)
+- ⌨️ **Global hotkeys**, Winamp's own: Ctrl+Alt with Insert, Home, End, Page
+  Up/Down and the arrows, from any program (optional, *Windows → Global hotkeys*)
+- 🪟 **One window in Alt+Tab** and on the taskbar, like Winamp: the others come
+  along with the player
 - 💬 **On-screen display** with the new song and its cover (optional)
 - 📌 **Taskbar extras**: the song on the taskbar button, progress across it and
   ⏮ ⏯ ⏭ under its thumbnail (optional)
@@ -185,6 +197,7 @@ New Year she wears a Santa hat.
 - 🪟 Your **window layout** comes back the way you left it
 - 🔄 **Built-in updater** (signed), and a *What's new* window after each update
 - 🩺 **Copy diagnostic info** for a bug report (right-click → *Help*)
+- 🚪 **Log out** to sign in with another Spotify account (bottom of the right-click menu)
 
 </details>
 
@@ -209,7 +222,7 @@ and `F1` work. The right-click menu shows each key next to what it does, and
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
-| `Z` `X` `C` `V` `B` | prev / play / pause / stop / next | `Space` | play–pause |
+| `Z` `X` `C` `V` `B` | prev / play / pause / stop / next | `Space` | play / pause |
 | `↑` `↓` / mouse wheel | volume | `←` `→` | seek ∓5s |
 | `S` | shuffle | `R` | repeat (off / all / one) |
 | `J` | jump to a track | `Q` | play the selected track next |
@@ -223,6 +236,10 @@ and `F1` work. The right-click menu shows each key next to what it does, and
 shortcuts there, so press **`J`** and type part of a song's name to find it.
 
 **Library window:** start typing to jump to the first track that matches.
+
+**Global hotkeys** (switch them on under *Windows*): `Ctrl+Alt` with `Insert`
+`Home` `End` play / pause / stop, `Page Up` `Page Down` previous / next, `↑` `↓`
+volume and `←` `→` jump 5 seconds, from any program.
 
 **Visualizer:** click to change the pattern, double-click for fullscreen, `Esc`
 to come back. `M` switches MilkDrop on and off; with it on, `L` opens the
@@ -247,4 +264,4 @@ npm run tauri build    # produce a release installer (src-tauri/target/release/b
 
 ---
 
-<sub>[MIT License](LICENSE) (Lala's art and animations: © fdeox, all rights reserved, see [their license](src/lib/mascot/LICENSE.md)) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · MilkDrop by [projectM](https://github.com/projectM-visualizer/projectm) (LGPL-2.1), presets and textures by their authors ([credits](src-tauri/presets/CREDITS.txt)) · AAC decoding by [rusty_aac](https://crates.io/crates/rusty_aac) (Apache-2.0) · not affiliated with Winamp or Spotify</sub>
+<sub>[MIT License](LICENSE) (Lala's art and animations: © fdeox, all rights reserved, see [their license](src/lib/mascot/LICENSE.md)) · [Privacy](PRIVACY.md) · based on [tedsteen/Spotiamp](https://github.com/tedsteen/Spotiamp) · MilkDrop by [projectM](https://github.com/projectM-visualizer/projectm) (LGPL-2.1), presets and textures by their authors ([credits](src-tauri/presets/CREDITS.txt)) · AAC decoding by [rusty_aac](https://crates.io/crates/rusty_aac) (Apache-2.0) · Opus decoding by [opus-decoder](https://crates.io/crates/opus-decoder) (MIT) · lyrics for your own songs and radio from [LRCLIB](https://lrclib.net) · not affiliated with Winamp or Spotify</sub>
