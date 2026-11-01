@@ -408,6 +408,10 @@ fn show(app: &AppHandle) -> Result<(), String> {
 /// Called by the player once it's up: show the llama unless it's switched off.
 #[tauri::command(async)]
 pub fn mascot_show(app: AppHandle) -> Result<(), String> {
+    // a modern skin worn: she lives on the classic player, which is hidden
+    if crate::modern_window::active() {
+        return Ok(());
+    }
     if current().enabled { show(&app) } else { Ok(()) }
 }
 

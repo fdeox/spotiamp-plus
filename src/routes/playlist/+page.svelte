@@ -256,6 +256,27 @@
   $effect(() => {
     playlist.hidden = queueShown;
   });
+
+  // A modern skin's playlist (routes/modern) shows these rows: sent when
+  // they change (a moment later, so a burst goes once) and when it asks.
+  // Its clicks come back to play, remove or move a row.
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let skinRowsTimer;
+  const sendSkinRows = () => emitWindowEvent("skinPlaylist", playlist.skinRows());
+  $effect(() => {
+    playlist.skinRows(); // what it reads is what makes it send again
+    clearTimeout(skinRowsTimer);
+    skinRowsTimer = setTimeout(sendSkinRows, 150);
+  });
+  onMount(() => {
+    const commands = subscribeToWindowEvent("skinPlaylistCommand", (c) => {
+      if (typeof c.play === "number") playlist.rows[c.play]?.play();
+      if (typeof c.remove === "number") playlist.removeAt(c.remove);
+      if (Array.isArray(c.move)) playlist.moveRow(c.move[0], c.move[1]);
+      if (c.ask) sendSkinRows();
+    });
+    return () => commands.then((unlisten) => unlisten());
+  });
   const songTime = $derived.by(() => {
     const s = Math.floor((playlist.positionMs || 0) / 1000);
     return { m: String(Math.min(99, Math.floor(s / 60))), s: String(s % 60) };
@@ -426,7 +447,7 @@
     if (menuBusy) return;
     menuBusy = true;
     try {
-      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm()]);
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm(), loadModernSkin()]);
       // Order matters here. Tauri's popup holds this page's resource table
       // locked on a worker until the menu closes, while it waits for the main
       // thread to show it; closing or creating a menu runs ON the main thread
@@ -531,6 +552,17 @@
   const menuText = (/** @type {string} */ text) => text.replaceAll("&", "&&");
 
   // Last.fm (lastfm.rs): signed in or not, for the menu
+  // The modern skin worn (a .wal; modern_window.rs), or null: the classic look.
+  /** @type {string | null} */
+  let modernSkin = null;
+  async function loadModernSkin() {
+    const worn = /** @type {{ name: string } | null} */ (await invoke("modern_skin").catch(() => null));
+    modernSkin = worn?.name ?? null;
+  }
+  async function loadModernSkinFile() {
+    await invoke("pick_modern_skin").catch((e) => handleError(new Error(`Could not load the skin: ${e}`)));
+  }
+
   /** @type {{ available: boolean, user: string | null, scrobbling: boolean, love: boolean, waiting: number }} */
   let lastfm = { available: false, user: null, scrobbling: false, love: false, waiting: 0 };
   async function loadLastfm() {
@@ -602,7 +634,8 @@
 
   function menuItems() {
     const sep = { item: /** @type {const} */ ("Separator") };
-    const isWorn = (/** @type {string} */ custom) => currentSkin === "custom" && wornCustom === custom;
+    // (a modern skin worn: none of the classic ones is)
+    const isWorn = (/** @type {string} */ custom) => !modernSkin && currentSkin === "custom" && wornCustom === custom;
     /** @type {any[]} */
     const playItems = [
       { text: "Play", accelerator: "X", action: () => emitWindowEvent("playlistWindow", { PlayRequested: null }) },
@@ -628,7 +661,7 @@
     }
     const listItems = listMenuItems();
     const skinItems = [
-      { text: "Classic", checked: currentSkin === "classic", action: () => chooseSkin("classic") },
+      { text: "Classic", checked: !modernSkin && currentSkin === "classic", action: () => chooseSkin("classic") },
       ...bundledSkins.map((name) => ({
         text: menuText(prettySkinName(name)),
         checked: isWorn(`bundled:${name}`),
@@ -638,17 +671,20 @@
         text: "&Colors",
         items: ["cherry", "amber", "emerald"].map((c) => ({
           text: c[0].toUpperCase() + c.slice(1),
-          checked: currentSkin === c,
+          checked: !modernSkin && currentSkin === c,
           action: () => chooseSkin(c),
         })),
       },
       // a skin from the Museum or a file: its name, ticked (the two below
       // are things to do, not choices, so they're never ticked)
-      ...(currentSkin === "custom" && /^(museum|file):./.test(wornCustom)
+      ...(!modernSkin && currentSkin === "custom" && /^(museum|file):./.test(wornCustom)
         ? [{ text: menuText(wornCustom.replace(/^(museum|file):/, "")), checked: true, enabled: false }]
         : []),
+      // the modern skin worn, ticked
+      ...(modernSkin ? [{ text: menuText(modernSkin.replace(/\.(wal|zip)$/i, "")), checked: true, enabled: false }] : []),
       sep,
       { text: "Load .wsz from disk…", action: loadWszSkin },
+      { text: "Load a modern skin (.wal)…", action: loadModernSkinFile },
       { text: "Skin &Museum…", action: openSkinMuseum },
       sep,
       {
@@ -1398,6 +1434,10 @@
     subscribeToWindowEvent("playerWindow", (e) => {
       if (e.MenuRequested !== undefined) showMenu("player");
     }).then((u) => (unsubMenu = u));
+    // ...and on a modern skin's window, from its menus and its right-click
+    /** @type {(() => void) | undefined} */
+    let unsubModernMenu;
+    subscribeToWindowEvent("modernMenu", () => showMenu("modern")).then((u) => (unsubModernMenu = u));
     // A skin put on from the Skin Museum window: tick it in the menu.
     /** @type {(() => void) | undefined} */
     let unsubSkin;
@@ -1414,6 +1454,7 @@
       offDropped.then((f) => f()).catch(() => {});
       playlist.dispose();
       unsubMenu?.();
+      unsubModernMenu?.();
       unsubSkin?.();
       openedMenu?.close().catch(() => {});
     };

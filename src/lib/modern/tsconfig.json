@@ -1,0 +1,9 @@
+{
+  // Webamp Modern's classes declare fields their base class's constructor
+  // already set (_uiRoot and others): with today's class-field rules those
+  // declarations reset them to undefined after super(). Its own build used
+  // the old rules, so the engine is compiled with them here too.
+  "compilerOptions": {
+    "useDefineForClassFields": false
+  }
+}

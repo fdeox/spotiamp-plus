@@ -64,14 +64,26 @@ const PAGE: u32 = 24;
 const MAX_WSZ_BYTES: usize = 8 * 1024 * 1024;
 /// Where skins may come from. download_url points at the museum's CDN.
 const SKIN_HOSTS: &[&str] = &["r2.webampskins.org", "cdn.webampskins.org", "skins.webamp.org"];
+/// A modern skin's picture is read out of its file by the museum's own worker.
+const SHOT_HOSTS: &[&str] = &["r2.webampskins.org", "cdn.webampskins.org", "skins.webamp.org", "zip-worker.jordan1320.workers.dev"];
+/// What the museum says about a modern skin (it has no museum page of its own).
+const MODERN_FIELDS: &str = "filename md5 nsfw screenshot_url download_url";
+/// Modern skins in the museum when this was written (a random page is
+/// picked from these).
+const MODERN_TOTAL: u32 = 3143;
+const MAX_WAL_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Serialize, serde::Deserialize, Clone, Hash)]
 pub struct MuseumSkin {
     name: String,
     md5: String,
+    /// "" for a modern skin the museum has no picture of
     screenshot: String,
     download: String,
     page: Option<String>,
+    /// Winamp 5's modern skin (.wal), worn in the modern skin window
+    #[serde(default)]
+    modern: bool,
 }
 
 fn client() -> Result<reqwest::Client, String> {
@@ -124,6 +136,38 @@ fn usable(nodes: &serde_json::Value) -> Vec<MuseumSkin> {
                         screenshot: n["screenshot_url"].as_str()?.to_string(),
                         download: n["download_url"].as_str()?.to_string(),
                         page: n["museum_url"].as_str().map(str::to_string),
+                        modern: false,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The modern skins in a list of nodes (a search mixes in classic ones):
+/// not NSFW, a .wal or .zip each. `pictured`: only those the museum has a
+/// picture of, for the lists one browses.
+fn usable_modern(nodes: &serde_json::Value, pictured: bool) -> Vec<MuseumSkin> {
+    nodes
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter(|n| n["__typename"].as_str().is_none_or(|t| t == "ModernSkin"))
+                .filter(|n| !n["nsfw"].as_bool().unwrap_or(false))
+                .filter(|n| !pictured || n["screenshot_url"].as_str().is_some())
+                .filter_map(|n| {
+                    let file = n["filename"].as_str().unwrap_or("skin");
+                    let lower = file.to_ascii_lowercase();
+                    if !(lower.ends_with(".wal") || lower.ends_with(".zip")) {
+                        return None;
+                    }
+                    Some(MuseumSkin {
+                        name: file[..file.len() - 4].replace('_', " "),
+                        md5: n["md5"].as_str()?.to_string(),
+                        screenshot: n["screenshot_url"].as_str().unwrap_or("").to_string(),
+                        download: n["download_url"].as_str()?.to_string(),
+                        page: None,
+                        modern: true,
                     })
                 })
                 .collect()
@@ -172,6 +216,30 @@ pub async fn museum_skins(
             .await?;
             Ok(usable(&data["search_classic_skins"]))
         }
+        // Winamp 5's modern skins: those with a picture, from a spot (more
+        // in one go, as about half have none)
+        "modern" | "modern-random" => {
+            let at = if kind == "modern" { offset * 2 } else { pseudo_random(MODERN_TOTAL.saturating_sub(PAGE * 2)) };
+            let data = gql(
+                &format!("query($o: Int) {{ modern_skins(first: {}, offset: $o) {{ nodes {{ {MODERN_FIELDS} }} }} }}", PAGE * 2),
+                serde_json::json!({ "o": at }),
+            )
+            .await?;
+            Ok(usable_modern(&data["modern_skins"]["nodes"], true))
+        }
+        "modern-search" => {
+            let q = query.unwrap_or_default();
+            let q: String = q.trim().chars().take(80).collect();
+            if q.is_empty() {
+                return Ok(Vec::new());
+            }
+            let data = gql(
+                &format!("query($q: String!) {{ search_skins(query: $q, first: 60) {{ __typename ... on ModernSkin {{ {MODERN_FIELDS} }} }} }}"),
+                serde_json::json!({ "q": q }),
+            )
+            .await?;
+            Ok(usable_modern(&data["search_skins"], false))
+        }
         other => Err(format!("unknown list: {other}")),
     }
 }
@@ -194,9 +262,14 @@ pub fn museum_set_favorite(skin: MuseumSkin, favorite: bool) -> Result<(), Strin
     if skin.md5.len() != 32 || !skin.md5.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("That skin's id looks wrong.".into());
     }
-    for link in [&skin.download, &skin.screenshot] {
+    let mut links = vec![(&skin.download, SKIN_HOSTS)];
+    // a modern skin may have no picture
+    if !(skin.modern && skin.screenshot.is_empty()) {
+        links.push((&skin.screenshot, SHOT_HOSTS));
+    }
+    for (link, hosts) in links {
         let url = url::Url::parse(link).map_err(|_| "That skin's link looks wrong.".to_string())?;
-        if url.scheme() != "https" || !SKIN_HOSTS.contains(&url.host_str().unwrap_or("")) {
+        if url.scheme() != "https" || !hosts.contains(&url.host_str().unwrap_or("")) {
             return Err("Only Skin Museum skins can be favorites.".into());
         }
     }
@@ -211,13 +284,12 @@ pub fn museum_set_favorite(skin: MuseumSkin, favorite: bool) -> Result<(), Strin
     Ok(())
 }
 
-/// Download a museum skin and put it on (like "load .wsz…" from disk).
-#[tauri::command]
-pub async fn museum_apply(md5: String, download: String) -> Result<(), String> {
+/// A museum skin's file: only from the museum, only so big.
+async fn download_skin(md5: &str, download: &str, max: usize) -> Result<Vec<u8>, String> {
     if md5.len() != 32 || !md5.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("That skin's id looks wrong.".into());
     }
-    let url = url::Url::parse(&download).map_err(|_| "That download link looks wrong.".to_string())?;
+    let url = url::Url::parse(download).map_err(|_| "That download link looks wrong.".to_string())?;
     let host = url.host_str().unwrap_or("");
     if url.scheme() != "https" || !SKIN_HOSTS.contains(&host) {
         return Err(format!("Skins are only downloaded from the Skin Museum, not {host}."));
@@ -230,16 +302,30 @@ pub async fn museum_apply(md5: String, download: String) -> Result<(), String> {
     if !res.status().is_success() {
         return Err(format!("The Skin Museum answered {}.", res.status()));
     }
-    if res.content_length().unwrap_or(0) as usize > MAX_WSZ_BYTES {
+    if res.content_length().unwrap_or(0) as usize > max {
         return Err("That skin file is too big.".into());
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = res.chunk().await.map_err(|e| e.to_string())? {
         bytes.extend_from_slice(&chunk);
-        if bytes.len() > MAX_WSZ_BYTES {
+        if bytes.len() > max {
             return Err("That skin file is too big.".into());
         }
     }
+    Ok(bytes)
+}
+
+/// Download a modern museum skin (.wal) and wear it (modern_window.rs).
+#[tauri::command]
+pub async fn museum_apply_modern(app: AppHandle, md5: String, download: String, name: String) -> Result<(), String> {
+    let bytes = download_skin(&md5, &download, MAX_WAL_BYTES).await?;
+    crate::modern_window::wear_modern_skin(app, format!("{}.wal", name.trim()), bytes).await
+}
+
+/// Download a museum skin and put it on (like "load .wsz…" from disk).
+#[tauri::command]
+pub async fn museum_apply(md5: String, download: String) -> Result<(), String> {
+    let bytes = download_skin(&md5, &download, MAX_WSZ_BYTES).await?;
     crate::wsz::apply_wsz_bytes(&bytes)?;
     Settings::current_mut().skin = "custom".to_string();
     Ok(())

@@ -415,7 +415,8 @@ pub async fn set_playlist_window_visible(visible: bool, app_handle: AppHandle) -
         playlist_window
     };
     Settings::current_mut().player.show_playlist = visible;
-    if visible {
+    // a modern skin worn: its own playlist is shown; this one runs hidden
+    if visible && !crate::modern_window::active() {
         playlist_window.show().expect("Playlist window to show");
     } else {
         playlist_window.hide().expect("Playlist window to hide");
@@ -440,6 +441,10 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
         "player",
         inner_size,
     )?;
+    // a modern skin worn: the player runs hidden from the start, no flash of it
+    if crate::modern_window::active() {
+        let _ = window.hide();
+    }
 
     // (read first: moving the window saves its position, which needs the
     // settings lock this read would still hold)
@@ -482,6 +487,12 @@ pub fn build_window(app_handle: &AppHandle) -> Result<WebviewWindow, tauri::Erro
                 let _ = window.run_on_main_thread(move || {
                     let _ = app_window::rescue_offscreen(&app);
                 });
+            }
+            // a modern skin worn: its window is the face, the player stays
+            // hidden (it still plays)
+            if crate::modern_window::active() {
+                crate::modern_window::apply_face(window.app_handle());
+                return;
             }
             let _ = window.show();
             let _ = window.set_focus();

@@ -13,9 +13,10 @@
   // here before first paint from the value the window was created with) and
   // follows live changes from the Scale menu / Ctrl+D. The login page (Spotify's
   // own OAuth) isn't ours to scale.
-  // The login page and the llama (sized by mascot.rs, drawn to fit) keep
-  // their own size and no zoom.
-  const OWN_SIZE = ["login", "mascot"].includes(getCurrentWindow().label);
+  // The login page, the llama (sized by mascot.rs, drawn to fit) and the
+  // modern skin's window (over all the screens, scaling each of the skin's
+  // windows itself) keep their own size and no zoom.
+  const OWN_SIZE = ["login", "mascot", "modern"].includes(getCurrentWindow().label);
   if (!OWN_SIZE) {
     REACTIVE_WINDOW_SIZE.setZoom(REACTIVE_WINDOW_SIZE.zoom);
   }

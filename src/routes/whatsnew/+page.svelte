@@ -14,6 +14,7 @@
   /** @type {Record<string, string[]>} */
   const NOTES = {
     "0.7.10": [
+      "<b>Winamp 5's modern skins</b> 🎨 (.wal): Winamp Modern, Big Bento and thousands more, with their own windows, playlist, equalizer and visualizer, all driving Spotiamp+. <i>Skins</i>, <i>Load a modern skin (.wal)…</i>, or the Skin Museum's new <i>Modern</i> tab. Drawn by Webamp Modern's engine. Some skins use parts of Winamp Spotiamp+ doesn't have yet: those say so and the classic look comes back.",
       "<b>WMA files play</b> 🎵 through Windows' own decoder, with their tags and length, from your music folders too. A file Spotiamp+ couldn't open before gets a second try the same way.",
       "<b>Playlist folders</b> in the Library, the way Spotify has them: click one to open it; right-click it, or drag it onto the playlist, for all its playlists one after another. Open folders stay open.",
       "<b>Free Mode shows what's coming up</b> in the Spotify app: the playlist lists its song and its queue. Turn it on in the Playlist menu, <i>Show the Spotify app's queue</i>; Spotiamp+ signs in to your Spotify once, to read the queue only. If Spotify won't share an account's queue, the playlist says so.",

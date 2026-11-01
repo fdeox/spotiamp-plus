@@ -9,12 +9,15 @@
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(600, 620);
 
-  /** @typedef {{name: string, md5: string, screenshot: string, download: string, page: string | null}} MuseumSkin */
+  /** @typedef {{name: string, md5: string, screenshot: string, download: string, page: string | null, modern?: boolean}} MuseumSkin */
 
   /** @type {MuseumSkin[]} */
   let skins = $state([]);
-  // classics | random | search
+  // classics | random | search | favorites, and Winamp 5's modern skins:
+  // modern | modern-random | modern-search
   let kind = $state("classics");
+  const modernKinds = ["modern", "modern-random", "modern-search"];
+  const isModern = $derived(modernKinds.includes(kind));
   let query = $state("");
   let offset = $state(0);
   let loading = $state(false);
@@ -52,7 +55,9 @@
   /** @param {string} nextKind @param {boolean} [more] */
   async function load(nextKind, more = false) {
     if (loading) return;
-    if (nextKind === "search" && !query.trim()) return;
+    // the search box looks among the kind of skins shown
+    if (nextKind === "search" && isModern) nextKind = "modern-search";
+    if ((nextKind === "search" || nextKind === "modern-search") && !query.trim()) return;
     if (nextKind === "favorites") {
       kind = "favorites";
       error = "";
@@ -71,7 +76,8 @@
       );
       skins = more ? [...skins, ...list] : list;
       if (!more && listEl) listEl.scrollTop = 0;
-      if (!list.length && !more) error = kind === "search" ? `Nothing found for "${query.trim()}".` : "Nothing came back. Try again.";
+      if (!list.length && !more)
+        error = kind.endsWith("search") ? `Nothing found for "${query.trim()}".` : "Nothing came back. Try again.";
     } catch (e) {
       error = String(e);
     } finally {
@@ -85,10 +91,17 @@
     applying = skin.md5;
     status = `Putting on ${skin.name}…`;
     try {
-      await invoke("museum_apply", { md5: skin.md5, download: skin.download });
-      applied = skin.md5;
-      status = `Wearing ${skin.name}.`;
-      emitWindowEvent("skinChanged", { skin: "custom", from: "museum", name: skin.name });
+      if (skin.modern) {
+        // Winamp 5's modern skin: worn in its own window (modern_window.rs)
+        await invoke("museum_apply_modern", { md5: skin.md5, download: skin.download, name: skin.name });
+        applied = skin.md5;
+        status = `Wearing ${skin.name}, a modern skin.`;
+      } else {
+        await invoke("museum_apply", { md5: skin.md5, download: skin.download });
+        applied = skin.md5;
+        status = `Wearing ${skin.name}.`;
+        emitWindowEvent("skinChanged", { skin: "custom", from: "museum", name: skin.name });
+      }
     } catch (e) {
       status = `Couldn't put on ${skin.name}: ${e}`;
     } finally {
@@ -134,7 +147,7 @@
   <div class="mu-bar">
     <input
       class="mu-search"
-      placeholder="search 12,000+ skins…"
+      placeholder={isModern ? "search 3,000+ modern skins…" : "search 12,000+ skins…"}
       bind:value={query}
       onkeydown={(e) => e.key === "Enter" && load("search")}
     />
@@ -142,6 +155,12 @@
     <button class="mu-btn" class:on={kind === "classics"} onclick={() => load("classics")}>Classics</button>
     <button class="mu-btn" class:on={kind === "random"} onclick={() => load("random")}>Random</button>
     <button class="mu-btn" class:on={kind === "favorites"} onclick={() => load("favorites")}>★ Favorites</button>
+    <button
+      class="mu-btn"
+      class:on={isModern}
+      title="Winamp 5's modern skins (.wal)"
+      onclick={() => load(kind === "modern" ? "modern-random" : "modern")}
+    >{kind === "modern" ? "Modern: random" : "Modern"}</button>
   </div>
 
   <div class="mu-list" bind:this={listEl}>
@@ -158,8 +177,13 @@
             title="Put on {skin.name}"
             onclick={() => wear(skin)}
           >
-            <img src={skin.screenshot} alt={skin.name} loading="lazy" draggable="false" />
-            <span class="mu-name">{skin.name}</span>
+            {#if skin.screenshot}
+              <img src={skin.screenshot} alt={skin.name} loading="lazy" draggable="false" />
+            {:else}
+              <!-- a modern skin the museum has no picture of -->
+              <span class="mu-noshot">{skin.name}<br /><small>modern skin, no picture</small></span>
+            {/if}
+            <span class="mu-name">{skin.modern ? "◆ " : ""}{skin.name}</span>
           </button>
           <!-- beside the card, not in it: a button can't hold another button -->
           <button
@@ -174,15 +198,20 @@
     </div>
     {#if loading}
       <div class="mu-msg">Loading…</div>
-    {:else if skins.length && kind !== "search" && kind !== "favorites"}
+    {:else if skins.length && !kind.endsWith("search") && kind !== "favorites"}
       <button class="mu-btn mu-more" onclick={() => load(kind, true)}>
-        {kind === "random" ? "More random skins" : "More"}
+        {kind.endsWith("random") ? "More random skins" : "More"}
       </button>
     {/if}
   </div>
 
   <div class="mu-footer">
-    <span class="mu-status">{status || "Click a skin to put it on. Skins tab ▸ Classic to go back."}</span>
+    <span class="mu-status"
+      >{status ||
+        (isModern
+          ? "Modern skins are Winamp 5's (.wal). Some use parts of Winamp Spotiamp+ doesn't have yet."
+          : "Click a skin to put it on. Skins tab ▸ Classic to go back.")}</span
+    >
     <button class="mu-link" onclick={openMuseum}>skins.webamp.org</button>
   </div>
 </div>
@@ -385,6 +414,24 @@
   .mu-skin.busy {
     opacity: 0.55;
     cursor: progress;
+  }
+  /* a modern skin without a picture: its name where the picture would be */
+  .mu-noshot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 275 / 348;
+    text-align: center;
+    padding: 6px;
+    box-sizing: border-box;
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+    overflow-wrap: anywhere;
+  }
+  .mu-noshot small {
+    opacity: 0.6;
   }
   .mu-skin img {
     width: 100%;

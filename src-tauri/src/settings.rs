@@ -411,6 +411,10 @@ pub struct Settings {
     /// the login window's Spotify cookies gone, so any account can sign in.
     #[serde(default)]
     pub signed_out: bool,
+    /// The modern skin worn (a file in config/modern-skins, modern_window.rs);
+    /// None: the classic look, with `skin` as it was.
+    #[serde(default)]
+    pub modern_skin: Option<String>,
     /// Remembered geometry for the on-demand windows (library / visualizer /
     /// lyrics / eq), keyed by window label — so reopening one brings it back
     /// where and how it was left. Player and playlist keep their own fields

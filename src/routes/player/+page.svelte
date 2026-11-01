@@ -1021,6 +1021,32 @@
     untrack(pushDiscordPresence);
   });
 
+  // A modern skin's window (routes/modern) shows what this player does: the
+  // song, where it is, play state, volume, balance, kbps and kHz, shuffle
+  // and repeat. Sent on every change, and each second for the time.
+  function emitSkinState() {
+    const local = loadedTrack?.isLocal;
+    emitWindowEvent("skinState", {
+      title: loadedTrack?.displayName ?? "",
+      positionMs: Math.max(0, Math.round(seekPosition || 0)),
+      durationMs: loadedTrack?.durationInMs ?? 0,
+      state: playerState === "playing" ? "playing" : playerState === "paused" ? "paused" : "stopped",
+      volume,
+      balance,
+      kbps: loadedTrack ? (local ? (loadedTrack.kbps ?? 0) : 320) : 0,
+      khz: loadedTrack ? Math.round((local ? (loadedTrack.sampleRate ?? 0) : 44100) / 1000) : 0,
+      shuffle,
+      repeat,
+      // the cover, where Spotify gives one
+      art: loadedTrack && !local ? (loadedTrack.albumArt ?? null) : null,
+    });
+  }
+  $effect(() => {
+    // read so a change to any of them sends it again
+    void [loadedTrack, playerState, volume, balance, shuffle, repeat];
+    untrack(emitSkinState);
+  });
+
   // The playlist window owns the actual next/previous navigation, so push the
   // shuffle/repeat toggles over to it whenever they change.
   $effect(() => {
@@ -1146,6 +1172,7 @@
           ? `${loadedTrack.artist} - ${loadedTrack.name}`
           : loadedTrack.name
         : "";
+      emitSkinState();
       emitWindowEvent("art", {
         uri: nowUri,
         // Free Mode: the Spotify app's song, whose cover the app gives Windows
@@ -1468,6 +1495,18 @@
     let resumeAfterDrop = /** @type {string | null} */ (null);
     // Ctrl+J's jump to time: the playlist's box sends where to (never past
     // the end of the song)
+    // a modern skin's buttons and sliders (routes/modern)
+    const skinCommandSubscription = subscribeToWindowEvent("skinCommand", (c) => {
+      if (typeof c.volume === "number") volume = Math.round(Math.min(100, Math.max(0, c.volume)));
+      if (typeof c.balance === "number") balance = Math.round(Math.min(100, Math.max(-100, c.balance)));
+      if (typeof c.shuffle === "boolean") shuffle = c.shuffle;
+      if (typeof c.repeat === "number") repeat = c.repeat;
+      if (c.play) play();
+      if (c.pause) pause();
+      if (c.stop) stop();
+      if (c.next) emitNextPressed();
+      if (c.previous) emitPreviousPressed();
+    });
     const seekToSubscription = listen("seekTo", (e) => {
       const ms = Number(/** @type {any} */ (e.payload)?.positionMs);
       if (!loadedTrack || !Number.isFinite(ms)) return;
@@ -1508,6 +1547,7 @@
       lyricsSeekSubscription.then((unlisten) => unlisten());
       mediaKeySubscription.then((unlisten) => unlisten());
       forwardedKeySubscription.then((unlisten) => unlisten());
+      skinCommandSubscription.then((unlisten) => unlisten());
       cleanupDropHandler();
       offDropped.then((f) => f()).catch(() => {});
       stopLocalPoll();

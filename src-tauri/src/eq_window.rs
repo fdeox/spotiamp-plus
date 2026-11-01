@@ -44,7 +44,8 @@ pub async fn set_eq_window_visible(visible: bool, app_handle: AppHandle) -> Resu
         }
     };
 
-    if visible {
+    // a modern skin worn: its own equalizer is shown; this one stays hidden
+    if visible && !crate::modern_window::active() {
         window.show().map_err(|_| ())?;
         window.set_focus().map_err(|_| ())?;
     } else {

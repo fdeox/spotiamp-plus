@@ -14,7 +14,8 @@
     "whatsnew",
     "museum",
     "osd",
-    "mascot"
+    "mascot",
+    "modern"
   ],
   "permissions": [
     "core:default",

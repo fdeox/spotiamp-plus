@@ -1094,6 +1094,42 @@ export class Playlist {
     }
 
     /**
+     * The rows as a modern skin's playlist shows them (routes/modern): their
+     * names and lengths, and which one is playing (-1: none).
+     */
+    skinRows() {
+        return {
+            rows: this.rows.map((r) => ({ title: r.displayName ?? "", durationMs: rowMs(r) })),
+            current: this.loadedRow ? this.rows.indexOf(this.loadedRow) : -1,
+        };
+    }
+
+    /**
+     * A modern skin's playlist removed the row at `index`.
+     * @param {number} index
+     */
+    removeAt(index) {
+        const row = this.rows[index];
+        if (!row) return;
+        this.selectedRows = [row];
+        this.removeSelected();
+    }
+
+    /**
+     * A modern skin's playlist moved the row at `from` to `to`.
+     * @param {number} from
+     * @param {number} to
+     */
+    moveRow(from, to) {
+        if (!this.rows[from] || to < 0 || to >= this.rows.length || from === to) return;
+        const rows = [...this.rows];
+        const [row] = rows.splice(from, 1);
+        rows.splice(to, 0, row);
+        this.rows = rows;
+        this.persist();
+    }
+
+    /**
      * Remove the selected rows from the playlist, then focus a neighbouring row.
      */
     removeSelected() {

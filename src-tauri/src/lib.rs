@@ -18,6 +18,7 @@ mod file_drop;
 mod library_window;
 mod art_window;
 mod m3u;
+mod modern_window;
 #[cfg(target_os = "windows")]
 mod mf;
 mod osd;
@@ -810,6 +811,16 @@ pub fn run() {
             webapi::free_queue,
             webapi::free_queue_sign_in,
             webapi::free_queue_sign_out,
+            modern_window::modern_skin,
+            museum::museum_apply_modern,
+            modern_window::modern_skin_file,
+            modern_window::pick_modern_skin,
+            modern_window::wear_modern_skin,
+            modern_window::leave_modern_skin,
+            modern_window::modern_ready,
+            modern_window::modern_set_region,
+            modern_window::modern_screens,
+            modern_window::modern_player_spot,
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
             app_window::set_window_inner_size,

@@ -71,12 +71,24 @@ function rustCrates() {
 function webPackages() {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const names = [...Object.keys(pkg.dependencies || {}), "svelte", "@sveltejs/kit"];
-  return names.map((name) => {
+  const packages = names.map((name) => {
     const dir = join(root, "node_modules", ...name.split("/"));
     const meta = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     const repo = typeof meta.repository === "string" ? meta.repository : meta.repository?.url || "";
     return { name, version: meta.version, license: meta.license || "unknown", source: repo, dir, files: licenseFiles(dir) };
   });
+  // Webamp Modern's engine, carried in the app's own code (src/lib/modern),
+  // where modern skins (.wal) are drawn
+  const modern = join(root, "src", "lib", "modern");
+  packages.push({
+    name: "webamp-modern",
+    version: "(adapted)",
+    license: "MIT",
+    source: "https://github.com/captbaritone/webamp",
+    dir: modern,
+    files: licenseFiles(modern),
+  });
+  return packages;
 }
 
 function build() {
