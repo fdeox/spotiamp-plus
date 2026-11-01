@@ -394,6 +394,10 @@ export class Playlist {
     /** Where short messages go (the page sets its toast here).
      *  @type {(message: string) => void} */
     notify = () => {};
+    /** The rows are hidden behind something else (Free Mode's view of the
+     *  Spotify app's queue): keys that pick, move, play or remove them do
+     *  nothing, so nothing unseen changes. */
+    hidden = $state(false);
     /** Resume last session, a one-shot per launch: it waits for both the saved
      *  rows to be back and the player window to be listening (they start in
      *  parallel, so either can come first). */
@@ -453,6 +457,14 @@ export class Playlist {
                 return;
             }
             const ctrl = e.ctrlKey || e.metaKey;
+            if (this.hidden && ["ArrowDown", "ArrowUp", "Delete", "Backspace", "Enter"].includes(e.key)) {
+                e.preventDefault();
+                return;
+            }
+            if (this.hidden && ctrl && e.key.toLowerCase() == "a") {
+                e.preventDefault();
+                return;
+            }
             if (e.key == "ArrowDown") {
                 e.preventDefault();
                 if (e.altKey) {
@@ -492,6 +504,10 @@ export class Playlist {
                 // Ctrl+L: Winamp's open location
                 e.preventDefault();
                 this.urlBoxOpen = true;
+            } else if (e.altKey && !ctrl && ["e", "g"].includes(e.key.toLowerCase())) {
+                // Alt+E / Alt+G: the playlist and EQ switches, kept by the main window
+                e.preventDefault();
+                emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: false, alt: true });
             } else if (!ctrl && !e.altKey) {
                 // Winamp transport keys, forwarded to the player
                 const k = e.key.toLowerCase();

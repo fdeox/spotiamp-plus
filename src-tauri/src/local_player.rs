@@ -409,6 +409,8 @@ impl Worker {
                 return Err("unsupported: no AAC in it Spotiamp+ can read".into());
             }
             (source, None)
+        } else if is_wma(path) {
+            (self.open_mf(path)?, None)
         } else {
             let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
             let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -416,7 +418,11 @@ impl Worker {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 hint.with_extension(ext);
             }
-            (self.probe(mss, &hint, "")?, None)
+            // what symphonia turns away, Windows may still play
+            match self.probe(mss, &hint, "") {
+                Ok(source) => (source, None),
+                Err(e) => (self.open_mf(path).map_err(|_| e)?, None),
+            }
         };
 
         let ring: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::with_capacity(1 << 18)));
@@ -472,6 +478,19 @@ impl Worker {
             generation,
             lead,
         })
+    }
+
+    /// A file for Windows' own decoders (mf.rs): WMA, or one symphonia
+    /// turned away. The length comes from the file.
+    #[cfg(target_os = "windows")]
+    fn open_mf(&self, path: &std::path::Path) -> Result<crate::decoding::Source, String> {
+        let (source, duration_ms) = crate::mf::MfSource::open(path)?;
+        self.duration_ms.store(duration_ms as u64, Ordering::Relaxed);
+        Ok(crate::decoding::Source::MediaFoundation(source))
+    }
+    #[cfg(not(target_os = "windows"))]
+    fn open_mf(&self, _path: &std::path::Path) -> Result<crate::decoding::Source, String> {
+        Err("unsupported: WMA plays on Windows only".into())
     }
 
     /// symphonia's look at a file or stream: its first audio track, its
@@ -736,14 +755,20 @@ pub fn local_take_events(player: State) -> Vec<LocalEvent> {
     player.lock().map(|p| p.take_events()).unwrap_or_default()
 }
 
-/// Audio extensions Spotiamp+ can decode via symphonia. Kept in sync with the
-/// player window's drag-drop filter.
-pub(crate) const AUDIO_EXTS: [&str; 8] = [
+/// Audio extensions Spotiamp+ can decode. Kept in sync with the player
+/// window's drag-drop filter.
+pub(crate) const AUDIO_EXTS: [&str; 9] = [
     // Only formats there's a decoder for (symphonia's Cargo.toml features,
-    // rusty_aac, opus-decoder). WMA was offered before without one, so a pick
-    // just failed; don't advertise what we can't play.
-    "mp3", "flac", "m4a", "aac", "wav", "ogg", "oga", "opus",
+    // rusty_aac, opus-decoder, and Windows' own for WMA: mf.rs). WMA was once
+    // offered without one, so a pick just failed; don't advertise what we
+    // can't play.
+    "mp3", "flac", "m4a", "aac", "wav", "ogg", "oga", "opus", "wma",
 ];
+
+/// A Windows Media Audio file, which only Windows' decoders play (mf.rs).
+fn is_wma(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("wma"))
+}
 
 /// Show a picker for one or more audio files and return their absolute paths
 /// (empty when cancelled). A discoverable entry point alongside drag-drop; the
@@ -883,21 +908,52 @@ fn average_kbps(bytes: u64, duration_ms: u32) -> u32 {
     (bytes * 8 / duration_ms as u64) as u32
 }
 
+/// Tags and length from Windows' property system, for what symphonia can't
+/// read (WMA).
+fn shell_meta(path: &std::path::Path) -> Option<LocalMeta> {
+    #[cfg(target_os = "windows")]
+    {
+        let tags = crate::mf::read_tags(path)?;
+        let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        let kbps = match average_kbps(bytes, tags.duration_ms) {
+            0 => tags.kbps,
+            kbps => kbps,
+        };
+        Some(LocalMeta {
+            title: tags.title,
+            artist: tags.artist,
+            album: tags.album,
+            duration_ms: tags.duration_ms,
+            sample_rate: tags.sample_rate,
+            kbps,
+        })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 pub(crate) fn read_local_meta(path: &std::path::Path) -> Option<LocalMeta> {
+    if is_wma(path) {
+        return shell_meta(path);
+    }
     let file = std::fs::File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    let mut probed = symphonia::default::get_probe()
-        .format(
-            &hint,
-            mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )
-        .ok()?;
+    let Ok(mut probed) = symphonia::default::get_probe().format(
+        &hint,
+        mss,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    ) else {
+        // what symphonia can't read, Windows may (it plays it too: open_mf)
+        return shell_meta(path);
+    };
     let mut meta = LocalMeta::default();
 
     if let Some(track) = probed

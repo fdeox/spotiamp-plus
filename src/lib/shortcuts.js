@@ -21,8 +21,14 @@ export function forwardShortcuts({ keys = MAIN_WINDOW_KEYS } = {}) {
   const onKey = (e) => {
     const t = /** @type {HTMLElement | null} */ (e.target);
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    if (e.altKey || e.metaKey || e.defaultPrevented) return;
     const k = e.key.toLowerCase();
+    // Alt+E and Alt+G: Winamp's playlist and equalizer switches, from every window
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.defaultPrevented && (k === "e" || k === "g")) {
+      e.preventDefault();
+      emitWindowEvent("forwardedKey", { key: e.key, shift: e.shiftKey, ctrl: false, alt: true });
+      return;
+    }
+    if (e.altKey || e.metaKey || e.defaultPrevented) return;
     // Ctrl+D (scale), Ctrl+V (stop after current), Ctrl+J (jump to time),
     // Ctrl+L (open a link) and F1 (the key guide) work from every window, even
     // the Library, whose plain letters search instead

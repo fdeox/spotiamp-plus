@@ -196,6 +196,9 @@ pub struct PlaylistSettings {
     /// kept apart so the Premium list stays as it was.
     #[serde(default)]
     pub free_uris: Vec<String>,
+    /// Free Mode shows the Spotify app's queue while the app plays (webapi.rs).
+    #[serde(default)]
+    pub free_queue: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash)]

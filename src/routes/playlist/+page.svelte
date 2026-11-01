@@ -14,6 +14,7 @@
   import { onMount, tick, untrack } from "svelte";
   import { getCurrentWindow, Window } from "@tauri-apps/api/window";
   import { Playlist } from "$lib/playlist.svelte";
+  import { durationToString } from "$lib/spotify.svelte.js";
   import TextTicker from "../../TextTicker.svelte";
   import MiniTime from "../../MiniTime.svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -40,6 +41,69 @@
   // for when the user returns to Premium mode.
   // the settings as the window opened (they're page data; this doesn't change in a run)
   const controllerMode = untrack(() => playlistSettings.controller_mode === true);
+
+  // Free Mode: the Spotify app's queue (webapi.rs), shown in place of the
+  // list while the app is what plays, once switched on in the Playlist menu.
+  // Asked again when its song changes, and every half minute in case the
+  // queue was changed in the app.
+  let freeQueueOn = $state(untrack(() => playlistSettings.free_queue === true));
+  /** @typedef {{ state: string, songs: { title: string, artist: string, duration_ms: number }[] }} FreeQueue */
+  let freeQueue = $state(/** @type {FreeQueue} */ ({ state: "", songs: [] }));
+  /** the Spotify app's song (null while it isn't what plays) */
+  let appSong = $state(/** @type {string | null} */ (null));
+  const queueShown = $derived(controllerMode && freeQueueOn && appSong !== null);
+  /** @returns {Promise<FreeQueue>} */
+  const askFreeQueue = () => invoke("free_queue").then((q) => /** @type {FreeQueue} */ (q), () => ({ state: "error", songs: [] }));
+  async function refreshFreeQueue() {
+    if (controllerMode && freeQueueOn) freeQueue = await askFreeQueue();
+  }
+  onMount(() => {
+    if (!controllerMode) return;
+    const songSubscription = subscribeToWindowEvent("art", (e) => {
+      const song = e.appSong ? `${e.appSong.artist} - ${e.appSong.title}` : null;
+      if (song === appSong) return;
+      appSong = song;
+      if (song) refreshFreeQueue();
+    });
+    const timer = setInterval(() => {
+      if (queueShown && !document.hidden) refreshFreeQueue();
+    }, 30_000);
+    return () => {
+      songSubscription.then((unlisten) => unlisten());
+      clearInterval(timer);
+    };
+  });
+  async function toggleFreeQueue() {
+    if (freeQueueOn) {
+      // off: the sign-in goes too
+      freeQueueOn = false;
+      invoke("free_queue_sign_out").catch(() => {});
+      invoke("set_free_queue", { on: false }).catch(() => {});
+      return;
+    }
+    let answer = await askFreeQueue();
+    if (answer.state === "signin") {
+      const sure = await ask(
+        "To show what's coming up in the Spotify app, Spotiamp+ signs in to your Spotify account once, " +
+          "on Spotify's own page. It only reads the queue.",
+        { title: "Spotiamp+", kind: "info", okLabel: "Sign in" },
+      );
+      if (!sure) return;
+      const failed = await invoke("free_queue_sign_in").then(() => false, () => true);
+      if (failed) return showToast("The Spotify sign-in didn't finish");
+      answer = await askFreeQueue();
+    }
+    freeQueue = answer;
+    freeQueueOn = true;
+    invoke("set_free_queue", { on: true }).catch(() => {});
+  }
+  const freeQueueNote = $derived(
+    {
+      signin: "Sign in again for the queue: Playlist menu, Show the Spotify app's queue",
+      refused: "Spotify doesn't share this account's queue",
+      error: "Spotify isn't answering; trying again soon",
+    }[freeQueue.state] ?? (freeQueue.state ? "Nothing coming up in the Spotify app" : "Asking Spotify for the queue…"),
+  );
 
   function createInitialPlaylist() {
     // Free Mode: its own list of local files and stations
@@ -181,7 +245,17 @@
       ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
       : `${Math.floor(s / 60)}:${pad(s % 60)}`;
   }
-  const runningTime = $derived(`${fmtRunning(playlist.selectedDurationMs)}/${fmtRunning(playlist.totalDurationMs)}`);
+  // Free Mode's queue in view: the corner adds up the queue, and the list
+  // underneath doesn't take keys
+  const queueMs = $derived(freeQueue.songs.reduce((sum, song) => sum + (song.duration_ms || 0), 0));
+  const runningTime = $derived(
+    queueShown
+      ? `0:00/${fmtRunning(queueMs)}`
+      : `${fmtRunning(playlist.selectedDurationMs)}/${fmtRunning(playlist.totalDurationMs)}`,
+  );
+  $effect(() => {
+    playlist.hidden = queueShown;
+  });
   const songTime = $derived.by(() => {
     const s = Math.floor((playlist.positionMs || 0) / 1000);
     return { m: String(Math.min(99, Math.floor(s / 60))), s: String(s % 60) };
@@ -504,6 +578,8 @@
           { text: "Add file(s)…", accelerator: "O", action: addLocalFiles },
           { text: "Add folder…", accelerator: "Shift+O", action: addLocalFolder },
           { text: "Open a radio station…", accelerator: "Ctrl+L", action: () => (playlist.urlBoxOpen = true) },
+          sep,
+          { text: "Show the Spotify app's queue", checked: freeQueueOn, action: toggleFreeQueue },
           sep,
           { text: "Clear playlist", action: () => playlist.clear() },
         ]
@@ -1754,6 +1830,22 @@
   >
     <table id="playlist-tracks" class:dragging={isDragging}>
       <tbody>
+        {#if queueShown}
+          <!-- Free Mode: the Spotify app's song and its queue, read only -->
+          {#each freeQueue.state === "ok" ? freeQueue.songs : [] as song, index}
+            <tr class="playlist-track" class:loaded={index === 0} title="the Spotify app's queue: change it there">
+              <td class="playlist-track-main">
+                <span class="playlist-track-number">{index + 1}.&nbsp;</span>
+                <span class="playlist-track-name">{song.artist ? `${song.artist} - ${song.title}` : song.title}</span>
+              </td>
+              <td class="playlist-track-duration">{durationToString(song.duration_ms)}</td>
+            </tr>
+          {:else}
+            <tr class="playlist-track">
+              <td class="playlist-track-main" colspan="2"><span class="playlist-track-name">{freeQueueNote}</span></td>
+            </tr>
+          {/each}
+        {:else}
         {#each playlist.rows as row, index}
           <tr
             class="playlist-track"
@@ -1785,6 +1877,7 @@
             <td class="playlist-track-duration">{row.displayDuration}</td>
           </tr>
         {/each}
+        {/if}
       </tbody>
     </table>
     <input
@@ -1924,6 +2017,15 @@
     onclick={() => showMenu(null, listOptsItems)}
     aria-label="List options"
     title="library and list options"
+  ></button>
+
+  <!-- the close button PLEDIT.BMP draws in the top-right corner; the main
+       window keeps the PL switch, so it's told instead of this one hiding -->
+  <button
+    class="pl-close"
+    data-no-drag
+    onclick={() => emitWindowEvent("playlistWindow", { CloseRequested: null })}
+    aria-label="Close"
   ></button>
 
   <!-- the corner's two black areas, in the skin's TEXT.BMP letters as Winamp
@@ -2363,6 +2465,20 @@
     border: none;
     padding: 0;
     cursor: pointer;
+    z-index: 60;
+  }
+
+  /* the titlebar's close button, where Winamp has it */
+  .pl-close {
+    position: absolute;
+    right: calc(2px * var(--zoom));
+    top: calc(3px * var(--zoom));
+    width: calc(9px * var(--zoom));
+    height: calc(9px * var(--zoom));
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: var(--skin-cur-close, url(/src/static/assets/skins/base-2.91/CLOSE.CUR)), default;
     z-index: 60;
   }
 

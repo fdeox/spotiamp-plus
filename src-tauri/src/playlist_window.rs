@@ -21,6 +21,12 @@ pub fn set_free_uris(uris: Vec<String>) {
     Settings::current_mut().playlist.free_uris = uris;
 }
 
+/// Free Mode: show the Spotify app's queue in the playlist, or not.
+#[tauri::command]
+pub fn set_free_queue(on: bool) {
+    Settings::current_mut().playlist.free_queue = on;
+}
+
 #[tauri::command]
 pub fn set_playlist_inner_size(width: u32, height: u32) {
     Settings::current_mut().playlist.window_state.inner_size =

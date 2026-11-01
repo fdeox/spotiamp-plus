@@ -34,7 +34,7 @@
   });
 
   /**
-   * @typedef {{ name: string, uri: string, track_count: number, image: string | null }} UserPlaylist
+   * @typedef {{ name: string, uri: string, track_count: number, image: string | null, folder?: string[] }} UserPlaylist
    * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null, path?: string }} LibTrack
    * @typedef {{ path: string, title: string, artist: string, album: string, duration_ms: number, sample_rate: number, kbps: number, date_ms: number }} LocalItem
    * @typedef {{ folders: string[], items: LocalItem[], scanning: boolean }} LocalLibrary
@@ -449,6 +449,66 @@
   // listens for (clear + load). Works cross-window via Tauri's global emit.
   const loadPlaylistIntoMain = (/** @type {UserPlaylist} */ pl) =>
     emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
+
+  // Spotify's playlist folders, as in its sidebar: shut until clicked, and
+  // the open ones kept for next time. A folder plays, is added or is dragged
+  // as all the playlists in it, one after another.
+  const FOLDERS_KEY = "ml-open-folders";
+  let openFolders = $state(/** @type {Set<string>} */ (new Set()));
+  try {
+    const saved = JSON.parse(localStorage.getItem(FOLDERS_KEY) || "[]");
+    if (Array.isArray(saved)) openFolders = new Set(saved.filter((k) => typeof k === "string"));
+  } catch {}
+  /** @param {string[]} path */
+  const folderKey = (path) => path.join("\u0001");
+  /** @typedef {{ folder: string[], depth: number, pl?: undefined } | { pl: UserPlaylist, depth: number, folder?: undefined }} PlaylistRow */
+  const playlistRows = $derived.by(() => {
+    /** @type {PlaylistRow[]} */
+    const rows = [];
+    const listed = new Set();
+    for (const pl of playlists) {
+      const path = pl.folder ?? [];
+      for (let d = 1; d <= path.length; d++) {
+        const key = folderKey(path.slice(0, d));
+        if (listed.has(key)) continue;
+        listed.add(key);
+        rows.push({ folder: path.slice(0, d), depth: d - 1 });
+      }
+      rows.push({ pl, depth: path.length });
+    }
+    // only what's in open folders shows
+    return rows.filter((row) => {
+      const path = row.folder ? row.folder.slice(0, -1) : (row.pl.folder ?? []);
+      for (let d = 1; d <= path.length; d++) {
+        if (!openFolders.has(folderKey(path.slice(0, d)))) return false;
+      }
+      return true;
+    });
+  });
+  /** @param {string[]} path */
+  function toggleFolder(path) {
+    const key = folderKey(path);
+    const open = new Set(openFolders);
+    if (!open.delete(key)) open.add(key);
+    openFolders = open;
+    try {
+      localStorage.setItem(FOLDERS_KEY, JSON.stringify([...open]));
+    } catch {}
+  }
+  /** The links of every playlist in the folder, its folders' too. @param {string[]} path */
+  const folderUrls = (path) =>
+    playlists
+      .filter((pl) => path.every((name, i) => pl.folder?.[i] === name))
+      .map((pl) => playlistUrl(pl.uri));
+  /** @param {MouseEvent} e @param {string[]} path */
+  function folderMenu(e, path) {
+    e.preventDefault();
+    const urls = folderUrls(path);
+    popMenu([
+      { text: `Play all ${urls.length} playlists`, action: () => emitWindowEvent("playerWindow", { UrlsDropped: urls }) },
+      { text: "Add them all to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: urls }) },
+    ]);
+  }
 
   // Double-clicking a track in the right pane:
   //  - search results  → append just that one track
@@ -1301,22 +1361,43 @@
         {:else if playlists.length === 0}
           <div class="ml-node ml-child ml-dim">no playlists</div>
         {:else}
-          {#each playlists as pl}
-            <div
-              class="ml-node ml-child"
-              class:active={activeNode === pl.uri}
-              role="button"
-              tabindex="0"
-              title="double-click to load into the player, or drag it onto the playlist; right-click to pin"
-              draggable="true"
-              onclick={() => selectPlaylist(pl)}
-              ondblclick={() => loadPlaylistIntoMain(pl)}
-              oncontextmenu={(e) => playlistMenu(e, pl)}
-              ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
-              onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
-            >
-              <span class="ml-ic ml-ic-list"></span>{pl.name}
-            </div>
+          {#each playlistRows as row}
+            {#if row.folder}
+              {@const path = row.folder}
+              <div
+                class="ml-node ml-child"
+                style:padding-left="{18 + row.depth * 10}px"
+                role="button"
+                tabindex="0"
+                title="a folder: click to open it; drag it onto the playlist or right-click it for all its playlists"
+                draggable="true"
+                onclick={() => toggleFolder(path)}
+                oncontextmenu={(e) => folderMenu(e, path)}
+                ondragstart={(e) => dragLinks(e, folderUrls(path))}
+                onkeydown={(e) => e.key === "Enter" && toggleFolder(path)}
+              >
+                <span class="ml-tw">{openFolders.has(folderKey(path)) ? "▾" : "▸"}</span>
+                <span class="ml-ic ml-ic-pl"></span>{path[path.length - 1]}
+              </div>
+            {:else}
+              {@const pl = row.pl}
+              <div
+                class="ml-node ml-child"
+                class:active={activeNode === pl.uri}
+                style:padding-left="{18 + row.depth * 10}px"
+                role="button"
+                tabindex="0"
+                title="double-click to load into the player, or drag it onto the playlist; right-click to pin"
+                draggable="true"
+                onclick={() => selectPlaylist(pl)}
+                ondblclick={() => loadPlaylistIntoMain(pl)}
+                oncontextmenu={(e) => playlistMenu(e, pl)}
+                ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
+                onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
+              >
+                <span class="ml-ic ml-ic-list"></span>{pl.name}
+              </div>
+            {/if}
           {/each}
         {/if}
       {/if}

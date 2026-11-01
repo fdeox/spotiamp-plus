@@ -2,8 +2,10 @@
 //! rusty_aac, which decodes HE-AAC whole: its high band (SBR) and its stereo
 //! (PS). symphonia's AAC decoder plays only the core, so an AAC+ station came
 //! out at 22 kHz, dull, and some even in mono. Opus (0.7.9), which symphonia
-//! reads out of Ogg but has no decoder for, goes to opus-decoder. Everything
-//! else, and AAC that rusty_aac won't take, stays with symphonia.
+//! reads out of Ogg but has no decoder for, goes to opus-decoder. WMA, and a
+//! file symphonia can't read at all, goes to Windows' own decoders (mf.rs,
+//! 0.8.0). Everything else, and AAC that rusty_aac won't take, stays with
+//! symphonia.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -57,6 +59,9 @@ pub(crate) enum Source {
         /// recorded stream (symphonia's seek by time doesn't add it).
         start_ts: u64,
     },
+    /// Whatever Windows decodes itself: WMA above all (mf.rs).
+    #[cfg(target_os = "windows")]
+    MediaFoundation(crate::mf::MfSource),
 }
 
 impl Source {
@@ -105,6 +110,8 @@ impl Source {
             Source::Mp4Aac { .. } => "AAC in MP4, rusty_aac",
             Source::Adts { .. } => "AAC (ADTS), rusty_aac",
             Source::Opus { .. } => "Opus, opus-decoder",
+            #[cfg(target_os = "windows")]
+            Source::MediaFoundation(_) => "Media Foundation (Windows)",
         }
     }
 
@@ -155,6 +162,8 @@ impl Source {
                 out.extend(pcm[drop * ch..n * ch].iter().map(|s| s * head.gain));
                 return Next::Audio { rate: 48_000, channels: ch };
             },
+            #[cfg(target_os = "windows")]
+            Source::MediaFoundation(source) => source.next(out),
         }
     }
 
@@ -187,6 +196,8 @@ impl Source {
                 // Opus needs 80 ms to settle after a jump (RFC 7845)
                 *skip = if ms == 0 { head.pre_skip } else { 3840 };
             }
+            #[cfg(target_os = "windows")]
+            Source::MediaFoundation(source) => source.seek(ms),
         }
     }
 }

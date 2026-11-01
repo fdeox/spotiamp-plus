@@ -10,7 +10,9 @@ operating it, except for the following:
 - **Spotify**, to log in, play music and fetch song details, covers and lyrics.
   This is what the app is for, and it uses your own Spotify login. Spotify's
   own [privacy policy](https://www.spotify.com/legal/privacy-policy/) applies
-  to that connection.
+  to that connection. In Free Mode, if you switch on *Show the Spotify app's
+  queue*, Spotiamp+ signs in to your Spotify account once and asks Spotify
+  for the songs coming up there; switching it off forgets that sign-in.
 - **GitHub**, when the app starts: it downloads a small file from this
   project's [releases](https://github.com/fdeox/spotiamp-plus/releases) to see
   whether an update is available. Nothing about you is sent with it.

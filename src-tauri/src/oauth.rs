@@ -62,7 +62,7 @@ pub struct OAuthFlow {
     pkce_verifier: oauth2::PkceCodeVerifier,
 }
 
-type TokenType =
+pub type TokenType =
     oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>;
 
 impl OAuthFlow {
@@ -99,10 +99,12 @@ impl OAuthFlow {
             .authorize_url(CsrfToken::new_random)
             // `user-read-private` exposes the subscription level, so we can tell
             // a free account it needs Premium instead of letting librespot kill
-            // the process with no explanation.
+            // the process with no explanation. `user-read-playback-state` reads
+            // the Spotify app's queue in Free Mode (webapi.rs).
             .add_scopes(vec![
                 Scope::new("streaming".to_string()),
                 Scope::new("user-read-private".to_string()),
+                Scope::new("user-read-playback-state".to_string()),
             ])
             .set_pkce_challenge(pkce_challenge)
             .url();

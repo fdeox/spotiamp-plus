@@ -1204,6 +1204,8 @@
         } else if (event.Ready !== undefined) {
           // the playlist came up after us: repeat the resume handshake
           emitWindowEvent("playerWindow", { PlayerReady: null });
+        } else if (event.CloseRequested !== undefined) {
+          showPlaylist = false;
         }
       },
     );
@@ -1361,6 +1363,13 @@
         if (!controllerMode) emitWindowEvent("playerWindow", { StopAfterCurrentToggle: null });
         return;
       }
+      // Alt+E / Alt+G: Winamp's playlist editor and equalizer switches
+      if (e.altKey && !e.ctrlKey && !e.metaKey && ["e", "g"].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        if (e.key.toLowerCase() === "e") showPlaylist = !showPlaylist;
+        else showEq = !showEq;
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const acted = () => e.preventDefault();
@@ -1413,7 +1422,7 @@
           shiftKey: e.shift,
           ctrlKey: e.ctrl,
           metaKey: false,
-          altKey: false,
+          altKey: e.alt ?? false,
           target: null,
           preventDefault() {},
         }),

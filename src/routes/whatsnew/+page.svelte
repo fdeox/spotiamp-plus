@@ -176,6 +176,7 @@
       title: "Windows",
       keys: [
         ["L", "Open the Library (type there to find a song)"],
+        ["Alt+E / Alt+G", "Show or hide the playlist / the equalizer"],
         ["Ctrl+D", "Everything 2× bigger"],
         ["Double-click", "The spectrum opens the visualizer; the visualizer goes fullscreen"],
         ["F11 / Esc", "Visualizer fullscreen on / off"],

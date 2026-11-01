@@ -44,6 +44,9 @@ pub struct UserPlaylist {
     pub uri: String,
     pub track_count: u32,
     pub image: Option<String>,
+    /// The folders it's in, outermost first, as in Spotify's own sidebar
+    /// (empty: at the top).
+    pub folder: Vec<String>,
 }
 
 use std::sync::OnceLock;
@@ -191,6 +194,20 @@ impl SpotifySession {
     }
 
     async fn get_credentials_from_oauth(app: &AppHandle) -> Result<Credentials, SessionError> {
+        let token = Self::sign_in(app).await?;
+
+        // Checked here, before any session exists — librespot would otherwise
+        // exit the process itself the instant it sees a non-Premium account.
+        Self::check_account_is_premium(token.access_token().secret()).await?;
+
+        Ok(Credentials::with_access_token(
+            token.access_token().secret(),
+        ))
+    }
+
+    /// Spotify's own sign-in page in a window of ours, and the token it
+    /// gives: for Premium playback, and for Free Mode's queue (webapi.rs).
+    pub(crate) async fn sign_in(app: &AppHandle) -> Result<crate::oauth::TokenType, SessionError> {
         let oauth_flow = OAuthFlow::new(
             "https://accounts.spotify.com/authorize",
             "https://accounts.spotify.com/api/token",
@@ -244,15 +261,7 @@ impl SpotifySession {
         let result = oauth_flow.start(abort_rx).await;
         *token_received.lock().unwrap() = true;
         let _ = window.close();
-        let token = result.map_err(|e| SessionError::TokenExchangeFailure { e })?;
-
-        // Checked here, before any session exists — librespot would otherwise
-        // exit the process itself the instant it sees a non-Premium account.
-        Self::check_account_is_premium(token.access_token().secret()).await?;
-
-        Ok(Credentials::with_access_token(
-            token.access_token().secret(),
-        ))
+        result.map_err(|e| SessionError::TokenExchangeFailure { e })
     }
 }
 
@@ -837,8 +846,71 @@ pub async fn fetch_user_playlists(session: &Session) -> Result<Vec<UserPlaylist>
             format!("Failed to fetch rootlist: {e:?}")
         })?;
 
-    // rootlist is protobuf; the playlist URIs appear as literal strings.
-    let text = String::from_utf8_lossy(bytes.as_ref());
+    // The rootlist lists playlists and the folders around them in order;
+    // read as text if it ever won't parse (no folders then).
+    let entries = rootlist_entries(bytes.as_ref()).unwrap_or_else(|| {
+        log::warn!("Couldn't read the rootlist's folders; listing its playlists without them");
+        rootlist_uris(bytes.as_ref()).into_iter().map(|uri| (uri, Vec::new())).collect()
+    });
+
+    // resolve names + lengths concurrently (bounded), keeping rootlist
+    // order. buffered(N) runs up to N Playlist::get calls at once, which
+    // turns a slow one-by-one wait into a few fast batches.
+    const CONCURRENCY: usize = 16;
+    let playlists: Vec<UserPlaylist> = stream::iter(entries)
+        .map(|(uri, folder)| async move {
+            let spuri = SpotifyUri::from_uri(&uri).ok()?;
+            match Playlist::get(session, &spuri).await {
+                Ok(pl) => Some(UserPlaylist {
+                    name: pl.attributes.name.clone(),
+                    uri,
+                    track_count: pl.length.max(0) as u32,
+                    image: None,
+                    folder,
+                }),
+                Err(e) => {
+                    log::debug!("Skipping playlist {uri}: {e:?}");
+                    None
+                }
+            }
+        })
+        .buffered(CONCURRENCY)
+        .filter_map(|maybe| async move { maybe })
+        .collect()
+        .await;
+    Ok(playlists)
+}
+
+/// The rootlist's playlists in order, each with the folders it's in
+/// (outermost first). A folder is a `spotify:start-group:<id>:<name>` item,
+/// its name form-encoded, up to its `spotify:end-group:<id>`. None if the
+/// bytes aren't the protobuf they should be.
+fn rootlist_entries(bytes: &[u8]) -> Option<Vec<(String, Vec<String>)>> {
+    use librespot::protocol::playlist4_external::SelectedListContent;
+    let list = SelectedListContent::parse_from_bytes(bytes).ok()?;
+    let contents = list.contents.as_ref()?;
+    let mut folder: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for item in &contents.items {
+        let uri = item.uri();
+        if let Some(rest) = uri.strip_prefix("spotify:start-group:") {
+            let name = rest.split_once(':').map_or(rest, |(_, name)| name);
+            let name = url::form_urlencoded::parse(name.as_bytes()).next().map(|(n, _)| n.into_owned());
+            folder.push(name.unwrap_or_default());
+        } else if uri.starts_with("spotify:end-group:") {
+            folder.pop();
+        } else if uri.starts_with("spotify:playlist:") && seen.insert(uri.to_string()) {
+            out.push((uri.to_string(), folder.clone()));
+        }
+    }
+    Some(out)
+}
+
+/// The rootlist's playlist URIs, found in its bytes as text (the way it was
+/// read before folders).
+fn rootlist_uris(bytes: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(bytes);
     let pat = "spotify:playlist:";
     let mut uris: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -854,32 +926,7 @@ pub async fn fetch_user_playlists(session: &Session) -> Result<Vec<UserPlaylist>
             }
         }
     }
-
-    // resolve names + lengths concurrently (bounded), keeping rootlist
-    // order. buffered(N) runs up to N Playlist::get calls at once, which
-    // turns a slow one-by-one wait into a few fast batches.
-    const CONCURRENCY: usize = 16;
-    let playlists: Vec<UserPlaylist> = stream::iter(uris)
-        .map(|uri| async move {
-            let spuri = SpotifyUri::from_uri(&uri).ok()?;
-            match Playlist::get(session, &spuri).await {
-                Ok(pl) => Some(UserPlaylist {
-                    name: pl.attributes.name.clone(),
-                    uri,
-                    track_count: pl.length.max(0) as u32,
-                    image: None,
-                }),
-                Err(e) => {
-                    log::debug!("Skipping playlist {uri}: {e:?}");
-                    None
-                }
-            }
-        })
-        .buffered(CONCURRENCY)
-        .filter_map(|maybe| async move { maybe })
-        .collect()
-        .await;
-    Ok(playlists)
+    uris
 }
 
 /// The query part of a `spotify:search:` URI: words joined by '+', each one
@@ -1018,5 +1065,63 @@ mod search_tests {
         assert_eq!(super::search_uri_query("serdar  ortaç"), "serdar+orta%C3%A7");
         assert_eq!(super::search_uri_query("AC/DC #1?"), "AC%2FDC+%231%3F");
         assert_eq!(super::search_uri_query("  "), "");
+    }
+}
+
+#[cfg(test)]
+mod rootlist_tests {
+    use librespot::protocol::playlist4_external::{Item, ListItems, SelectedListContent};
+    use protobuf::Message;
+
+    fn rootlist(uris: &[&str]) -> Vec<u8> {
+        let mut contents = ListItems::new();
+        contents.set_pos(0);
+        contents.set_truncated(false);
+        for uri in uris {
+            let mut item = Item::new();
+            item.set_uri(uri.to_string());
+            contents.items.push(item);
+        }
+        let mut list = SelectedListContent::new();
+        list.contents = protobuf::MessageField::some(contents);
+        list.write_to_bytes().unwrap()
+    }
+
+    const A: &str = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M";
+    const B: &str = "spotify:playlist:37i9dQZF1DX0XUsuxWHRQd";
+    const C: &str = "spotify:playlist:37i9dQZF1DWXRqgorJj26U";
+    const D: &str = "spotify:playlist:37i9dQZF1DX4sWSpwq3LiO";
+
+    #[test]
+    fn playlists_come_with_their_folders() {
+        let bytes = rootlist(&[
+            A,
+            "spotify:start-group:8212237ac7347bfe:Rock+%26+Roll",
+            B,
+            "spotify:start-group:1a2b3c4d5e6f7a8b:90s",
+            C,
+            "spotify:end-group:1a2b3c4d5e6f7a8b",
+            "spotify:end-group:8212237ac7347bfe",
+            D,
+            A,
+        ]);
+        let entries = super::rootlist_entries(&bytes).expect("parses");
+        let rock = || "Rock & Roll".to_string();
+        assert_eq!(
+            entries,
+            vec![
+                (A.to_string(), vec![]),
+                (B.to_string(), vec![rock()]),
+                (C.to_string(), vec![rock(), "90s".to_string()]),
+                (D.to_string(), vec![]),
+            ]
+        );
+        // read as text, the same playlists without folders
+        assert_eq!(super::rootlist_uris(&bytes), vec![A, B, C, D]);
+    }
+
+    #[test]
+    fn garbage_isnt_a_rootlist() {
+        assert!(super::rootlist_entries(b"\xff\xff\xff not protobuf").is_none());
     }
 }

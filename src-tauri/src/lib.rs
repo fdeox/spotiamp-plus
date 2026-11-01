@@ -18,6 +18,8 @@ mod file_drop;
 mod library_window;
 mod art_window;
 mod m3u;
+#[cfg(target_os = "windows")]
+mod mf;
 mod osd;
 #[cfg(target_os = "windows")]
 mod milkdrop;
@@ -51,6 +53,7 @@ mod visualizer_window;
 mod sink;
 pub mod spotify;
 mod visualizer;
+mod webapi;
 mod wsz;
 
 #[derive(Debug, Error)]
@@ -803,6 +806,10 @@ pub fn run() {
             player_window::set_playlist_window_visible,
             playlist_window::get_playlist_settings,
             playlist_window::set_free_uris,
+            playlist_window::set_free_queue,
+            webapi::free_queue,
+            webapi::free_queue_sign_in,
+            webapi::free_queue_sign_out,
             playlist_window::set_uris,
             playlist_window::set_playlist_inner_size,
             app_window::set_window_inner_size,
