@@ -13,6 +13,12 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.10": [
+      "<b>WMA files play</b> 🎵 through Windows' own decoder, with their tags and length, from your music folders too. A file Spotiamp+ couldn't open before gets a second try the same way.",
+      "<b>Playlist folders</b> in the Library, the way Spotify has them: click one to open it; right-click it, or drag it onto the playlist, for all its playlists one after another. Open folders stay open.",
+      "<b>Free Mode shows what's coming up</b> in the Spotify app: the playlist lists its song and its queue. Turn it on in the Playlist menu, <i>Show the Spotify app's queue</i>; Spotiamp+ signs in to your Spotify once, to read the queue only. If Spotify won't share an account's queue, the playlist says so.",
+      "The playlist's <b>close button</b> works, and <b>Alt+E</b> and <b>Alt+G</b> show or hide the playlist and the equalizer from any window, like Winamp. Thanks embrace!",
+    ],
     "0.7.9": [
       "<b>Lyrics for your own songs and radio songs</b> 🎤 Songs from your music folders and the ones a radio station plays get their lyrics too, in time with the music, from LRCLIB, a free and open lyrics database (Spotify songs keep Spotify's own). A file needs its artist and title tags; a station needs to name its songs. A station's words run from when it names the song: tuned in halfway, or out of time? Click the line being sung and they follow from there.",
       "<b>Opus</b> plays: .opus files, and Opus radio stations, so the Library's Radio lists those too.",
