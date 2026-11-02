@@ -2,7 +2,9 @@
   import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED } from "$lib/common.svelte";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
-  import { subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
+  import { DOCKABLE_LABELS, makeDockedDraggable } from "$lib/window-docking.svelte.js";
+  import { lookColorsCss, paintFrame, setFrameActive, useLookFonts, wireFrame } from "$lib/modern-look.js";
   import { onMount } from "svelte";
   import "./global.css";
   /**
@@ -24,11 +26,24 @@
   // (player has its own field; playlist has set_playlist_inner_size; eq is
   // fixed-size).
   const REMEMBER_SIZE = ["library", "visualizer", "lyrics", "art", "stats"];
+  // Laid into a modern skin's place for it (the Library or the visualizer in
+  // the skin's Media Library or visualizer place, modern_window.rs): no frame
+  // at all, and the place's size, which the skin sets.
+  let embedded = $state(Boolean(/** @type {any} */ (window).__SPOTIAMP_EMBEDDED__));
+  /** its own size from before, for when it's out again @type {{ width: number, height: number } | null} */
+  let sizeBeforeEmbed = null;
+  /** @param {boolean} on */
+  function setEmbedded(on) {
+    if (on === embedded) return;
+    if (on) sizeBeforeEmbed = { width: REACTIVE_WINDOW_SIZE.width, height: REACTIVE_WINDOW_SIZE.height };
+    else if (sizeBeforeEmbed) REACTIVE_WINDOW_SIZE.setSize(sizeBeforeEmbed.width, sizeBeforeEmbed.height);
+    embedded = on;
+  }
   $effect(() => {
     const win = getCurrentWindow();
     // the login window is sized by Rust (600x800) and then redirects to
     // Spotify — don't shrink it to the player's dimensions
-    if (OWN_SIZE) return;
+    if (OWN_SIZE || embedded) return;
     const w = REACTIVE_WINDOW_SIZE.width;
     const h = REACTIVE_WINDOW_SIZE.height;
     win.setSize(new LogicalSize(w * REACTIVE_WINDOW_SIZE.zoom, h * REACTIVE_WINDOW_SIZE.zoom));
@@ -49,6 +64,7 @@
   if (!OWN_SIZE) {
     getCurrentWindow()
       .onScaleChanged(() => {
+        if (embedded) return;
         const zoom = REACTIVE_WINDOW_SIZE.zoom;
         getCurrentWindow()
           .setSize(new LogicalSize(REACTIVE_WINDOW_SIZE.width * zoom, REACTIVE_WINDOW_SIZE.height * zoom))
@@ -119,6 +135,116 @@
     else delete document.body.dataset.skin;
     window.dispatchEvent(new Event(SKIN_APPLIED));
   }
+  // A modern skin worn: Spotiamp+'s own windows in its frame and colours, as
+  // Winamp 5 drew its Media Library (modern-look.js). The frame lies behind
+  // the page, which keeps to the room the frame leaves (--mf-*, global.css);
+  // pressing the frame moves the window, its buttons and corner do what
+  // they say.
+  /** @type {Record<string, string>} */
+  const LOOK_TITLES = {
+    library: "Library",
+    lyrics: "Lyrics",
+    visualizer: "Visualizer",
+    art: "Album Art",
+    stats: "Listening Stats",
+    museum: "Skin Museum",
+    whatsnew: "What's New",
+  };
+  const CUR_VARS = CUSTOM_SKIN_VARS.filter((name) => name.startsWith("cur-"));
+  let lookOff = () => {};
+  let lookSeq = 0;
+  async function applyLook() {
+    const label = getCurrentWindow().label;
+    if (!(label in LOOK_TITLES)) return;
+    const seq = ++lookSeq;
+    const [look, inSkin] = await Promise.all([
+      /** @type {Promise<import("$lib/modern-look.js").Look | null>} */ (invoke("modern_look").catch(() => null)),
+      invoke("modern_embedded").catch(() => false),
+    ]);
+    if (seq !== lookSeq) return;
+    lookOff();
+    lookOff = () => {};
+    setEmbedded(Boolean(inSkin));
+    useLookFonts(look);
+    if (!look && !embedded) {
+      delete document.body.dataset.modern;
+      window.dispatchEvent(new Event(SKIN_APPLIED));
+      return;
+    }
+    const colors = document.createElement("style");
+    // (the classic skin's cursors go too)
+    const cursors = CUR_VARS.map((n) => `--skin-${n}: initial !important;`).join(" ");
+    if (look) colors.textContent = `body[data-modern] { ${lookColorsCss(look.colors)} ${cursors} }`;
+    document.head.appendChild(colors);
+    if (embedded || !look) {
+      // in the skin's place: all of the window is the insides
+      for (const side of ["left", "top", "right", "bottom"]) document.body.style.setProperty(`--mf-${side}`, "0px");
+      document.body.dataset.modern = "embedded";
+      window.dispatchEvent(new Event(SKIN_APPLIED));
+      lookOff = () => {
+        colors.remove();
+        for (const side of ["left", "top", "right", "bottom"]) document.body.style.removeProperty(`--mf-${side}`);
+      };
+      return;
+    }
+    const host = document.createElement("div");
+    host.id = "modern-frame";
+    document.body.prepend(host);
+    // What's New also opens as the key guide
+    const titlebar = () => document.querySelector('[data-gen="titlebar"]');
+    const titleOf = () =>
+      label === "whatsnew" && /keyboard/i.test(titlebar()?.textContent ?? "") ? "Keyboard Shortcuts" : LOOK_TITLES[label];
+    let title = "";
+    const paint = () => {
+      if (titleOf() === title) return;
+      title = titleOf();
+      const box = paintFrame(host, look, "window", title);
+      for (const [side, v] of Object.entries(box)) document.body.style.setProperty(`--mf-${side}`, `${v}px`);
+      setFrameActive(host, document.hasFocus());
+    };
+    paint();
+    const retitle = new MutationObserver(paint);
+    const bar = titlebar();
+    if (bar) retitle.observe(bar, { subtree: true, childList: true, characterData: true });
+    const grip = /** @type {HTMLElement | null} */ (document.querySelector('[data-gen="resize"]'));
+    const unwire = wireFrame(host, {
+      onAction(action) {
+        if (action === "CLOSE") /** @type {HTMLElement | null} */ (document.querySelector('[data-gen="close"]'))?.click();
+        else if (action === "MINIMIZE") getCurrentWindow().minimize().catch(() => {});
+        else if (action === "SYSMENU" || action === "MENU") emitWindowEvent("modernMenu", { name: "main" });
+        else if (action === "PLAY") emitWindowEvent("skinCommand", { play: true });
+        else if (action === "PAUSE") emitWindowEvent("skinCommand", { pause: true });
+        else if (action === "STOP") emitWindowEvent("skinCommand", { stop: true });
+        else if (action === "NEXT") emitWindowEvent("skinCommand", { next: true });
+        else if (action === "PREV") emitWindowEvent("skinCommand", { previous: true });
+      },
+      // the window's own corner grip sizes it (it keeps a cover square, snaps...);
+      // one that isn't resized is moved from there too
+      onResize: grip
+        ? (e) => grip.onpointerdown?.call(grip, e)
+        : undefined,
+    });
+    // dragged like the window's own title bar: snapping to the others where it docks
+    if (DOCKABLE_LABELS.includes(label)) {
+      makeDockedDraggable(host, label, /** @type {import("$lib/events.svelte.js").DockEventName} */ (`${label}Window`));
+    } else {
+      host.onpointerdown = (e) => {
+        if (e.button === 0) getCurrentWindow().startDragging().catch(() => {});
+      };
+    }
+    const focus = getCurrentWindow().onFocusChanged(({ payload }) => setFrameActive(host, payload));
+    document.body.dataset.modern = "";
+    window.dispatchEvent(new Event(SKIN_APPLIED));
+    lookOff = () => {
+      retitle.disconnect();
+      unwire();
+      focus.then((f) => f()).catch(() => {});
+      host.remove();
+      colors.remove();
+      for (const side of ["left", "top", "right", "bottom"]) document.body.style.removeProperty(`--mf-${side}`);
+    };
+  }
+
   onMount(() => {
     // Report JS failures to the Rust log. A crashed page otherwise just shows a
     // broken webview with nothing recorded anywhere, which is exactly the state
@@ -157,6 +283,15 @@
     subscribeToWindowEvent("skinChanged", (e) => applySkin(e.skin)).then(
       (u) => (unsub = u),
     );
+    // a modern skin's look: now, when it's ready, and when the look changes
+    applyLook();
+    const lookChanged = subscribeToWindowEvent("modernLook", applyLook);
+    const faceChanged = subscribeToWindowEvent("modernFace", applyLook);
+    // laid into the skin's place, or out of it
+    const embedChanged = getCurrentWindow().listen("modernEmbed", applyLook);
+    // once those are heard, asked again: a look made while they weren't yet
+    // would have gone unnoticed
+    Promise.all([lookChanged, faceChanged, embedChanged]).then(applyLook, () => {});
     // Live UI-scale changes; the size effect above then resizes this window.
     /** @type {(() => void) | undefined} */
     let unsubScale;
@@ -180,6 +315,10 @@
       window.removeEventListener("unhandledrejection", onRejection);
       unsub?.();
       unsubScale?.();
+      lookChanged.then((u) => u());
+      faceChanged.then((u) => u());
+      embedChanged.then((u) => u());
+      lookOff();
     };
   });
 </script>

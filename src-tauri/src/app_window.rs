@@ -21,6 +21,9 @@ pub fn ui_scale() -> f64 {
     pct as f64 / 100.0
 }
 
+/// Spotiamp+'s own windows that a modern skin's frame goes round.
+const FRAMED: [&str; 7] = ["library", "lyrics", "visualizer", "art", "stats", "museum", "whatsnew"];
+
 pub fn build_frameless_window(
     app: &AppHandle,
     label: &str,
@@ -42,7 +45,10 @@ pub fn build_frameless_window(
             inner_size.width as f64 * scale,
             inner_size.height as f64 * scale,
         )
-        .initialization_script(format!("window.__SPOTIAMP_UI_SCALE__ = {scale};"))
+        .initialization_script(format!(
+            "window.__SPOTIAMP_UI_SCALE__ = {scale}; window.__SPOTIAMP_EMBEDDED__ = {};",
+            crate::modern_window::embedded(label)
+        ))
         .decorations(false)
         .shadow(false)
         .closable(false)
@@ -56,6 +62,10 @@ pub fn build_frameless_window(
         .resizable(false)
         .disable_drag_drop_handler()
         .accept_first_mouse(true)
+        // In a modern skin's frame (src/lib/modern-look.js), what the frame
+        // doesn't cover (rounded corners) shows what's behind; the classic
+        // look's pages are opaque, so nothing changes there.
+        .transparent(FRAMED.contains(&label))
         // Applied here so every window — including ones opened later — comes up
         // matching the user's always-on-top choice.
         .always_on_top(always_on_top)
@@ -548,6 +558,10 @@ struct Dock {
     hwnds: HashMap<String, isize>,
     #[cfg(target_os = "windows")]
     owned_by_player: HashSet<String>,
+    /// The window the others belong to instead of the player: a modern
+    /// skin's, while one is worn (its handle).
+    #[cfg(target_os = "windows")]
+    owner_override: Option<isize>,
     /// Each window's `<label>Window` drag listener, so a window that's closed
     /// for good (and built again later) doesn't leave one behind each time.
     listeners: HashMap<String, tauri::EventId>,
@@ -661,13 +675,65 @@ pub fn own_by_player(app: &AppHandle, window: &WebviewWindow) {
         let app = app.clone();
         let own = window.clone();
         let _ = window.run_on_main_thread(move || {
-            if let (Some(player), Ok(own)) = (app.get_webview_window(MASTER), own.hwnd())
-                && let Ok(owner) = player.hwnd()
+            if let (Some(owner), Ok(own)) = (owner_window(&app), own.hwnd())
+                && let Ok(owner) = owner.hwnd()
             {
                 set_owner(own.0 as isize, owner.0 as isize);
             }
         });
     }
+}
+
+/// The window the others belong to: the classic player, or a modern skin's
+/// window while one is worn (the player is hidden then).
+pub fn owner_window(app: &AppHandle) -> Option<WebviewWindow> {
+    crate::modern_window::window(app).or_else(|| app.get_webview_window(MASTER))
+}
+
+/// The look changed (classic or modern): every open window, docked or not,
+/// and Lala, now belongs to the window that's showing.
+pub fn reown_windows(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let modern = crate::modern_window::window(&app2).and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+            if let Ok(mut dock) = dock().lock() {
+                dock.owner_override = modern;
+                // all of them owned again, by the new owner
+                dock.owned_by_player.clear();
+                refresh_all_rects(&mut dock);
+                update_owners(&mut dock);
+            }
+            let owner = owner_window(&app2).and_then(|w| w.hwnd().ok());
+            for label in ["whatsnew", "museum", "mascot"] {
+                if let (Some(owner), Some(window)) = (owner, app2.get_webview_window(label))
+                    && window.is_visible().unwrap_or(false)
+                    && let Ok(own) = window.hwnd()
+                {
+                    set_owner(own.0 as isize, owner.0 as isize);
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+}
+
+/// Where a window opens the first time, beside this: the classic player, or
+/// a modern skin's main window while one is worn. Its spot and size
+/// (physical pixels) and its screen's scale.
+pub fn anchor(app: &AppHandle) -> Option<(PhysicalPosition<i32>, tauri::PhysicalSize<u32>, f64)> {
+    if let Some([x, y, w, h]) = crate::modern_window::main_rect() {
+        let scale = app
+            .monitor_from_point(x as f64, y as f64)
+            .ok()
+            .flatten()
+            .map_or(1.0, |m| m.scale_factor());
+        return Some((PhysicalPosition::new(x, y), tauri::PhysicalSize::new(w.max(0) as u32, h.max(0) as u32), scale));
+    }
+    let player = app.get_webview_window(MASTER)?;
+    Some((player.outer_position().ok()?, player.outer_size().ok()?, player.scale_factor().unwrap_or(1.0)))
 }
 
 #[cfg(target_os = "windows")]
@@ -753,7 +819,7 @@ pub(crate) fn keep_off_taskbar(hwnd: isize, always: bool) {
 /// window is let go. MUST run on the main thread.
 #[cfg(target_os = "windows")]
 fn update_owners(dock: &mut Dock) {
-    let Some(&player_hwnd) = dock.hwnds.get(MASTER) else {
+    let Some(player_hwnd) = dock.owner_override.or_else(|| dock.hwnds.get(MASTER).copied()) else {
         return;
     };
     let labels: Vec<String> = dock.windows.keys().cloned().collect();

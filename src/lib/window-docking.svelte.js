@@ -45,6 +45,12 @@ export async function collectSnapRects(selfLabel) {
       }
     }),
   );
+  // a modern skin's own windows (its player, playlist...), as Winamp 5
+  // docked its Media Library to them
+  const skin = /** @type {[number, number, number, number][]} */ (
+    await invoke("modern_window_rects").catch(() => [])
+  );
+  for (const [x, y, width, height] of skin) rects.push({ x, y, width, height });
   return rects;
 }
 

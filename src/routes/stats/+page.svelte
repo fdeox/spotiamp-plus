@@ -524,11 +524,11 @@
   }
 </script>
 
-<div class="st">
-  <div class="st-titlebar" use:makeStatsDraggable>
+<div class="st" data-gen-window>
+  <div class="st-titlebar" data-gen="titlebar" use:makeStatsDraggable>
     <div class="st-tl"></div>
     <span class="st-title">LISTENING STATS</span>
-    <button class="st-close" data-no-drag onclick={close} aria-label="Close"></button>
+    <button class="st-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"></button>
     <GenTop title="LISTENING STATS" onclose={close} />
   </div>
 
@@ -804,7 +804,7 @@
     {/if}
   </div>
 
-  <div class="st-resize" use:makeStatsResizable></div>
+  <div class="st-resize" data-gen="resize" use:makeStatsResizable></div>
 </div>
 
 <style>

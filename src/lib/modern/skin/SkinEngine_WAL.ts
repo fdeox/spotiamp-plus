@@ -974,16 +974,24 @@ export default class SkinEngineWAL extends SkinEngine {
   }
 
   async component(node: XmlElement, parent: any) {
-    const id = this._uiRoot.guid2alias(node.attributes.param);
+    // (Spotiamp+: some skins name what a component holds with hold=, as a
+    // windowholder does, instead of param=)
+    const id = this._uiRoot.guid2alias(node.attributes.param ?? node.attributes.hold);
     switch (id) {
       case "vis":
-        // const gui = new Avs(this._uiRoot);
-        // // const spec = new XmlElement("dummy", { fitparent: '1' });
-        // gui.setXmlAttributes(spec.attributes)
-        // this.addChild(gui);
-        // this._heldObj = gui;
-        return this.newGui(Avs, node, parent);
-        break;
+      case "avs": {
+        // Spotiamp+: the visualizer's place, where Spotiamp+'s visualizer can
+        // be laid (modern/+page.svelte); the skin's own picture meanwhile
+        const gui = await this.newGui(Avs, node, parent);
+        gui._spotiampSlot = "vis";
+        return gui;
+      }
+      case "ml": {
+        // Spotiamp+: the media library's place, where Spotiamp+'s Library is laid
+        const holder = await this.newGroup(WindowHolder, node, parent);
+        holder._spotiampSlot = "ml";
+        return holder;
+      }
     }
     //TODO: parse dynamic element by guid value
     if (
@@ -998,6 +1006,11 @@ export default class SkinEngineWAL extends SkinEngine {
     const frame = (await this.newGroup(WindowHolder, node, parent)) as Frame;
     //TODO: parse dynamic element by guid value
     const hold = node.attributes.hold;
+    // Spotiamp+: the media library's and the visualizer's places, where its
+    // own Library and visualizer are laid (modern/+page.svelte)
+    const held = this._uiRoot.guid2alias(hold ?? "");
+    if (held === "ml") frame._spotiampSlot = "ml";
+    if (held === "vis" || held === "avs") frame._spotiampSlot = "vis";
     // console.log('window-holder'); debugger;
     if (
       hold &&

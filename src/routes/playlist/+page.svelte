@@ -164,12 +164,14 @@
       jumpQuery = "";
       jumpActive = 0;
       const win = getCurrentWindow();
-      // J from the main window while the playlist is hidden: nothing to show.
+      // J from the main window while the playlist is hidden: nothing to show
+      // (a modern skin worn: it shows in the skin's window)
       win
         .isVisible()
         .then((visible) => {
           if (!visible) {
             playlist.jumpOpen = false;
+            if (modernOn) emitWindowEvent("modernDialog", { kind: "jump" });
             return;
           }
           win.setFocus().catch(() => {});
@@ -268,14 +270,43 @@
     clearTimeout(skinRowsTimer);
     skinRowsTimer = setTimeout(sendSkinRows, 150);
   });
+  // A modern skin worn: this window is hidden, so what it shows over itself
+  // (the jump box, the link box, a note...) shows in the skin's window.
+  let modernOn = false;
+  // what the skin's window is told once it's up (an update came first)
+  let modernNote = "";
+  invoke("modern_skin")
+    .then((s) => (modernOn = !!s))
+    .catch(() => {});
   onMount(() => {
     const commands = subscribeToWindowEvent("skinPlaylistCommand", (c) => {
       if (typeof c.play === "number") playlist.rows[c.play]?.play();
       if (typeof c.remove === "number") playlist.removeAt(c.remove);
       if (Array.isArray(c.move)) playlist.moveRow(c.move[0], c.move[1]);
-      if (c.ask) sendSkinRows();
+      // the skin window's jump box searches the names
+      if (c.loadNames) playlist.loadAllNames();
+      // its link box and its "Save as a list"
+      if (typeof c.openUrl === "string") {
+        urlText = c.openUrl;
+        openUrl();
+      }
+      if (typeof c.saveList === "string") {
+        newListName = c.saveList;
+        saveCurrentAsList();
+      }
+      if (c.ask) {
+        sendSkinRows();
+        if (modernNote) {
+          emitWindowEvent("modernDialog", { kind: "toast", text: modernNote });
+          modernNote = "";
+        }
+      }
     });
-    return () => commands.then((unlisten) => unlisten());
+    const face = subscribeToWindowEvent("modernFace", (on) => (modernOn = on));
+    return () => {
+      commands.then((unlisten) => unlisten());
+      face.then((unlisten) => unlisten());
+    };
   });
   const songTime = $derived.by(() => {
     const s = Math.floor((playlist.positionMs || 0) / 1000);
@@ -323,7 +354,12 @@
   async function checkForUpdatesSilently() {
     try {
       const update = await check();
-      if (update) updateAvailable = update.version;
+      if (update) {
+        updateAvailable = update.version;
+        // the pill is on this window: under a modern skin, a note says it
+        modernNote = `Spotiamp+ ${update.version} is out: right-click, Help, Check for updates`;
+        if (modernOn) emitWindowEvent("modernDialog", { kind: "toast", text: modernNote });
+      }
     } catch {
       /* offline or check failed — stay quiet, the menu still works */
     }
@@ -517,7 +553,8 @@
   function songItems() {
     const sep = { item: /** @type {const} */ ("Separator") };
     const rows = playlist.selectedRows;
-    if (!rows.length || controllerMode) return [];
+    // (under a modern skin this playlist, and what's selected in it, is hidden)
+    if (!rows.length || controllerMode || modernOn) return [];
     const uris = playlist.selectedSpotifyUris();
     const allLoved = uris.length > 0 && uris.every((u) => playlist.loved.has(u));
     const local = rows.length === 1 && rows[0].isLocal ? /** @type {{path: string, isStream: boolean}} */ (/** @type {any} */ (rows[0])) : null;
@@ -885,11 +922,13 @@
       timeJumpText = "";
       const win = getCurrentWindow();
       // asked for from the main window while the playlist is hidden: no box
+      // (a modern skin worn: it shows in the skin's window)
       win
         .isVisible()
         .then((visible) => {
           if (!visible) {
             playlist.timeJumpOpen = false;
+            if (modernOn) emitWindowEvent("modernDialog", { kind: "time" });
             return;
           }
           win.setFocus().catch(() => {});
@@ -907,11 +946,13 @@
       urlText = "";
       const win = getCurrentWindow();
       // asked for from the main window while the playlist is hidden: no box
+      // (a modern skin worn: it shows in the skin's window)
       win
         .isVisible()
         .then((visible) => {
           if (!visible) {
             playlist.urlBoxOpen = false;
+            if (modernOn) emitWindowEvent("modernDialog", { kind: "url" });
             return;
           }
           win.setFocus().catch(() => {});
@@ -941,6 +982,10 @@
   }
 
   async function openSaveList() {
+    if (modernOn) {
+      emitWindowEvent("modernDialog", { kind: "savelist" });
+      return;
+    }
     newListName = "";
     saveListOpen = true;
     await tick();
@@ -971,6 +1016,8 @@
     toast = text;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (toast = ""), 2600);
+    // this window hidden under a modern skin: the note shows in the skin's
+    if (modernOn) emitWindowEvent("modernDialog", { kind: "toast", text });
   }
   playlist.notify = showToast;
   // Typed a letter that isn't a shortcut: people expect that to search, so
@@ -1017,10 +1064,24 @@
     while (s.length > 1 && ctx.measureText(s + "…").width > max) s = s.slice(0, -1);
     return s + "…";
   }
+  /** The player as it looks now: the classic one, or a modern skin's main window. */
+  async function playerPicture() {
+    if (!modernOn) {
+      const png = /** @type {ArrayBuffer} */ (await invoke("capture_window_png", { label: "player" }));
+      return createImageBitmap(new Blob([png], { type: "image/png" }));
+    }
+    const main = /** @type {[number, number, number, number] | null} */ (await invoke("modern_main_rect"));
+    const modern = await Window.getByLabel("modern");
+    if (!main || !modern) throw new Error("the modern skin isn't drawn");
+    const origin = await modern.outerPosition();
+    const png = /** @type {ArrayBuffer} */ (await invoke("capture_window_png", { label: "modern" }));
+    const whole = await createImageBitmap(new Blob([png], { type: "image/png" }));
+    return createImageBitmap(whole, main[0] - origin.x, main[1] - origin.y, main[2], main[3]);
+  }
+
   /** @returns {Promise<Blob>} */
   async function buildNowPlayingCard() {
-    const png = /** @type {ArrayBuffer} */ (await invoke("capture_window_png", { label: "player" }));
-    const player = await createImageBitmap(new Blob([png], { type: "image/png" }));
+    const player = await playerPicture();
     const row = /** @type {any} */ (playlist.loadedRow);
     const track = row && !row.isLocal ? row.track : null;
     const title = track?.name ?? (row?.isLocal ? row.displayName : "");
@@ -1032,8 +1093,10 @@
     // scale and the pixel-art skin stays crisp.
     const dpr = window.devicePixelRatio || 1;
     const uiScale = REACTIVE_WINDOW_SIZE.zoom || 1;
-    const pw = Math.round((player.width / (dpr * uiScale)) * 2);
-    const ph = Math.round((player.height / (dpr * uiScale)) * 2);
+    // (a big modern skin less than that, so the card stays a card)
+    const twice = Math.min(2, 1100 / Math.max(1, player.width / (dpr * uiScale)));
+    const pw = Math.round((player.width / (dpr * uiScale)) * twice);
+    const ph = Math.round((player.height / (dpr * uiScale)) * twice);
     const PAD = 24;
     const GAP = 20;
     const COVER = 232;
@@ -1048,9 +1111,11 @@
     const css = getComputedStyle(document.body);
     /** @param {string} name @param {string} fallback */
     const skinColor = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
-    const bg = skinColor("--skin-plbg", "#000000");
-    const fg = skinColor("--skin-plnormal", "rgb(0, 255, 0)");
-    const hi = skinColor("--skin-plcurrent", "#ffffff");
+    // (a modern skin's own list colours: this window wears the classic ones)
+    const modern = modernOn ? /** @type {any} */ (await invoke("modern_look").catch(() => null))?.colors : null;
+    const bg = modern?.listBg ?? skinColor("--skin-plbg", "#000000");
+    const fg = modern?.listText ?? skinColor("--skin-plnormal", "rgb(0, 255, 0)");
+    const hi = modern?.current ?? skinColor("--skin-plcurrent", "#ffffff");
 
     const canvas = document.createElement("canvas");
     canvas.width = W;
@@ -1111,6 +1176,20 @@
     return /** @type {Blob} */ (blob);
   }
   async function copyNowPlayingCard() {
+    if (modernOn) {
+      // hidden under a modern skin, this page can't have the focus the
+      // clipboard wants: the skin's window, which has it, puts the card there
+      try {
+        const bytes = new Uint8Array(await (await buildNowPlayingCard()).arrayBuffer());
+        let text = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        emitWindowEvent("modernDialog", { kind: "card", text: btoa(text) });
+      } catch (e) {
+        showToast("Couldn't copy the card");
+        invoke("log_frontend_error", { window: "playlist", message: `now playing card: ${e}` }).catch(() => {});
+      }
+      return;
+    }
     // The clipboard only takes writes from a focused page, and the menu may
     // have been opened over the main window: bring this one forward first.
     await getCurrentWindow().setFocus().catch(() => {});

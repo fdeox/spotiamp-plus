@@ -101,9 +101,14 @@
   }
 
   // The cover's box is the window less the 20 px titlebar and the 4 px frame
-  // (1 px border inside it): this much wider and taller than the box.
-  const FRAME_W = 10;
-  const FRAME_H = 26;
+  // (1 px border inside it): this much wider and taller than the box. In a
+  // modern skin's frame, less what that frame takes (--mf-*, global.css).
+  const frameSize = () => {
+    if (!("modern" in document.body.dataset)) return { w: 10, h: 26 };
+    const style = getComputedStyle(document.body);
+    const mf = (/** @type {string} */ side) => parseFloat(style.getPropertyValue(`--mf-${side}`)) || 0;
+    return { w: mf("left") + mf("right") + 10, h: mf("top") + mf("bottom") + 6 };
+  };
 
   // Resize from the bottom-right corner, like the lyrics / library / visualizer,
   // keeping the cover's box square: a cover fills it with no gaps at the sides.
@@ -114,8 +119,9 @@
       "art",
       (e) => {
         const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
-        const side = Math.max(Math.round(e.clientX / zoom) + 3 - FRAME_W, Math.round(e.clientY / zoom) + 3 - FRAME_H, 110);
-        return { width: side + FRAME_W, height: side + FRAME_H };
+        const frame = frameSize();
+        const side = Math.max(Math.round(e.clientX / zoom) + 3 - frame.w, Math.round(e.clientY / zoom) + 3 - frame.h, 110);
+        return { width: side + frame.w, height: side + frame.h };
       },
       ({ width, height }) => REACTIVE_WINDOW_SIZE.setSize(Math.round(width), Math.round(height)),
       () => REACTIVE_WINDOW_SIZE.zoom || 1,
@@ -123,11 +129,11 @@
   }
 </script>
 
-<div class="art">
-  <div class="art-titlebar" use:makeArtDraggable>
+<div class="art" data-gen-window>
+  <div class="art-titlebar" data-gen="titlebar" use:makeArtDraggable>
     <div class="art-tl"></div>
     <span class="art-title">ALBUM ART</span>
-    <button class="art-close" data-no-drag onclick={close} aria-label="Close"
+    <button class="art-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
     ></button>
     <GenTop title="ALBUM ART" onclose={close} />
   </div>
@@ -149,7 +155,7 @@
     {/if}
   </div>
 
-  <div class="art-resize" use:makeArtResizable></div>
+  <div class="art-resize" data-gen="resize" use:makeArtResizable></div>
 </div>
 
 <style>

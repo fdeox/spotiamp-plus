@@ -1151,11 +1151,11 @@
   }
 </script>
 
-<div class="ml-window">
-  <div class="ml-titlebar" use:makeLibraryDraggable>
+<div class="ml-window" data-gen-window>
+  <div class="ml-titlebar" data-gen="titlebar" use:makeLibraryDraggable>
     <div class="ml-tl"></div>
     <span class="ml-title"></span>
-    <button class="ml-close" data-no-drag onclick={close} aria-label="Close"
+    <button class="ml-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
     ></button>
     <GenTop title="WINAMP LIBRARY" titleVar="libtitle" onclose={close} />
   </div>
@@ -1604,7 +1604,7 @@
     </span>
   </div>
 
-  <div class="ml-resize" use:makeLibraryResizable></div>
+  <div class="ml-resize" data-gen="resize" use:makeLibraryResizable></div>
 </div>
 
 <style>

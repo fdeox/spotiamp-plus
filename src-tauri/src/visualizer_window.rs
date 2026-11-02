@@ -30,6 +30,14 @@ pub async fn set_visualizer_window_visible(
     visible: bool,
     app_handle: AppHandle,
 ) -> Result<(), ()> {
+    // (a modern skin with a visualizer window of its own: that opens, and
+    // this is laid into it; closed with it)
+    if visible && crate::modern_window::open_slot(&app_handle, "visualizer") {
+        return Ok(());
+    }
+    if !visible {
+        crate::modern_window::close_slot(&app_handle, "visualizer");
+    }
     // Closing gives the window's memory back: it's destroyed, and built again
     // (at its saved spot and size) when next opened. See close_dock_window.
     if !visible {
@@ -51,13 +59,9 @@ pub async fn set_visualizer_window_visible(
         Some(window) => window,
         None => {
             // open it just below the player window
-            let anchor = app_handle
-                .get_webview_window("player")
-                .expect("a player window to place the visualizer under");
-            let mut position = anchor.outer_position().map_err(|_| ())?;
-            let size = anchor.outer_size().map_err(|_| ())?;
+            // (a modern skin worn: its main window, the player being hidden)
+            let (mut position, size, scale_factor) = app_window::anchor(&app_handle).ok_or(())?;
             position.y += size.height as i32;
-            let scale_factor = anchor.scale_factor().unwrap_or(1.0);
             let window =
                 build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
             // Register with the docking manager so it snaps into the group.

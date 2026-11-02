@@ -69,11 +69,13 @@ fn build(app: &AppHandle) -> Result<WebviewWindow, tauri::Error> {
 }
 
 /// Bottom-right of the work area (the screen minus the taskbar) of the
-/// monitor the player is on.
+/// monitor the player (or a modern skin's main window) is on.
 fn place(app: &AppHandle, window: &WebviewWindow) {
-    let monitor = app
-        .get_webview_window("player")
-        .and_then(|p| p.current_monitor().ok().flatten())
+    let monitor = crate::app_window::anchor(app)
+        .and_then(|(p, s, _)| {
+            let (x, y) = (p.x + s.width as i32 / 2, p.y + s.height as i32 / 2);
+            app.monitor_from_point(x as f64, y as f64).ok().flatten()
+        })
         .or_else(|| window.primary_monitor().ok().flatten());
     let (Some(monitor), Ok(size)) = (monitor, window.outer_size()) else {
         return;

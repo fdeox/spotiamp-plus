@@ -3,7 +3,7 @@
   import { onMount, tick } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Menu } from "@tauri-apps/api/menu";
-  import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
+  import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED } from "$lib/common.svelte.js";
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { SHADER_COMMON } from "./shader-common.js";
@@ -1459,6 +1459,8 @@
     const milkObserver = new ResizeObserver(resizeMilk);
     milkObserver.observe(canvas);
     window.addEventListener("resize", resizeMilk);
+    // and a modern skin's frame put round the window or taken off
+    window.addEventListener(SKIN_APPLIED, resizeMilk);
 
     // Auto-cycle presets (unless pinned), and switch on every track change for
     // variety. 45s, not 25 — the older ones went by before you could enjoy
@@ -1521,6 +1523,7 @@
       clearTimeout(pollTimer);
       milkObserver.disconnect();
       window.removeEventListener("resize", resizeMilk);
+      window.removeEventListener(SKIN_APPLIED, resizeMilk);
       for (const off of milkOffs) off();
       clearTimeout(milkClickTimer);
       clearTimeout(milkNoteTimer);
@@ -1560,11 +1563,11 @@
 
 <svelte:window onkeydown={onKey} onmousemove={onPageMove} onmouseout={onPageOut} />
 
-<div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle} class:rest>
-  <div class="viz-titlebar" use:makeVizDraggable>
+<div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle} class:rest data-gen-window={fullscreen ? undefined : ""}>
+  <div class="viz-titlebar" data-gen="titlebar" use:makeVizDraggable>
     <div class="viz-tl"></div>
     <span class="viz-title">VISUALIZER</span>
-    <button class="viz-close" data-no-drag onclick={close} aria-label="Close"
+    <button class="viz-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
     ></button>
     <GenTop title="VISUALIZER" onclose={close} />
   </div>
@@ -1666,7 +1669,7 @@
     {/if}
   </div>
 
-  <div class="viz-resize" use:makeVizResizable></div>
+  <div class="viz-resize" data-gen="resize" use:makeVizResizable></div>
 </div>
 
 <style>

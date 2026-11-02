@@ -176,3 +176,62 @@ body[data-skin-font] .ml-cols {
     font-size: 10px;
     letter-spacing: 0;
 }
+
+/* ---- a modern skin's frame (lib/modern-look.js) ----
+   Spotiamp+'s own windows lie in the skin's frame, drawn behind the page
+   (#modern-frame); the page keeps to the room it leaves (--mf-*). Its own
+   title bar goes (out of sight, its close button is pressed from the
+   frame's) and its corner grip sits in the window's corner. */
+#modern-frame {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+}
+body[data-modern]:not(:has([data-gen-window])) #modern-frame {
+    display: none;
+}
+html:has(> body[data-modern]),
+body[data-modern] {
+    background: transparent !important;
+}
+body[data-modern] [data-gen-window] {
+    position: absolute !important;
+    inset: var(--mf-top) var(--mf-right) var(--mf-bottom) var(--mf-left) !important;
+    width: auto !important;
+    height: auto !important;
+    border: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: var(--skin-genexwndbg) !important;
+    z-index: 1;
+}
+body[data-modern] [data-gen-window] [data-gen="titlebar"] {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden;
+    opacity: 0;
+}
+body[data-modern] [data-gen-window] [data-gen="resize"] {
+    position: fixed !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 14px !important;
+    height: 14px !important;
+    background: none !important;
+    z-index: 2;
+}
+/* the list scrollbars' thumb, a picture from the classic skin's PLEDIT.BMP:
+   plain, in the modern skin's colours */
+body[data-modern] .ml-scroll::-webkit-slider-thumb,
+body[data-modern] .st-scroll::-webkit-slider-thumb {
+    background: color-mix(in srgb, var(--skin-plnormal) 45%, var(--skin-genexwndbg)) !important;
+    border: 1px solid var(--skin-genexdivider);
+    box-sizing: border-box;
+}
+/* laid into the skin's own place for it: no grip, the skin sizes it */
+body[data-modern="embedded"] [data-gen-window] [data-gen="resize"] {
+    display: none !important;
+}

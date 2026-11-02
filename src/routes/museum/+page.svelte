@@ -135,12 +135,12 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="mu">
+<div class="mu" data-gen-window>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="mu-titlebar" onmousedown={drag}>
+  <div class="mu-titlebar" data-gen="titlebar" onmousedown={drag}>
     <div class="mu-tl"></div>
     <span class="mu-title">SKIN MUSEUM</span>
-    <button class="mu-close" data-no-drag onclick={close} aria-label="Close"></button>
+    <button class="mu-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"></button>
     <GenTop title="SKIN MUSEUM" onclose={close} />
   </div>
 

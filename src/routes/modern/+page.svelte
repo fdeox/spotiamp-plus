@@ -14,6 +14,8 @@
   import { ZipFileExtractor } from "$lib/modern/skin/FileExtractor";
   import AUDIO_PLAYER from "$lib/modern/skin/AudioPlayer";
   import { HOST } from "$lib/modern/host";
+  import { buildLook } from "$lib/modern/look.js";
+  import { frameInsets, paintFrame, setFrameActive, wireFrame } from "$lib/modern-look.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -21,12 +23,14 @@
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { handleDrop } from "$lib/common.svelte.js";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   /** @type {HTMLDivElement} */
   let root;
   /** @type {UIRoot | null} */
   let uiRoot = null;
+  /** the engine that drew it, which draws the look for the other windows too @type {any} */
+  let engine = null;
   let skinName = "";
 
   // ---- the skin's windows: where they are, at what size, and saved ----
@@ -181,10 +185,109 @@
     }
   }
 
+  // ---- Winamp's Media Library and visualizer, in the skin ----
+  // The skin's places for them (windowholders and components, marked by the
+  // engine: SkinEngine_WAL.ts): Spotiamp+'s Library and visualizer are laid
+  // there (modern_window.rs), as Winamp put its own, and go when they're
+  // hidden (the skin's window for them closed, another tab picked).
+
+  /** the parts that are such places @type {any[]} */
+  let slotParts = [];
+  let slotsScanned = 0;
+  function scanSlots() {
+    slotParts = [];
+    /** @param {any} o */
+    const walk = (o) => {
+      if (o._spotiampSlot) slotParts.push(o);
+      for (const child of o._children ?? []) walk(child);
+    };
+    for (const c of containers()) for (const layout of c._layouts ?? []) walk(layout);
+    slotsScanned = performance.now();
+  }
+  /** what a skin window is for: Winamp's Media Library ("ml"), its visualizer ("vis"), or neither @param {any} c */
+  const windowFor = (c) => (c._componentAlias === "ml" ? "ml" : ["vis", "avs"].includes(c._componentAlias) ? "vis" : "");
+  /** the skin window a part is in @param {any} part */
+  const windowOf = (part) => {
+    let o = part;
+    while (o && !o._layouts) o = o._parent;
+    return o;
+  };
+
+  /** Where each place is, shown, and whether a closed window of the skin's own has one. */
+  function slotState() {
+    if (!pointerDown && performance.now() - slotsScanned > 2000) scanSlots();
+    /** @type {Record<"ml" | "vis", { rect: [number, number, number, number] | null, openable: boolean }>} */
+    const state = { ml: { rect: null, openable: false }, vis: { rect: null, openable: false } };
+    for (const kind of /** @type {const} */ (["ml", "vis"])) {
+      /** @type {[number, number, number, number] | null} */
+      let best = null;
+      let area = 0;
+      for (const part of slotParts) {
+        if (part._spotiampSlot !== kind) continue;
+        const el = part.getDiv();
+        const c = windowOf(part);
+        if (!c?.getVisible() || !el.isConnected || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+        const r = el.getBoundingClientRect();
+        // room for it: a visualizer goes into a window of the skin's for it, or
+        // a big place; the skin's own small ones keep their own picture
+        if (r.width < 100 || r.height < 60) continue;
+        if (kind === "vis" && windowFor(c) !== "vis" && r.width * r.height < 200 * 150) continue;
+        if (r.width * r.height > area) {
+          area = r.width * r.height;
+          best = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+        }
+      }
+      state[kind].rect = best;
+      state[kind].openable =
+        !best && slotParts.some((p) => p._spotiampSlot === kind && windowFor(windowOf(p) ?? {}) === kind && !windowOf(p).getVisible());
+    }
+    return state;
+  }
+
+  // told when they change; one at a time, the newest wins (a drag sends many)
+  let lastSlots = "";
+  let slotsBusy = false;
+  let slotsAgain = false;
+  function sendSlots() {
+    const state = slotState();
+    const key = JSON.stringify(state);
+    if (key === lastSlots) return;
+    if (slotsBusy) {
+      slotsAgain = true;
+      return;
+    }
+    lastSlots = key;
+    slotsBusy = true;
+    invoke("modern_set_slots", { slotsNow: state })
+      .catch(() => {})
+      .finally(() => {
+        slotsBusy = false;
+        if (slotsAgain) {
+          slotsAgain = false;
+          sendSlots();
+        }
+      });
+  }
+
+  /** The skin's own window for the Library or the visualizer, opened (Spotiamp+'s is laid into it) or closed. @param {string} kind @param {boolean} open */
+  function showSlotWindow(kind, open) {
+    for (const c of containers()) {
+      if (windowFor(c) !== kind || c.getVisible() === open) continue;
+      if (open) {
+        if (!slotParts.some((p) => p._spotiampSlot === kind && windowOf(p) === c)) continue;
+        c.show();
+        break;
+      }
+      c.hide();
+    }
+    HOST.layoutChanged();
+  }
+
   // The window is there only where the skin's windows are: told whenever
   // that changes. Watched every frame while a button is down (a window being
   // dragged), four times a second otherwise.
   let lastRegion = "";
+  let lastShape = "";
   let lastSaved = "";
   let pointerDown = false;
   function updateRegion() {
@@ -197,16 +300,35 @@
       const r = fullRectOf(c, !pointerDown);
       if (r) rects.push([Math.floor(r.left), Math.floor(r.top), Math.ceil(r.width), Math.ceil(r.height)]);
     }
-    // the engine's own pop-ups (drop-down lists and the like) too
-    for (const el of document.querySelectorAll(".popup, .dropdown-list")) {
+    // the engine's own pop-ups (drop-down lists and the like), and Spotiamp+'s
+    // boxes and notes, too
+    for (const el of document.querySelectorAll(".popup, .dropdown-list, .sp-dialog, .sp-toast")) {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) rects.push([Math.floor(r.left), Math.floor(r.top), Math.ceil(r.width), Math.ceil(r.height)]);
     }
-    const key = JSON.stringify(rects);
-    if (key !== lastRegion) {
-      lastRegion = key;
-      invoke("modern_set_region", { rects }).catch(() => {});
+    // where the skin's windows are (and its main one): Spotiamp+'s windows
+    // snap to them and open beside the main one, and Lala sits on it
+    /** @type {[number, number, number, number][]} */
+    const windows = [];
+    /** @type {[number, number, number, number] | null} */
+    let main = null;
+    for (const c of containers()) {
+      const r = rectOf(c);
+      if (!r) continue;
+      /** @type {[number, number, number, number]} */
+      const box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+      windows.push(box);
+      if (c.getId() === "main") main = box;
     }
+    main ??= windows[0] ?? null;
+    const key = JSON.stringify(rects);
+    const shape = JSON.stringify([windows, main]);
+    if (key !== lastRegion || shape !== lastShape) {
+      lastRegion = key;
+      lastShape = shape;
+      invoke("modern_set_region", { rects, windows, main, moving: pointerDown }).catch(() => {});
+    }
+    sendSlots();
     if (!pointerDown) {
       const placed = JSON.stringify(containers().map((c) => [c._x, c._y, c.getVisible()]));
       if (placed !== lastSaved) {
@@ -336,6 +458,245 @@
     }
   }
 
+  // ---- Spotiamp+'s boxes and notes, in the skin's frame ----
+  // J (jump to a song), Ctrl+J (to a time), Ctrl+L (open a link) and "Save as
+  // a list" show over the playlist in the classic look, which is hidden now:
+  // they show over the skin's main window instead, in its frame
+  // (modern-look.js), and so do the playlist's little notes.
+
+  /** The skin's look for them (look.js), once made. @type {import("$lib/modern-look.js").Look | null} */
+  let look = $state(null);
+  /** Until it's made (or for a skin it can't be made for): plain colours. */
+  const PLAIN_LOOK = {
+    skin: "",
+    frames: {},
+    client: {},
+    vars: "",
+    fonts: "",
+    colors: {
+      windowBg: "#2b3242",
+      windowText: "#e6e6e6",
+      listBg: "#0d0f14",
+      listText: "#cfd6e4",
+      current: "#ffffff",
+      selBg: "#3a4a6a",
+      buttonText: "#e6e6e6",
+      headerBg: "#20252f",
+      headerText: "#e6e6e6",
+      border: "#151820",
+      accent: "#3a4458",
+    },
+  };
+  const lookNow = () => look ?? PLAIN_LOOK;
+
+  /** Each box: its title on the frame, what's typed in it, and the size of its insides (1x px). */
+  const DIALOGS = {
+    jump: { title: "Jump to File", placeholder: "jump to file…", hint: "", w: 300, h: 220 },
+    time: { title: "Jump to Time", placeholder: "jump to time, like 1:23", hint: "", w: 300, h: 46 },
+    url: {
+      title: "Open Location",
+      placeholder: "a Spotify link or a radio station",
+      hint: "A song, album or playlist from Spotify, or a station's stream (http://…, .pls, .m3u).",
+      w: 300,
+      h: 58,
+    },
+    savelist: {
+      title: "Save as a List",
+      placeholder: "name for this list…",
+      hint: "Enter saves it, Esc cancels. Lists live in the Library under Spotiamp+.",
+      w: 300,
+      h: 58,
+    },
+  };
+  /** @typedef {keyof typeof DIALOGS} DialogKind */
+
+  /** @type {{ kind: DialogKind, x: number, y: number, scale: number, hint: string } | null} */
+  let dialog = $state(null);
+  let dialogText = $state("");
+  let dialogActive = $state(0);
+  /** the playlist's songs, for the jump box @type {{ title: string, durationMs: number }[]} */
+  let listRows = $state([]);
+  let listCurrent = $state(-1);
+  /** @type {HTMLInputElement | undefined} */
+  let dialogInput = $state();
+  /** @type {HTMLDivElement | undefined} */
+  let dialogFrame = $state();
+  /** @type {HTMLDivElement | undefined} */
+  let dialogList = $state();
+
+  /** Where to put something over the skin's main window: its box, its screen and scale. */
+  function overMain() {
+    const main = containers().find((c) => c.getId() === "main" && c.getVisible()) ?? containers().find((c) => c.getVisible());
+    const box = main ? rectOf(main) : null;
+    const s = screenAt(box ? box.left + 8 : 100, box ? box.top + 8 : 100);
+    return { box, screen: /** @type {any} */ (s), scale: (s?.scale ?? 1) * uiScale };
+  }
+
+  /** @param {number} ms */
+  const clock = (ms) => {
+    const s = Math.floor(Math.max(0, ms) / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+
+  /** @param {string} kind */
+  function openDialog(kind) {
+    if (!uiRoot || !(kind in DIALOGS)) return;
+    const spec = DIALOGS[/** @type {DialogKind} */ (kind)];
+    const ins = frameInsets(lookNow(), "dialog", spec.title);
+    const { box, screen, scale } = overMain();
+    const w = (spec.w + ins.left + ins.right) * scale;
+    const h = (spec.h + ins.top + ins.bottom) * scale;
+    let x = box ? box.left + box.width / 2 - w / 2 : (screen?.x ?? 0) + 100;
+    let y = box ? box.top + box.height / 2 - h / 2 : (screen?.y ?? 0) + 100;
+    if (screen) {
+      const left = screen.work_x ?? screen.x;
+      const top = screen.work_y ?? screen.y;
+      x = Math.min(Math.max(x, left), left + (screen.work_width ?? screen.width) - w);
+      y = Math.min(Math.max(y, top), top + (screen.work_height ?? screen.height) - h);
+    }
+    const now = positionAt.ms + (positionAt.playing ? performance.now() - positionAt.at : 0);
+    const hint = kind === "time" ? `Now at ${clock(now)}. Enter jumps there, Esc cancels.` : spec.hint;
+    dialogText = "";
+    dialogActive = 0;
+    dialog = { kind: /** @type {DialogKind} */ (kind), x: Math.round(x), y: Math.round(y), scale, hint };
+    if (kind === "jump") emitWindowEvent("skinPlaylistCommand", { loadNames: true });
+    getCurrentWindow().setFocus().catch(() => {});
+    tick().then(() => {
+      dialogInput?.focus();
+      updateRegion();
+    });
+  }
+
+  function closeDialog() {
+    dialog = null;
+    tick().then(updateRegion);
+  }
+
+  /** @param {string} s */
+  const fold = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/ı/g, "i");
+  const jumpMatches = $derived.by(() => {
+    if (dialog?.kind !== "jump") return [];
+    const q = fold(dialogText.trim());
+    const out = [];
+    for (let i = 0; i < listRows.length && out.length < 200; i++) {
+      if (!q || fold(listRows[i].title).includes(q)) out.push({ i, title: listRows[i].title });
+    }
+    return out;
+  });
+  // a new search starts from the top match
+  $effect(() => {
+    dialogText;
+    dialogActive = 0;
+  });
+
+  function submitDialog() {
+    const kind = dialog?.kind;
+    const text = dialogText.trim();
+    if (kind === "jump") {
+      const hit = jumpMatches[dialogActive];
+      if (!hit) return;
+      emitWindowEvent("skinPlaylistCommand", { play: hit.i });
+    } else if (kind === "time") {
+      // 1:23, 83 (seconds) or 1:02:03
+      const parts = text.split(":").map((p) => p.trim());
+      if (!parts[0] || parts.length > 3 || parts.some((p) => !/^\d+$/.test(p))) return;
+      const seconds = parts.reduce((total, p) => total * 60 + Number(p), 0);
+      emitWindowEvent("seekTo", { positionMs: seconds * 1000 });
+    } else if (kind === "url") {
+      if (!text) return;
+      emitWindowEvent("skinPlaylistCommand", { openUrl: text });
+    } else if (kind === "savelist") {
+      if (!text) return;
+      emitWindowEvent("skinPlaylistCommand", { saveList: text });
+    }
+    closeDialog();
+  }
+
+  /** @param {KeyboardEvent} e */
+  function onDialogKey(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeDialog();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      submitDialog();
+    } else if (dialog?.kind === "jump" && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      dialogActive = Math.max(0, Math.min(jumpMatches.length - 1, dialogActive + (e.key === "ArrowDown" ? 1 : -1)));
+      tick().then(() => dialogList?.querySelector(".active")?.scrollIntoView({ block: "nearest" }));
+    }
+  }
+
+  // the box's frame: the skin's (a dialog's), its close button closing it
+  $effect(() => {
+    if (!dialog || !dialogFrame) return;
+    paintFrame(dialogFrame, lookNow(), "dialog", DIALOGS[dialog.kind].title);
+    setFrameActive(dialogFrame, true);
+    return wireFrame(dialogFrame, { onAction: (action) => action === "CLOSE" && closeDialog() });
+  });
+
+  /** Moved by its frame, as a window is. @param {PointerEvent} e */
+  function dragDialog(e) {
+    if (e.button !== 0 || !dialog) return;
+    const el = /** @type {HTMLElement} */ (e.currentTarget);
+    const start = { x: e.clientX, y: e.clientY, left: dialog.x, top: dialog.y };
+    el.setPointerCapture(e.pointerId);
+    el.onpointermove = (m) => {
+      if (!dialog) return;
+      dialog.x = Math.round(start.left + m.clientX - start.x);
+      dialog.y = Math.round(start.top + m.clientY - start.y);
+    };
+    el.onpointerup = () => {
+      el.onpointermove = null;
+      el.onpointerup = null;
+    };
+  }
+
+  /** A note under the skin's main window (over it when there's no room below). @type {{ text: string, x: number, y: number, scale: number } | null} */
+  let toast = $state(null);
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let toastTimer;
+  /** @param {string} text */
+  function showToast(text) {
+    if (!text || !uiRoot) return;
+    const { box, screen, scale } = overMain();
+    const x = box ? box.left + box.width / 2 : (screen?.x ?? 0) + 200;
+    let y = box ? box.bottom + 4 : (screen?.y ?? 0) + 100;
+    if (screen && y + 24 * scale > (screen.work_y ?? screen.y) + (screen.work_height ?? screen.height)) {
+      y = (box?.top ?? y) - 4 - 22 * scale;
+    }
+    toast = { text, x: Math.round(x), y: Math.round(y), scale };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast = null;
+      tick().then(updateRegion);
+    }, 2600);
+    tick().then(updateRegion);
+  }
+
+  /**
+   * The Now Playing card (made by the hidden playlist, as a PNG in base64) to
+   * the clipboard, which takes it only from a page that has the focus.
+   * @param {string} png
+   */
+  async function copyCard(png) {
+    await getCurrentWindow().setFocus().catch(() => {});
+    window.focus();
+    try {
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": new Blob([bytes], { type: "image/png" }) })]);
+      showToast("Now Playing card copied, paste it anywhere");
+    } catch (e) {
+      showToast("Couldn't copy the card");
+      invoke("log_frontend_error", { window: "modern", message: `now playing card: ${e}` }).catch(() => {});
+    }
+  }
+
   // ---- loading the skin ----
 
   /** Couldn't be shown: back to the classic look, saying so. @param {unknown} why */
@@ -362,7 +723,8 @@
     ui.SkinEngineClass = /** @type {any} */ (SkinEngineWAL);
     uiRoot = ui;
     // the engine works from these; the page has no others (see +page.svelte's head)
-    await new SkinEngineWAL(ui).buildUI();
+    engine = new SkinEngineWAL(ui);
+    await engine.buildUI();
     if (!containers().some((c) => c.getVisible())) throw new Error("the skin shows no window");
   }
 
@@ -391,15 +753,40 @@
       if (stopped) return;
       invoke("modern_ready").catch(() => {});
       // for the app's own tests (.smoke/t-modern.mjs)
-      /** @type {any} */ (window).__modern = { uiRoot, audio: AUDIO_PLAYER, region: () => lastRegion, skin: skinName };
+      /** @type {any} */ (window).__modern = { uiRoot, audio: AUDIO_PLAYER, region: () => lastRegion, skin: skinName, look: () => look, slots: slotState };
+      scanSlots();
+      // the Library or the visualizer opened (or closed) while the skin has a
+      // window of its own for it
+      const openSlot = getCurrentWindow().listen("modernOpenSlot", (e) => showSlotWindow(String(e.payload), true));
+      const closeSlot = getCurrentWindow().listen("modernCloseSlot", (e) => showSlotWindow(String(e.payload), false));
+      cleanups.push(() => openSlot.then((u) => u()), () => closeSlot.then((u) => u()));
+      // the skin's frame and colours for Spotiamp+'s own windows (look.js)
+      buildLook(uiRoot, engine, skinName)
+        .then((made) => {
+          if (stopped) return;
+          look = made;
+          return invoke("modern_set_look", { look: made });
+        })
+        .catch((e) => console.warn("modern skin: no look for the other windows:", e));
 
       // what plays, the playlist and the EQ: asked for once, then as they change
       const state = subscribeToWindowEvent("skinState", applyState);
-      const rows = subscribeToWindowEvent("skinPlaylist", (p) => uiRoot?.playlist._setRows(p.rows, p.current));
+      const rows = subscribeToWindowEvent("skinPlaylist", (p) => {
+        uiRoot?.playlist._setRows(p.rows, p.current);
+        listRows = p.rows;
+        listCurrent = p.current;
+      });
+      // the hidden playlist's boxes and notes, shown here
+      const dialogs = subscribeToWindowEvent("modernDialog", (d) => {
+        if (d.kind === "toast") showToast(d.text ?? "");
+        else if (d.kind === "card") copyCard(d.text ?? "");
+        else openDialog(d.kind);
+      });
       const eqChanged = listen("eqChanged", (e) => applyEq(e.payload));
       cleanups.push(
         () => state.then((u) => u()),
         () => rows.then((u) => u()),
+        () => dialogs.then((u) => u()),
         () => eqChanged.then((u) => u()),
       );
       emitWindowEvent("skinPlaylistCommand", { ask: true });
@@ -438,7 +825,8 @@
     })();
 
     // dragging a window: the region follows it every frame
-    const down = () => {
+    const down = (/** @type {PointerEvent} */ e) => {
+      if (dialog && !(e.target instanceof Element && e.target.closest(".sp-dialog"))) closeDialog();
       pointerDown = true;
       const follow = () => {
         updateRegion();
@@ -452,6 +840,8 @@
     };
     window.addEventListener("pointerdown", down, true);
     window.addEventListener("pointerup", up, true);
+    const blur = () => dialog && closeDialog();
+    window.addEventListener("blur", blur);
     // right-click: Spotiamp+'s menu, as on the classic player
     const context = (/** @type {MouseEvent} */ e) => {
       e.preventDefault();
@@ -487,6 +877,8 @@
       for (const f of cleanups) f();
       window.removeEventListener("pointerdown", down, true);
       window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("blur", blur);
+      clearTimeout(toastTimer);
       window.removeEventListener("contextmenu", context);
       window.removeEventListener("keydown", altKeys, true);
       stopForwarding();
@@ -504,6 +896,90 @@
 
 <div class="modern-root" bind:this={root}></div>
 
+{#if dialog}
+  {@const spec = DIALOGS[dialog.kind]}
+  {@const ins = frameInsets(lookNow(), "dialog", spec.title)}
+  {@const c = lookNow().colors}
+  <div
+    class="sp-dialog"
+    role="dialog"
+    aria-label={spec.title}
+    style:left="{dialog.x}px"
+    style:top="{dialog.y}px"
+    style:width="{spec.w + ins.left + ins.right}px"
+    style:height="{spec.h + ins.top + ins.bottom}px"
+    style:transform="scale({dialog.scale})"
+    style:--d-bg={c.listBg}
+    style:--d-fg={c.listText}
+    style:--d-sel={c.selBg}
+    style:--d-cur={c.current}
+    style:--d-win={c.windowBg}
+    style:--d-text={c.windowText}
+    style:--d-border={c.border}
+  >
+    <div class="sp-dialog-frame" role="presentation" bind:this={dialogFrame} onpointerdown={dragDialog}></div>
+    <div
+      class="sp-dialog-body"
+      style:left="{ins.left}px"
+      style:top="{ins.top}px"
+      style:right="{ins.right}px"
+      style:bottom="{ins.bottom}px"
+    >
+      <input
+        class="sp-dialog-input"
+        bind:this={dialogInput}
+        bind:value={dialogText}
+        onkeydown={onDialogKey}
+        placeholder={spec.placeholder}
+        spellcheck="false"
+        aria-label={spec.title}
+      />
+      {#if dialog.kind === "jump"}
+        <div class="sp-dialog-list" role="listbox" bind:this={dialogList}>
+          {#each jumpMatches as hit, n (hit.i)}
+            <div
+              class="sp-dialog-item"
+              class:active={n === dialogActive}
+              class:current={hit.i === listCurrent}
+              role="option"
+              aria-selected={n === dialogActive}
+              tabindex="-1"
+              onmousedown={(e) => {
+                // keep the typing in the box
+                e.preventDefault();
+                dialogActive = n;
+                submitDialog();
+              }}
+            >
+              {hit.i + 1}. {hit.title}
+            </div>
+          {:else}
+            <div class="sp-dialog-hint">{listRows.some((r) => !r.title) ? "loading names…" : "no match"}</div>
+          {/each}
+        </div>
+      {:else}
+        <div class="sp-dialog-hint">{dialog.hint}</div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if toast}
+  {@const c = lookNow().colors}
+  <div
+    class="sp-toast"
+    role="status"
+    style:left="{toast.x}px"
+    style:top="{toast.y}px"
+    style:transform="translateX(-50%) scale({toast.scale})"
+    style:background={c.listBg}
+    style:color={c.listText}
+    style:border-color={c.border}
+  >
+    {toast.text}
+  </div>
+{/if}
+
 <style>
   :global(html),
   :global(body) {
@@ -520,5 +996,85 @@
      unless the skin names its own */
   :global(body *) {
     cursor: default;
+  }
+
+  /* Spotiamp+'s boxes in the skin's frame, and its notes */
+  .sp-dialog {
+    position: absolute;
+    transform-origin: 0 0;
+    z-index: 10;
+    font: 11px Arial, sans-serif;
+  }
+  .sp-dialog-frame {
+    position: absolute;
+    inset: 0;
+  }
+  .sp-dialog-body {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px;
+    box-sizing: border-box;
+    background: var(--d-win);
+    color: var(--d-text);
+  }
+  .sp-dialog-input {
+    flex: none;
+    height: 18px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    border: 1px solid var(--d-border);
+    background: var(--d-bg);
+    color: var(--d-fg);
+    font: 11px Arial, sans-serif;
+    user-select: text;
+    cursor: text;
+  }
+  .sp-dialog-input::placeholder {
+    color: color-mix(in srgb, var(--d-fg) 50%, transparent);
+  }
+  .sp-dialog-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    border: 1px solid var(--d-border);
+    background: var(--d-bg);
+    color: var(--d-fg);
+  }
+  .sp-dialog-item {
+    padding: 0 4px;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sp-dialog-item.current {
+    color: var(--d-cur);
+  }
+  .sp-dialog-item.active {
+    background: var(--d-sel);
+  }
+  .sp-dialog-hint {
+    font-size: 10px;
+    opacity: 0.85;
+    line-height: 13px;
+  }
+  .sp-dialog-list .sp-dialog-hint {
+    padding: 2px 4px;
+    font-style: italic;
+  }
+  .sp-toast {
+    position: absolute;
+    transform-origin: 50% 0;
+    z-index: 11;
+    max-width: 420px;
+    padding: 3px 8px;
+    border: 1px solid;
+    font: 11px Arial, sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
 </style>

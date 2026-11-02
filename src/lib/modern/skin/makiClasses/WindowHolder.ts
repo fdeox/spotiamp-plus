@@ -34,6 +34,8 @@ export default class WindowHolder extends Group {
   _buildConent() {
     const id = this._uiRoot.guid2alias(this._hold);
     switch (id) {
+      // (Spotiamp+: AVS by its guid too, not only by its name)
+      case "vis":
       case "avs":
         const gui = new Avs(this._uiRoot);
         const spec = new XmlElement("dummy", { fitparent: "1" });

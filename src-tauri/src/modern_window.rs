@@ -10,7 +10,9 @@
 //! The skin file is kept in config/modern-skins; settings.modern_skin names
 //! it, and None is the classic look.
 
-use tauri::{AppHandle, Manager, WebviewWindow};
+use std::sync::Mutex;
+
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use crate::settings::{get_config_dir, Settings};
 
@@ -19,6 +21,203 @@ const LABEL: &str = "modern";
 /// A modern skin is being worn.
 pub fn active() -> bool {
     Settings::current().modern_skin.is_some()
+}
+
+/// Where the skin's windows are on the screens (physical pixels: x, y,
+/// width, height): Spotiamp+'s own windows snap to them and open beside the
+/// main one, and Lala sits on it.
+#[derive(Default)]
+struct Geometry {
+    windows: Vec<[i32; 4]>,
+    main: Option<[i32; 4]>,
+}
+
+fn geometry() -> &'static Mutex<Geometry> {
+    static GEOMETRY: Mutex<Geometry> = Mutex::new(Geometry { windows: Vec::new(), main: None });
+    &GEOMETRY
+}
+
+/// The skin's main window on the screens, while a modern skin is worn and drawn.
+pub fn main_rect() -> Option<[i32; 4]> {
+    if !active() {
+        return None;
+    }
+    geometry().lock().ok()?.main
+}
+
+/// The modern skin's window, while one is worn: what Spotiamp+'s other
+/// windows belong to then, instead of the hidden classic player.
+pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
+    if active() { app.get_webview_window(LABEL) } else { None }
+}
+
+/// The skin's look for Spotiamp+'s own windows (made by its page, see
+/// src/lib/modern/look.js), and the skin it's for. Kept on disk too, so the
+/// windows that open with the app wear it before the skin is drawn again.
+fn kept_look() -> &'static Mutex<Option<(String, std::sync::Arc<serde_json::Value>)>> {
+    static LOOK: Mutex<Option<(String, std::sync::Arc<serde_json::Value>)>> = Mutex::new(None);
+    &LOOK
+}
+
+fn look_path(skin: &str) -> Option<std::path::PathBuf> {
+    Some(skins_dir()?.join(format!("{skin}.look.json")))
+}
+
+// ---- Winamp's Media Library and visualizer, in the skin ----
+// A modern skin has places for them (a windowholder or component of its
+// main window, as Big Bento's, or a window of its own, as Winamp Modern's):
+// Winamp put its own there, and Spotiamp+ lays its Library and visualizer
+// there, without a frame of their own, moving and sizing with the skin.
+
+/// One such place, as the skin's page sees it.
+#[derive(serde::Deserialize, Default, Clone, PartialEq)]
+pub struct Slot {
+    /// where it is now, shown (physical pixels from the modern window's top left)
+    #[serde(default)]
+    rect: Option<[i32; 4]>,
+    /// a window of the skin's own for it, closed now, that can be opened
+    #[serde(default)]
+    openable: bool,
+}
+
+#[derive(serde::Deserialize, Default, Clone, PartialEq)]
+pub struct Slots {
+    #[serde(default)]
+    ml: Slot,
+    #[serde(default)]
+    vis: Slot,
+}
+
+/// Winamp's name for each place, and the window of Spotiamp+'s laid there.
+const SLOTTED: [(&str, &str); 2] = [("ml", "library"), ("vis", "visualizer")];
+
+fn slots() -> &'static Mutex<Slots> {
+    static SLOTS: Mutex<Slots> = Mutex::new(Slots {
+        ml: Slot { rect: None, openable: false },
+        vis: Slot { rect: None, openable: false },
+    });
+    &SLOTS
+}
+
+/// The windows laid into the skin now.
+fn laid() -> &'static Mutex<Vec<String>> {
+    static LAID: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    &LAID
+}
+
+/// The window is laid into the skin (its page draws no frame of its own,
+/// and its size is the place's).
+pub fn embedded(label: &str) -> bool {
+    active() && laid().lock().is_ok_and(|l| l.iter().any(|x| x == label))
+}
+
+fn set_embedded(label: &str, on: bool) {
+    if let Ok(mut l) = laid().lock() {
+        l.retain(|x| x != label);
+        if on {
+            l.push(label.to_string());
+        }
+    }
+}
+
+/// Opening the Library or the visualizer while the skin has a window of its
+/// own for it, closed: that's opened instead, and Spotiamp+'s is laid into
+/// it once it shows. Whether it was.
+pub fn open_slot(app: &AppHandle, label: &str) -> bool {
+    let Some((kind, _)) = SLOTTED.iter().find(|(_, l)| *l == label) else { return false };
+    if !active() {
+        return false;
+    }
+    let slot = slots().lock().map(|s| if *kind == "ml" { s.ml.clone() } else { s.vis.clone() }).unwrap_or_default();
+    if slot.rect.is_none() && slot.openable {
+        let _ = app.emit_to(LABEL, "modernOpenSlot", *kind);
+        return true;
+    }
+    false
+}
+
+/// Closing a window laid into a window of the skin's own: that closes too.
+pub fn close_slot(app: &AppHandle, label: &str) {
+    if let Some((kind, _)) = SLOTTED.iter().find(|(_, l)| *l == label)
+        && embedded(label)
+    {
+        let _ = app.emit_to(LABEL, "modernCloseSlot", *kind);
+    }
+}
+
+/// Is this window laid into the skin (asked by its page when it loads).
+#[tauri::command]
+pub fn modern_embedded(window: WebviewWindow) -> bool {
+    embedded(window.label())
+}
+
+/// The skin's places for the Library and the visualizer changed (shown,
+/// hidden, moved, sized): Spotiamp+'s windows are laid there, or go.
+#[tauri::command]
+pub async fn modern_set_slots(window: WebviewWindow, slots_now: Slots) {
+    let app = window.app_handle().clone();
+    let origin = window.outer_position().unwrap_or_default();
+    if let Ok(mut s) = slots().lock() {
+        *s = slots_now.clone();
+    }
+    for (kind, label) in SLOTTED {
+        let slot = if kind == "ml" { &slots_now.ml } else { &slots_now.vis };
+        let was = embedded(label);
+        match slot.rect {
+            Some([x, y, w, h]) if w > 8 && h > 8 => {
+                // (marked first: a window built now draws no frame from the start)
+                set_embedded(label, true);
+                let shown = app.get_webview_window(label).is_some_and(|w| w.is_visible().unwrap_or(false));
+                if !shown {
+                    let _ = if label == "library" {
+                        crate::library_window::set_library_window_visible(true, app.clone()).await
+                    } else {
+                        crate::visualizer_window::set_visualizer_window_visible(true, app.clone()).await
+                    };
+                }
+                let Some(target) = app.get_webview_window(label) else { continue };
+                let at = tauri::PhysicalPosition::new(x + origin.x, y + origin.y);
+                let size = tauri::PhysicalSize::new(w as u32, h as u32);
+                if target.outer_position().ok() != Some(at) {
+                    let _ = target.set_position(at);
+                }
+                if target.inner_size().ok() != Some(size) {
+                    let _ = target.set_size(size);
+                }
+                if !was {
+                    let _ = app.emit_to(label, "modernEmbed", true);
+                }
+            }
+            _ if was => {
+                set_embedded(label, false);
+                let _ = app.emit_to(label, "modernEmbed", false);
+                // the skin closed its place: Spotiamp+'s window goes with it
+                let _ = if label == "library" {
+                    crate::library_window::set_library_window_visible(false, app.clone()).await
+                } else {
+                    crate::visualizer_window::set_visualizer_window_visible(false, app.clone()).await
+                };
+            }
+            _ => {
+                // open on its own (left open last time, or from the classic
+                // look): into the skin's window for it
+                if slot.openable && app.get_webview_window(label).is_some_and(|w| w.is_visible().unwrap_or(false)) {
+                    let _ = app.emit_to(LABEL, "modernOpenSlot", kind);
+                }
+            }
+        }
+    }
+}
+
+/// Back to the classic look, or another skin: nothing is laid in any more.
+fn unlay_all(app: &AppHandle) {
+    if let Ok(mut s) = slots().lock() {
+        *s = Slots::default();
+    }
+    let labels: Vec<String> = laid().lock().map(|mut l| std::mem::take(&mut *l)).unwrap_or_default();
+    for label in labels {
+        let _ = app.emit_to(label.as_str(), "modernEmbed", false);
+    }
 }
 
 fn skins_dir() -> Option<std::path::PathBuf> {
@@ -139,15 +338,15 @@ pub fn apply_face(app: &AppHandle) {
             }
         }
     }
-    // Lala lives on the classic player: away with it, back with it
+    // the skin's windows are somewhere else now (Lala waits for the new ones)
+    if let Ok(mut g) = geometry().lock() {
+        *g = Geometry::default();
+    }
+    unlay_all(app);
     if modern {
         if let Some(mascot) = app.get_webview_window("mascot") {
             let _ = mascot.hide();
         }
-    } else {
-        let _ = crate::mascot::mascot_show(app.clone());
-    }
-    if modern {
         let window = match app.get_webview_window(LABEL) {
             Some(window) => Ok(window),
             None => build_window(app),
@@ -157,9 +356,21 @@ pub fn apply_face(app: &AppHandle) {
             Ok(window) => cover_screens(&window),
             Err(e) => log::error!("Modern skin window: {e}"),
         }
-    } else if let Some(window) = app.get_webview_window(LABEL) {
-        let _ = window.destroy();
+    } else {
+        if let Some(window) = app.get_webview_window(LABEL) {
+            let _ = window.destroy();
+        }
+        if let Ok(mut l) = kept_look().lock() {
+            *l = None;
+        }
+        // Lala back on the classic player
+        let _ = crate::mascot::mascot_show(app.clone());
     }
+    // the open windows belong to whichever is showing (they minimize and
+    // come forward with it, and share its taskbar button)
+    crate::app_window::reown_windows(app);
+    // the windows' frames and colours: the skin's, or the classic ones again
+    let _ = app.emit("modernFace", modern);
 }
 
 #[derive(serde::Serialize)]
@@ -201,6 +412,7 @@ fn wear_file(app: &AppHandle, path: &std::path::Path) -> Result<String, String> 
     match app.get_webview_window(LABEL) {
         // one shown already: its page puts on the new one
         Some(window) => {
+            unlay_all(app);
             let _ = window.eval("location.reload()");
         }
         None => apply_face(app),
@@ -256,9 +468,101 @@ pub fn modern_ready(window: WebviewWindow) {
 
 /// Where the skin's windows are now (physical pixels from the window's top
 /// left): the window is there and nowhere else.
+/// With it, where the skin's windows themselves are (`windows`, its main one
+/// `main`), the same way; `moving`: one is being dragged.
 #[tauri::command]
-pub fn modern_set_region(window: WebviewWindow, rects: Vec<[i32; 4]>) {
+pub fn modern_set_region(
+    window: WebviewWindow,
+    rects: Vec<[i32; 4]>,
+    windows: Option<Vec<[i32; 4]>>,
+    main: Option<[i32; 4]>,
+    moving: Option<bool>,
+) {
     set_region(&window, &rects);
+    let Some(windows) = windows else { return };
+    let origin = window.outer_position().unwrap_or_default();
+    let on_screen = |[x, y, w, h]: [i32; 4]| [x + origin.x, y + origin.y, w, h];
+    let main = main.map(on_screen);
+    let (first, moved) = {
+        let Ok(mut g) = geometry().lock() else { return };
+        g.windows = windows.into_iter().map(on_screen).collect();
+        let first = g.main.is_none() && main.is_some();
+        let moved = g.main != main;
+        g.main = main;
+        (first, moved)
+    };
+    let app = window.app_handle().clone();
+    if first {
+        // the skin is up: Lala comes and sits on it (off this, the main,
+        // thread: her window may have to be built)
+        tauri::async_runtime::spawn(async move {
+            let _ = crate::mascot::mascot_show(app);
+        });
+    } else if moved {
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if moving == Some(true) {
+                crate::mascot::player_moved(&app2);
+            } else {
+                crate::mascot::follow_player(&app2);
+            }
+        });
+    }
+}
+
+/// The skin's main window on the screens (physical pixels), for the Now
+/// Playing card's picture of it.
+#[tauri::command]
+pub fn modern_main_rect() -> Option<[i32; 4]> {
+    main_rect()
+}
+
+/// The skin's windows on the screens (physical pixels), for Spotiamp+'s
+/// windows to snap to; none in the classic look.
+#[tauri::command]
+pub fn modern_window_rects() -> Vec<[i32; 4]> {
+    if !active() {
+        return Vec::new();
+    }
+    geometry().lock().map(|g| g.windows.clone()).unwrap_or_default()
+}
+
+/// The skin's page made its look for the other windows: kept, and they're told.
+#[tauri::command]
+pub fn modern_set_look(app: AppHandle, look: serde_json::Value) {
+    let Some(skin) = Settings::current().modern_skin.clone() else { return };
+    if let Some(path) = look_path(&skin) {
+        let text = look.to_string();
+        std::thread::spawn(move || {
+            if let Err(e) = std::fs::write(&path, text) {
+                log::warn!("Modern skin look not kept: {e}");
+            }
+        });
+    }
+    if let Ok(mut l) = kept_look().lock() {
+        *l = Some((skin, std::sync::Arc::new(look)));
+    }
+    let _ = app.emit("modernLook", ());
+}
+
+/// The worn modern skin's look for Spotiamp+'s windows (None in the classic
+/// look, or before the skin has ever been drawn).
+#[tauri::command]
+pub fn modern_look() -> Option<std::sync::Arc<serde_json::Value>> {
+    let skin = Settings::current().modern_skin.clone()?;
+    if let Ok(l) = kept_look().lock()
+        && let Some((worn, look)) = l.as_ref()
+        && *worn == skin
+    {
+        return Some(look.clone());
+    }
+    let text = std::fs::read_to_string(look_path(&skin)?).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let value = std::sync::Arc::new(value);
+    if let Ok(mut l) = kept_look().lock() {
+        *l = Some((skin, value.clone()));
+    }
+    Some(value)
 }
 
 #[derive(serde::Serialize)]

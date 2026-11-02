@@ -25,18 +25,22 @@ pub fn build_window(
 //      windows in it (see the same note in player_window::set_playlist_window_visible).
 #[tauri::command]
 pub async fn set_library_window_visible(visible: bool, app_handle: AppHandle) -> Result<(), ()> {
+    // (a modern skin with a Media Library window of its own: that opens, and
+    // this is laid into it; closed with it)
+    if visible && crate::modern_window::open_slot(&app_handle, "library") {
+        return Ok(());
+    }
+    if !visible {
+        crate::modern_window::close_slot(&app_handle, "library");
+    }
     // (in Free Mode there's no Spotify session: the page shows Local Media alone)
     let library_window = match app_handle.get_webview_window("library") {
         Some(window) => window,
         None => {
             // Open it just to the right of the player window.
-            let anchor = app_handle
-                .get_webview_window("player")
-                .expect("a player window to anchor the library to");
-            let mut position = anchor.outer_position().map_err(|_| ())?;
-            let size = anchor.outer_size().map_err(|_| ())?;
+            // (a modern skin worn: its main window, the player being hidden)
+            let (mut position, size, scale_factor) = app_window::anchor(&app_handle).ok_or(())?;
             position.x += size.width as i32;
-            let scale_factor = anchor.scale_factor().unwrap_or(1.0);
             let window =
                 build_window(&app_handle, position.to_logical(scale_factor)).map_err(|_| ())?;
             // Register with the docking manager so it snaps into the group and

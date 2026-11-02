@@ -129,8 +129,8 @@ mod imp {
             s.last_title.clear();
             s.last_state.clear();
         });
-        if let Some(player) = app.get_webview_window("player") {
-            let _ = player.set_title(PLAIN_TITLE);
+        if let Some(window) = crate::app_window::owner_window(app) {
+            let _ = window.set_title(PLAIN_TITLE);
         }
     }
 
@@ -192,8 +192,8 @@ mod imp {
         });
         // Outside the state borrow: setting the title sends WM_SETTEXT to the
         // window straight away.
-        if let (Some(full), Some(player)) = (new_title, app.get_webview_window("player")) {
-            let _ = player.set_title(&full);
+        if let (Some(full), Some(window)) = (new_title, crate::app_window::owner_window(app)) {
+            let _ = window.set_title(&full);
         }
     }
 
@@ -207,18 +207,37 @@ mod imp {
         });
     }
 
-    /// Create the taskbar COM object, the icons and the click hook, once.
+    /// Create the taskbar COM object, the icons and the click hook, once; and
+    /// move to the window with the taskbar button when that changes (a modern
+    /// skin's window while one is worn, the player hidden).
     fn ensure_init(app: &AppHandle) -> bool {
-        let ready = STATE.with(|cell| cell.borrow().is_some());
-        if ready {
-            return true;
+        let Some(window) = crate::app_window::owner_window(app) else {
+            return false;
+        };
+        let Ok(hwnd) = window.hwnd() else {
+            return false;
+        };
+        let on = STATE.with(|cell| cell.borrow().as_ref().map(|s| s.hwnd == hwnd));
+        match on {
+            Some(true) => return true,
+            Some(false) => {
+                with_state(|s| {
+                    s.hwnd = hwnd;
+                    s.buttons_added = false;
+                    s.playing = None;
+                    s.last_title.clear();
+                    s.last_state.clear();
+                    unsafe {
+                        let _ = SetWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID, 0);
+                    }
+                    if s.enabled {
+                        show_buttons(s, true);
+                    }
+                });
+                return true;
+            }
+            None => {}
         }
-        let Some(player) = app.get_webview_window("player") else {
-            return false;
-        };
-        let Ok(hwnd) = player.hwnd() else {
-            return false;
-        };
         let _ = APP.set(app.clone());
         let init = || -> windows::core::Result<State> {
             unsafe {

@@ -9,7 +9,7 @@
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 use crate::settings::Settings;
 
@@ -71,6 +71,27 @@ fn host_window(app: &AppHandle) -> Option<WebviewWindow> {
         }
     }
     app.get_webview_window("player")
+}
+
+/// Where she sits: on the window she's visiting, else on the player, or on
+/// a modern skin's main window while one is worn (the player is hidden
+/// then). Its spot and size (physical px), its screen's scale, and a window
+/// to ask about the screens.
+fn host_rect(app: &AppHandle) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>, f64, WebviewWindow)> {
+    // (first: a visit to a window that has closed ends here)
+    let window = host_window(app);
+    if !visiting() && crate::modern_window::active() {
+        let [x, y, w, h] = crate::modern_window::main_rect()?;
+        let modern = crate::modern_window::window(app)?;
+        let scale = app
+            .monitor_from_point(x as f64 + w as f64 / 2.0, y as f64 + 1.0)
+            .ok()
+            .flatten()
+            .map_or(1.0, |m| m.scale_factor());
+        return Some((PhysicalPosition::new(x, y), PhysicalSize::new(w.max(0) as u32, h.max(0) as u32), scale, modern));
+    }
+    let window = window?;
+    Some((window.outer_position().ok()?, window.outer_size().ok()?, window.scale_factor().ok()?, window))
 }
 
 /// A window moved or changed size: if she's on it, she comes along.
@@ -249,11 +270,8 @@ fn build(app: &AppHandle, size: u16) -> Result<WebviewWindow, tauri::Error> {
 /// Where she goes: x, y, width, height, and whether there's room for her at
 /// all (none when the player is at the very top of the screen).
 fn bounds(app: &AppHandle) -> Option<(i32, i32, u32, u32, bool)> {
-    // the player, or the window she's visiting
-    let player = host_window(app)?;
-    let pos = player.outer_position().ok()?;
-    let psize = player.outer_size().ok()?;
-    let sf = player.scale_factor().ok()?;
+    // the player, or the window she's visiting (a modern skin's main window)
+    let (pos, psize, sf, player) = host_rect(app)?;
     let ui = crate::app_window::ui_scale();
     let size = current().size;
     let (lw, lh) = logical_size(size);
@@ -381,9 +399,10 @@ fn show(app: &AppHandle) -> Result<(), String> {
     };
     let app = app.clone();
     let _ = mascot.clone().run_on_main_thread(move || {
-        // owned by the player: above it, minimized and restored with it
+        // owned by the player (a modern skin's window): above it, minimized
+        // and restored with it
         #[cfg(target_os = "windows")]
-        if let (Some(player), Ok(own)) = (app.get_webview_window("player"), mascot.hwnd())
+        if let (Some(player), Ok(own)) = (crate::app_window::owner_window(&app), mascot.hwnd())
             && let Ok(owner) = player.hwnd()
         {
             crate::app_window::set_owner(own.0 as isize, owner.0 as isize);
@@ -397,8 +416,9 @@ fn show(app: &AppHandle) -> Result<(), String> {
             return;
         }
         let _ = mascot.show();
-        // showing it mustn't take the focus from the player
-        if let Some(player) = app.get_webview_window("player") {
+        // showing it mustn't take the focus from the player (a hidden one
+        // isn't given it: that would show it)
+        if let Some(player) = crate::app_window::owner_window(&app) {
             let _ = player.set_focus();
         }
     });
@@ -408,8 +428,9 @@ fn show(app: &AppHandle) -> Result<(), String> {
 /// Called by the player once it's up: show the llama unless it's switched off.
 #[tauri::command(async)]
 pub fn mascot_show(app: AppHandle) -> Result<(), String> {
-    // a modern skin worn: she lives on the classic player, which is hidden
-    if crate::modern_window::active() {
+    // a modern skin worn: she sits on its main window, once it's drawn
+    // (modern_window::modern_set_region calls again then)
+    if crate::modern_window::active() && crate::modern_window::main_rect().is_none() {
         return Ok(());
     }
     if current().enabled { show(&app) } else { Ok(()) }
@@ -501,10 +522,7 @@ pub fn mascot_bubble(app: AppHandle, width: f64) {
 /// to the right) along the player's top edge.
 #[tauri::command]
 pub fn mascot_room(app: AppHandle) -> (f64, f64) {
-    let (Some(player), Some(_)) = (host_window(&app), app.get_webview_window("mascot")) else {
-        return (0.0, 0.0);
-    };
-    let (Ok(psize), Ok(sf)) = (player.outer_size(), player.scale_factor()) else {
+    let (Some((_, psize, sf, _)), Some(_)) = (host_rect(&app), app.get_webview_window("mascot")) else {
         return (0.0, 0.0);
     };
     let ui = crate::app_window::ui_scale();

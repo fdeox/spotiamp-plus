@@ -205,11 +205,11 @@
   }
 </script>
 
-<div class="lyr">
-  <div class="lyr-titlebar" use:makeLyricsDraggable>
+<div class="lyr" data-gen-window>
+  <div class="lyr-titlebar" data-gen="titlebar" use:makeLyricsDraggable>
     <div class="lyr-tl"></div>
     <span class="lyr-title">LYRICS</span>
-    <button class="lyr-close" data-no-drag onclick={close} aria-label="Close"
+    <button class="lyr-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
     ></button>
     <GenTop title="LYRICS" onclose={close} />
   </div>
@@ -253,7 +253,7 @@
     {/if}
   </div>
 
-  <div class="lyr-resize" use:makeLyricsResizable></div>
+  <div class="lyr-resize" data-gen="resize" use:makeLyricsResizable></div>
 </div>
 
 <style>
