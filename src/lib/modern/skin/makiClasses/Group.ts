@@ -219,7 +219,8 @@ export default class Group extends Movable {
       const bound = this._div.getBoundingClientRect();
       canvas.width = bound.width;
       canvas.height = bound.height;
-      const ctx = canvas.getContext("2d");
+      // (Spotiamp+: read back for the region: kept on the CPU)
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, bound.width, bound.height);
     }

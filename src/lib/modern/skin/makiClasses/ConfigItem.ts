@@ -50,7 +50,8 @@ export default class ConfigItem extends BaseObject {
   }
 
   getattribute(att_name: string): ConfigAttribute {
-    att_name = att_name.toLowerCase();
+    // (Spotiamp+: a script may ask with no name)
+    att_name = String(att_name ?? "").toLowerCase();
     // sample:
     // ConfigItem ciMisc;
     // ciMisc = Config.getItem("Options");

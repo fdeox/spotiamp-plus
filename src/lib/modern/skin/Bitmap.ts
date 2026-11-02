@@ -192,20 +192,28 @@ export default class Bitmap {
 
     const groupId = this.getGammaGroup();
     const gammaGroup = uiRoot._getGammaGroup(groupId);
+    // (Spotiamp+: the picture in these colours made once: a skin switching
+    // its colours, or switching to the same, doesn't redo all of them)
+    const key = `${gammaGroup._value}|${gammaGroup._boost}|${gammaGroup._gray}|${this.getCSSVar()}`;
+    if (this._cssCache?.key === key) return this._cssCache.prop;
+    let prop: string;
     if (gammaGroup._value == "0,0,0" && gammaGroup._gray == 0) {
       // triple zero meaning no gamma should be applied.
       // return bitmap.getCanvas().toDataURL();
       const url = await this.toDataURL(uiRoot);
-      return buildCssProp(url);
+      prop = buildCssProp(url);
+    } else {
+      const url = gammaGroup.transformImage(
+        img as HTMLImageElement,
+        this._x,
+        this._y,
+        this._w,
+        this._h
+      );
+      prop = buildCssProp(url);
     }
-    const url = gammaGroup.transformImage(
-      img as HTMLImageElement,
-      this._x,
-      this._y,
-      this._w,
-      this._h
-    );
-    return buildCssProp(url);
+    this._cssCache = { key, prop };
+    return prop;
   }
   /**
    * Final function that uses Bitmap;
@@ -227,6 +235,9 @@ export default class Bitmap {
    *              kept by this bitmap instance
    * @returns <canvas/>
    */
+  // Spotiamp+: the last coloured picture's CSS, and for which colours
+  _cssCache: { key: string; prop: string } | null = null;
+
   getCanvas(store: boolean = false): HTMLCanvasElement {
     let workingCanvas: HTMLCanvasElement;
     if (this._canvas == null || !store) {
@@ -240,7 +251,8 @@ export default class Bitmap {
         workingCanvas = document.createElement("canvas");
         workingCanvas.width = this.getWidth() /* || this._img.width */;
         workingCanvas.height = this.getHeight() /* || this._img.height */;
-        const ctx = workingCanvas.getContext("2d");
+        // (Spotiamp+: read back often (colours, regions, PNG): kept on the CPU)
+        const ctx = workingCanvas.getContext("2d", { willReadFrequently: true });
         // https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
         ctx.drawImage(this._img, -this._x, -this._y);
 

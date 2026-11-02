@@ -78,6 +78,10 @@ pub struct Slot {
     /// a window of the skin's own for it, closed now, that can be opened
     #[serde(default)]
     openable: bool,
+    /// a smaller place for it shown (in a main window): the visualizer goes
+    /// there once it's on, as Winamp's did
+    #[serde(default)]
+    inline: Option<[i32; 4]>,
 }
 
 #[derive(serde::Deserialize, Default, Clone, PartialEq)]
@@ -93,8 +97,8 @@ const SLOTTED: [(&str, &str); 2] = [("ml", "library"), ("vis", "visualizer")];
 
 fn slots() -> &'static Mutex<Slots> {
     static SLOTS: Mutex<Slots> = Mutex::new(Slots {
-        ml: Slot { rect: None, openable: false },
-        vis: Slot { rect: None, openable: false },
+        ml: Slot { rect: None, openable: false, inline: None },
+        vis: Slot { rect: None, openable: false, inline: None },
     });
     &SLOTS
 }
@@ -142,6 +146,15 @@ pub fn close_slot(app: &AppHandle, label: &str) {
         && embedded(label)
     {
         let _ = app.emit_to(LABEL, "modernCloseSlot", *kind);
+        set_embedded(label, false);
+    }
+}
+
+/// The Library or the visualizer was opened: the skin's page says again
+/// where their places are, so it's laid into one if there is one.
+pub fn slots_again(app: &AppHandle) {
+    if active() {
+        let _ = app.emit_to(LABEL, "modernSlotsAgain", ());
     }
 }
 
@@ -163,7 +176,10 @@ pub async fn modern_set_slots(window: WebviewWindow, slots_now: Slots) {
     for (kind, label) in SLOTTED {
         let slot = if kind == "ml" { &slots_now.ml } else { &slots_now.vis };
         let was = embedded(label);
-        match slot.rect {
+        let on = app.get_webview_window(label).is_some_and(|w| w.is_visible().unwrap_or(false));
+        // a smaller place in a main window takes the visualizer only once it's on
+        let place = slot.rect.or(if on { slot.inline } else { None });
+        match place {
             Some([x, y, w, h]) if w > 8 && h > 8 => {
                 // (marked first: a window built now draws no frame from the start)
                 set_embedded(label, true);
@@ -349,7 +365,10 @@ pub fn apply_face(app: &AppHandle) {
         }
         let window = match app.get_webview_window(LABEL) {
             Some(window) => Ok(window),
-            None => build_window(app),
+            None => {
+                watch_until_drawn(app);
+                build_window(app)
+            }
         };
         match window {
             // shown by the page once the skin is drawn (modern_ready)
@@ -404,6 +423,20 @@ fn wear_file(app: &AppHandle, path: &std::path::Path) -> Result<String, String> 
         .map(|n| n.to_string_lossy().into_owned())
         .filter(|n| !n.is_empty())
         .ok_or("no file name")?;
+    // a classic skin in a modern skin's name (Winamp 2's main.bmp, no
+    // skin.xml): put on as the classic skin it is, as Winamp did
+    if is_classic_skin(&bytes) {
+        crate::wsz::apply_wsz_bytes(&bytes)?;
+        {
+            let mut settings = Settings::current_mut();
+            settings.skin = "custom".to_string();
+            settings.modern_skin = None;
+        }
+        log::info!("{name} is a classic skin: put on as one");
+        apply_face(app);
+        let _ = app.emit("skinChanged", serde_json::json!({ "skin": "custom", "from": "file", "name": name }));
+        return Ok(name);
+    }
     let dir = skins_dir().ok_or("no config folder")?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(&name), &bytes).map_err(|e| e.to_string())?;
@@ -413,11 +446,20 @@ fn wear_file(app: &AppHandle, path: &std::path::Path) -> Result<String, String> 
         // one shown already: its page puts on the new one
         Some(window) => {
             unlay_all(app);
+            watch_until_drawn(app);
             let _ = window.eval("location.reload()");
         }
         None => apply_face(app),
     }
     Ok(name)
+}
+
+/// A zip with Winamp 2's main.bmp and no skin.xml: a classic skin.
+fn is_classic_skin(bytes: &[u8]) -> bool {
+    let Ok(zip) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else { return false };
+    let names: Vec<String> = zip.file_names().map(|n| n.replace('\\', "/").to_lowercase()).collect();
+    let has = |file: &str| names.iter().any(|n| n == file || n.ends_with(&format!("/{file}")));
+    has("main.bmp") && !has("skin.xml")
 }
 
 /// "Load a modern skin (.wal)…": pick a file and wear it. None if the
@@ -462,8 +504,41 @@ pub async fn leave_modern_skin(app: AppHandle, failed: Option<String>) {
 /// skin that fails never shows half drawn).
 #[tauri::command]
 pub fn modern_ready(window: WebviewWindow) {
+    DRAWN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let _ = window.show();
     let _ = window.set_focus();
+}
+
+/// How many times a skin's page has said it's drawn (modern_ready).
+static DRAWN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A skin is being put on: if its page doesn't say it's drawn in time (a
+/// script of the skin's that never ends would have it stop answering, and
+/// the classic windows are hidden meanwhile), the classic look comes back.
+/// (The page gives up by itself on a skin that just fails, sooner.)
+fn watch_until_drawn(app: &AppHandle) {
+    let before = DRAWN.load(std::sync::atomic::Ordering::SeqCst);
+    let skin = Settings::current().modern_skin.clone();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        if DRAWN.load(std::sync::atomic::Ordering::SeqCst) != before || Settings::current().modern_skin != skin {
+            return;
+        }
+        let name = skin.unwrap_or_default();
+        log::warn!("Modern skin {name} was never drawn (its page stopped answering): back to the classic look");
+        Settings::current_mut().modern_skin = None;
+        apply_face(&app);
+        use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+        app.dialog()
+            .message(format!(
+                "Spotiamp+ couldn't show the modern skin \"{}\", so it's back to the classic look.",
+                name.trim_end_matches(".wal").trim_end_matches(".zip")
+            ))
+            .title("Spotiamp+")
+            .kind(MessageDialogKind::Warning)
+            .show(|_| {});
+    });
 }
 
 /// Where the skin's windows are now (physical pixels from the window's top
@@ -480,6 +555,11 @@ pub fn modern_set_region(
 ) {
     set_region(&window, &rects);
     let Some(windows) = windows else { return };
+    // minimized, the window sits far off the screens: what's known from
+    // before stays (it comes back to the same place)
+    if window.is_minimized().unwrap_or(false) {
+        return;
+    }
     let origin = window.outer_position().unwrap_or_default();
     let on_screen = |[x, y, w, h]: [i32; 4]| [x + origin.x, y + origin.y, w, h];
     let main = main.map(on_screen);

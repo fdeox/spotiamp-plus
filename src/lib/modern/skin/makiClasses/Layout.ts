@@ -67,6 +67,12 @@ export default class Layout extends Group {
     return this._parent as unknown as Container;
   }
 
+  // (Spotiamp+: a layout is a window of its own: no group holds it, as in
+  // Winamp; its container is getContainer())
+  getparent(): any {
+    return null;
+  }
+
   gettop(): number {
     return this._parent._y;
   }

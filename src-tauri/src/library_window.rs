@@ -53,6 +53,8 @@ pub async fn set_library_window_visible(visible: bool, app_handle: AppHandle) ->
     if visible {
         library_window.show().map_err(|_| ())?;
         library_window.set_focus().map_err(|_| ())?;
+        // (a modern skin's Media Library place: it goes in there)
+        crate::modern_window::slots_again(&app_handle);
     } else {
         library_window.hide().map_err(|_| ())?;
     }

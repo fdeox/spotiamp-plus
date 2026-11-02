@@ -14,6 +14,17 @@ export default class MakiFile {
     return this._i == this._arr.length;
   }
 
+  /** Spotiamp+: a table's count, which must fit what's left of the file
+   *  (`each`: an entry's least size); one that doesn't: a format this
+   *  can't read. */
+  readCount(each: number): number {
+    const count = this.readUInt32LE();
+    if (count * each > this._arr.length - this._i) {
+      throw new Error("its tables don't fit the file: a MAKI format Spotiamp+ can't read (Winamp 3's early scripts)");
+    }
+    return count;
+  }
+
   readInt32LE(): number {
     const offset = this._i >>> 0;
     this._i += 4;

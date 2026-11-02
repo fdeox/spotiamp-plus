@@ -118,11 +118,19 @@ export default class SkinEngineWAL extends SkinEngine {
     await this.prepareArial();
     this.prepareXuiTags();
 
+    // Spotiamp+: first Winamp's base Wasabi elements (button faces,
+    // scrollbars, tabs...), which Winamp gave every modern skin and few
+    // skins carry: a skin's own of the same names, read after, win
+    const baseXml = await this._uiRoot.getFileAsString("@WINAMPPATH@/Plugins/Freeform/xml/wasabi/wasabi.xml");
+    if (baseXml) await this.traverseChildren(this.parseXmlFragment(baseXml).children[0] as XmlElement);
+
     const includedXml = await this._uiRoot.getFileAsString("skin.xml");
+    // (a classic skin, or no skin at all, in a .wal's name)
+    if (includedXml == null) throw new Error("it has no skin.xml: not a modern skin");
 
     // Note: Included files don't have a single root node, so we add a synthetic one.
     // A different XML parser library might make this unnessesary.
-    const parsed = parseXml(includedXml) as unknown as XmlElement;
+    const parsed = parseXmlLenient(includedXml) as unknown as XmlElement;
 
     await this.traverseChildren(parsed);
 
@@ -243,8 +251,25 @@ export default class SkinEngineWAL extends SkinEngine {
     }
   }
 
+  /**
+   * Spotiamp+: a picture named by its file (image="player/back.png"), as
+   * Winamp let a skin do with no <bitmap> for it: one made for it here.
+   */
+  async _implicitBitmaps(node: XmlElement) {
+    const tag = node.name.toLowerCase();
+    if (["bitmap", "bitmapfont", "truetypefont", "script", "include"].includes(tag)) return;
+    for (const [key, value] of Object.entries(node.attributes)) {
+      if (typeof value !== "string" || key.toLowerCase() === "file") continue;
+      if (!/\.(png|bmp|jpe?g|gif)$/i.test(value)) continue;
+      if (this._uiRoot.getBitmaps()[value.toLowerCase()]) continue;
+      if (!this._uiRoot._fileExtractor?._find(value)) continue;
+      await this.bitmap(new XmlElement("bitmap", { id: value, file: value }));
+    }
+  }
+
   async traverseChild(node: XmlElement, parent: any) {
     const tag = node.name.toLowerCase();
+    await this._implicitBitmaps(node);
     switch (tag) {
       case "albumart":
         return this.albumart(node, parent);
@@ -630,7 +655,11 @@ export default class SkinEngineWAL extends SkinEngine {
     );
 
     let { file, id, param } = node.attributes;
-    assert(file != null, "Script element missing `file` attribute");
+    // (Spotiamp+: a <script> naming no file has nothing to run)
+    if (file == null) {
+      console.warn("Script element missing `file` attribute: left out");
+      return;
+    }
     // Spotiamp+: "../Big Bento/x" and "@SKINSPATH@\\x" are worked out where
     // the file is read (FileExtractor.ts)
     file = file.replace(/\\/g, "/");
@@ -664,8 +693,15 @@ export default class SkinEngineWAL extends SkinEngine {
 
     const maki_id = `${file} (id=${id || "''"})`;
     console.log("parsing.maki:", maki_id);
-    const parsedScript =
-      maki == true ? this._scripts[file] : parseMaki(maki, maki_id);
+    let parsedScript;
+    try {
+      parsedScript = maki == true ? this._scripts[file] : parseMaki(maki, maki_id);
+    } catch (e) {
+      // Spotiamp+: a script that can't be read is left out; the rest of the
+      // skin still loads
+      console.warn(`Script ${maki_id} left out: ${e}`);
+      return;
+    }
 
     const systemObj = new SystemObject(
       this._uiRoot,
@@ -852,6 +888,8 @@ export default class SkinEngineWAL extends SkinEngine {
 
   async groupdef(node: XmlElement, parent: any) {
     this._uiRoot.addGroupDef(node);
+    // (Spotiamp+: its background named by its file, too)
+    await this._implicitBitmaps(node);
     //check if it is a bucket.entry, then auto create here
     if (node.attributes.windowtype) {
       await this.appendToBucket(node);
@@ -970,7 +1008,8 @@ export default class SkinEngineWAL extends SkinEngine {
     );
     const gammaGroup = new GammaGroup();
     gammaGroup.setXmlAttributes(node.attributes);
-    parent.push(gammaGroup);
+    // (Spotiamp+: one outside any <gammaset> belongs to none: Winamp let it be)
+    if (Array.isArray(parent)) parent.push(gammaGroup);
   }
 
   async component(node: XmlElement, parent: any) {
@@ -1114,6 +1153,19 @@ export default class SkinEngineWAL extends SkinEngine {
   async include(node: XmlElement, parent: any) {
     const { file, parent_path } = node.attributes;
     assert(file != null, "Include element missing `file` attribute");
+    // Spotiamp+: an include with a wildcard ("widgets/load/*.xml") takes every
+    // file it names, as Winamp's did
+    if (/[*?]/.test(file)) {
+      const dir = parent_path ? `${parent_path}/` : "";
+      const lister = this._uiRoot._fileExtractor;
+      const found = lister?.list?.(dir + file.replace(/\\/g, "/")) ?? [];
+      for (const each of found) {
+        const one = new XmlElement("include", { file: each.slice(dir.length) });
+        if (parent_path) one.attributes.parent_path = parent_path;
+        await this.include(one, parent);
+      }
+      return;
+    }
     const promises = [];
     const includes = [];
 
@@ -1123,7 +1175,8 @@ export default class SkinEngineWAL extends SkinEngine {
 
       const parent_dir = parent_path ? parent_path.split("/") : [];
 
-      const directories = file.replace("@DEFAULTSKINPATH@", "").split("/");
+      // (Spotiamp+: Windows' backslashes as well, as ClassicPro's files have them)
+      const directories = file.replace("@DEFAULTSKINPATH@", "").replace(/\\/g, "/").split("/");
       const fileName = directories.pop();
 
       const path = [...parent_dir, ...directories, fileName].join("/");
@@ -1149,7 +1202,7 @@ export default class SkinEngineWAL extends SkinEngine {
             const lower = element.name.toLowerCase();
             if (lower == "groupdef") {
               recursiveScanChildren(element);
-              self.groupdef(element, null);
+              promises.push(self.groupdef(element, null));
               continue;
             } else if (ResourcesTag.indexOf(lower) >= 0) {
               promises.push(self.traverseChild(element, parent));
@@ -1227,8 +1280,98 @@ export default class SkinEngineWAL extends SkinEngine {
   parseXmlFragment(xml: string): XmlElement {
     // Note: Included files don't have a single root node, so we add a synthetic one.
     // A different XML parser library might make this unnessesary.
-    return parseXml(`<wrapper>${xml}</wrapper>`) as unknown as XmlElement;
+    return parseXmlLenient(`<wrapper>${xml}</wrapper>`) as unknown as XmlElement;
   }
+}
+
+/**
+ * Spotiamp+: XML read the way Winamp read it, letting a skin's slips go: an
+ * element left open, one closed that isn't, an "&" on its own, an attribute
+ * given twice (the first stays).
+ */
+function parseXmlLenient(xml: string): any {
+  let text = xml
+    // (the parser counts its places in text with Unix line ends: so must this)
+    .replace(/\r\n?/g, "\n")
+    // a byte-order mark, and a declaration Winamp never read (some say version="1")
+    .replace(/^\uFEFF/, "")
+    .replace(/<\?xml[^>]*\?>/gi, "")
+    // "--" inside a comment
+    .replace(/<!--([\s\S]*?)-->/g, (_, body) => `<!--${body.replace(/--/g, "- -").replace(/-$/, "- ")}-->`)
+    .replace(/&(?!(#\d+|#x[0-9a-f]+|[a-z][\w.-]*);)/gi, "&amp;");
+  for (let tries = 0; ; tries++) {
+    try {
+      return parseXml(text);
+    } catch (e) {
+      const fixed = typeof e?.pos === "number" && tries < 60 ? repairXml(text, String(e.message), e.pos) : null;
+      if (fixed == null || fixed === text) throw e;
+      text = fixed;
+    }
+  }
+}
+
+/** The elements open at `pos` (outermost first), with where their start tags end, by a plain scan of the tags. */
+function openElements(text: string, pos: number): { name: string; end: number }[] {
+  const stack: { name: string; end: number }[] = [];
+  const tag = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<(\/?)([A-Za-z_][\w:.-]*)[^>]*?(\/?)>/g;
+  for (let m = tag.exec(text); m && m.index < pos; m = tag.exec(text)) {
+    if (!m[2]) continue;
+    if (m[1]) {
+      let at = stack.length - 1;
+      while (at >= 0 && stack[at].name !== m[2]) at--;
+      if (at >= 0) stack.length = at;
+    } else if (!m[3]) {
+      stack.push({ name: m[2], end: m.index + m[0].length - 1 });
+    }
+  }
+  return stack;
+}
+
+/** Elements that never hold others: one left open (`<color ...>`) Winamp read as closed. */
+const LEAF_ELEMENTS = new Set(
+  "color bitmap bitmapfont truetypefont font include script elementalias gammagroup sendparams hideobject layer button togglebutton nstatesbutton text slider vis eqvis albumart animatedlayer windowholder component status rect grid progressgrid wasabi:button wasabi:titlebar".split(" "),
+);
+
+function repairXml(text: string, message: string, pos: number): string | null {
+  const open = message.match(/^Missing end tag for element (\S+)/)?.[1];
+  if (open) {
+    const stack = openElements(text, pos);
+    // a leaf element left open: it was meant to close where it starts
+    const innermost = stack[stack.length - 1];
+    if (innermost && innermost.name === open && LEAF_ELEMENTS.has(open.toLowerCase()) && text[innermost.end] === ">") {
+      return `${text.slice(0, innermost.end)}/${text.slice(innermost.end)}`;
+    }
+    const close = text.slice(pos).match(/^<\/\s*([^\s>]+)\s*>/);
+    // a closing tag for something further out: close what's still open first;
+    // one for nothing open at all: it goes
+    if (close && !stack.some((e) => e.name === close[1])) {
+      return text.slice(0, pos) + text.slice(pos + close[0].length);
+    }
+    return `${text.slice(0, pos)}</${open}>${text.slice(pos)}`;
+  }
+  // a start tag that runs into the next tag: closed where it stops
+  if (/^Unclosed start tag/.test(message)) return `${text.slice(0, pos)}/>${text.slice(pos)}`;
+  // a "<" inside an attribute's value: just a character there
+  if (/^Unescaped `<`/.test(message) && text[pos] === "<") return `${text.slice(0, pos)}&lt;${text.slice(pos + 1)}`;
+  // an attribute with no value (a word left over): the tag ends before it
+  if (/^Attribute value expected|^Expected `=`/.test(message)) {
+    const before = text.slice(0, pos);
+    const word = before.match(/[\w.:-]*\s*$/)?.[0] ?? "";
+    return `${before.slice(0, before.length - word.length)}/>${text.slice(pos)}`;
+  }
+  // a comment never closed: it ends with its line
+  if (/^Unclosed comment/.test(message)) {
+    const end = text.indexOf("\n", pos);
+    return end < 0 ? `${text}-->` : `${text.slice(0, end)}-->${text.slice(end)}`;
+  }
+  // something after the last tag (an HTML leftover...): Winamp stopped reading there
+  if (/^Extra content at the end of the document/.test(message)) return text.slice(0, pos);
+  if (/^Duplicate attribute/.test(message)) {
+    const before = text.slice(0, pos);
+    const last = before.match(/\s+[^\s=<>]+\s*=\s*("[^"]*"|'[^']*')\s*$/);
+    if (last) return before.slice(0, before.length - last[0].length) + text.slice(pos);
+  }
+  return null;
 }
 
 registerSkinEngine(SkinEngineWAL);

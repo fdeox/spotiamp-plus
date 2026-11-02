@@ -1022,12 +1022,15 @@
   });
 
   // A modern skin's window (routes/modern) shows what this player does: the
-  // song, where it is, play state, volume, balance, kbps and kHz, shuffle
-  // and repeat. Sent on every change, and each second for the time.
+  // song (its artist and album too), where it is, play state, volume,
+  // balance, kbps and kHz, shuffle and repeat. Sent on every change, and
+  // each second for the time.
   function emitSkinState() {
     const local = loadedTrack?.isLocal;
     emitWindowEvent("skinState", {
       title: loadedTrack?.displayName ?? "",
+      artist: loadedTrack?.artist ?? "",
+      album: loadedTrack?.album ?? "",
       positionMs: Math.max(0, Math.round(seekPosition || 0)),
       durationMs: loadedTrack?.durationInMs ?? 0,
       state: playerState === "playing" ? "playing" : playerState === "paused" ? "paused" : "stopped",

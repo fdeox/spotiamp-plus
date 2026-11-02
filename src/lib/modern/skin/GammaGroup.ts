@@ -1,5 +1,5 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
-import { clamp, normalizeDomId, num } from "../utils";
+import { clamp, colorRgb, cssColor, normalizeDomId, num } from "../utils";
 import Bitmap from "./Bitmap";
 // import { glTransformImage } from "./GammaWebGL";
 
@@ -45,7 +45,7 @@ export default class GammaGroup {
   }
 
   getRgb() {
-    return `rgb(${this._value})`;
+    return cssColor(this._value);
   }
 
   transformImage(
@@ -68,7 +68,8 @@ export default class GammaGroup {
     const canvas = document.createElement("canvas");
     canvas.width = safeWidth;
     canvas.height = safeHeight;
-    const ctx = canvas.getContext("2d");
+    // (Spotiamp+: read back right away: kept on the CPU)
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     // https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
     ctx.drawImage(img, safeLeft, safeTop);
@@ -97,7 +98,8 @@ export default class GammaGroup {
     const [r, g, b] = this._value.split(",").map((v) => {
       return Number(v) / 4096 + 1.0;
     });
-    let [red, green, blue] = color.split(",").map((v) => parseInt(v));
+    // (Spotiamp+: "#rrggbb" too; white for no colour, never NaN)
+    let [red, green, blue] = colorRgb(color) ?? [255, 255, 255];
     if (this._gray != 0) {
       if (this._gray == 2) red = (red + green + blue) / 3;
       if (this._gray == 1) red = Math.max(red, green, blue);

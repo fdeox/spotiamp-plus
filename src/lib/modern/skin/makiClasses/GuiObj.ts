@@ -250,10 +250,17 @@ export default class GuiObj extends XmlObj {
     //process <sendparams> and <hideobject>
     for (const node of this._metaCommands) {
       const cmd = node.name.toLowerCase();
-      const el = node.attributes.group
-        ? this.findobject(node.attributes.group)
-        : this;
-      const targets_ids = node.attributes.target.split(";");
+      // (Spotiamp+: Winamp read attribute names in any case, Target= too;
+      // one with no target, or in a group that isn't there, does nothing)
+      const attr = (name: string) => {
+        const key = Object.keys(node.attributes).find((k) => k.toLowerCase() === name);
+        return key == null ? undefined : node.attributes[key];
+      };
+      const group = attr("group");
+      const el = group ? this.findobject(group) : this;
+      const target = attr("target");
+      if (el == null || !target) continue;
+      const targets_ids = target.split(";");
       for (const target_id of targets_ids) {
         // individual target
         const gui = el.findobjectF(
@@ -265,7 +272,7 @@ export default class GuiObj extends XmlObj {
         }
         if (cmd == "sendparams") {
           for (let attribute in node.attributes) {
-            if (gui && attribute != "target") {
+            if (gui && attribute.toLowerCase() != "target") {
               gui.setxmlparam(attribute, node.attributes[attribute]);
             }
           }
@@ -481,7 +488,9 @@ export default class GuiObj extends XmlObj {
   }
 
   findobject(id: string): GuiObj {
-    if (id.toLowerCase() == this.getId().toLowerCase()) return this;
+    // (Spotiamp+: no id finds nothing; a part with no id of its own isn't it)
+    if (!id) return null;
+    if (id.toLowerCase() == String(this.getId() ?? "").toLowerCase()) return this;
 
     //? Phase 1: find in this children
     let ret = this._findobject(id);
@@ -534,7 +543,8 @@ export default class GuiObj extends XmlObj {
   }
 
   setregion(reg: Region) {
-    //TODO:
+    // Spotiamp+: the part shows only inside the region
+    reg?._applyTo?.(this._div);
   }
 
   ismouseoverrect(): boolean {
@@ -891,7 +901,8 @@ export default class GuiObj extends XmlObj {
   }
 
   getparent(): Group {
-    return this._parent;
+    // (Spotiamp+: the group holding it, or NULL: never a container)
+    return this._parent instanceof GuiObj ? this._parent : null;
   }
 
   getparentlayout(): Layout {

@@ -483,7 +483,7 @@
     if (menuBusy) return;
     menuBusy = true;
     try {
-      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm(), loadModernSkin()]);
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm(), loadModernSkin(), loadVisualizerOn()]);
       // Order matters here. Tauri's popup holds this page's resource table
       // locked on a worker until the menu closes, while it waits for the main
       // thread to show it; closing or creating a menu runs ON the main thread
@@ -595,6 +595,12 @@
   async function loadModernSkin() {
     const worn = /** @type {{ name: string } | null} */ (await invoke("modern_skin").catch(() => null));
     modernSkin = worn?.name ?? null;
+  }
+  // whether the visualizer is open, for the menu's tick
+  let visualizerOn = false;
+  async function loadVisualizerOn() {
+    const viz = await Window.getByLabel("visualizer").catch(() => null);
+    visualizerOn = viz ? await viz.isVisible().catch(() => false) : false;
   }
   async function loadModernSkinFile() {
     await invoke("pick_modern_skin").catch((e) => handleError(new Error(`Could not load the skin: ${e}`)));
@@ -739,7 +745,7 @@
     ];
     const windowItems = [
       { text: "Library", accelerator: "L", action: openLibraryWindow },
-      { text: "Visualizer", action: () => invoke("set_visualizer_window_visible", { visible: true }) },
+      { text: "Visualizer", checked: visualizerOn, action: () => invoke("set_visualizer_window_visible", { visible: !visualizerOn }) },
       { text: "Lyrics", action: () => invoke("set_lyrics_window_visible", { visible: true }) },
       { text: "Album art", action: () => invoke("set_art_window_visible", { visible: true }) },
       ...(controllerMode

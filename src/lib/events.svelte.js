@@ -33,7 +33,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *   seekTo: { event: { positionMs: number } },
  *   skinChanged: { event: { skin: string, from?: string, name?: string } },
  *   forwardedKey: { event: { key: string, shift: boolean, ctrl: boolean, alt?: boolean } },
- *   skinState: { event: { title: string, positionMs: number, durationMs: number, state: "playing" | "paused" | "stopped",
+ *   skinState: { event: { title: string, artist?: string, album?: string, positionMs: number, durationMs: number, state: "playing" | "paused" | "stopped",
  *     volume: number, balance: number, kbps: number, khz: number, shuffle: boolean, repeat: number, art: string | null } },
  *   skinCommand: { event: { volume?: number, balance?: number, shuffle?: boolean, repeat?: number,
  *     play?: boolean, pause?: boolean, stop?: boolean, next?: boolean, previous?: boolean } },

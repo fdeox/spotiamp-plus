@@ -1,6 +1,6 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import { UIRoot } from "../../UIRoot";
-import { debounce, num, toBool, unimplemented } from "../../utils";
+import { cssColor, debounce, num, toBool, unimplemented } from "../../utils";
 import { AUDIO_PLAYING } from "../AudioPlayer";
 import GammaGroup from "../GammaGroup";
 import GuiObj from "./GuiObj";
@@ -195,7 +195,12 @@ export default class Vis extends GuiObj {
       // if (ctx == null) {
       //   return;
       // }
-      this._painter.paintFrame();
+      // (Spotiamp+: as in the loop: nothing at no size, a failed frame skipped)
+      if (this._canvas.width > 0 && this._canvas.height > 0) {
+        try {
+          this._painter.paintFrame();
+        } catch {}
+      }
     }
   }, 100);
 
@@ -270,7 +275,13 @@ export default class Vis extends GuiObj {
     // ctx.imageSmoothingEnabled = false;
     this._rebuildPainter();
     const loop = () => {
-      this._painter.paintFrame();
+      // (Spotiamp+: nothing to draw on a visualizer of no size; a frame that
+      // fails is skipped, not the visualizer stopped)
+      if (this._canvas.width > 0 && this._canvas.height > 0) {
+        try {
+          this._painter.paintFrame();
+        } catch {}
+      }
       this._animationRequest = window.requestAnimationFrame(loop);
     };
     loop();
@@ -393,7 +404,7 @@ class BarPaintHandler extends VisPaintHandler {
     this._peak.height = 1;
     this._peak.width = 1;
     var ctx = this._peak.getContext("2d");
-    ctx.fillStyle = `rgb(${this._vis._colorBandPeak})`;
+    ctx.fillStyle = cssColor(this._vis._colorBandPeak);
     ctx.fillRect(0, 0, 1, 1);
 
     //? paint bar

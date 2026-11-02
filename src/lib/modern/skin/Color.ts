@@ -1,5 +1,6 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import ImageManager from "./ImageManager";
+import { cssColor } from "../utils";
 
 export default class Color {
   _id: string;
@@ -49,6 +50,6 @@ export default class Color {
   }
 
   getRgb() {
-    return `rgb(${this._value})`;
+    return cssColor(this._value);
   }
 }

@@ -14,8 +14,18 @@ export default class MakiMap extends BaseObject {
     this._uiRoot = uiRoot;
   }
 
-  loadmap(bitmapId: string) {
-    this._bitmap = this._uiRoot.getBitmap(bitmapId);
+  // (Spotiamp+: a file too, as Winamp's loadMap took: ClassicPro checks
+  // it's installed by loading a picture from its folder)
+  async loadmap(bitmapId: string) {
+    const id = String(bitmapId ?? "");
+    if (!this._uiRoot.getBitmaps()[id.toLowerCase()] && /\.(png|bmp|jpe?g|gif)$/i.test(id)) {
+      const fromFile = await this._uiRoot.bitmapFromFile(id);
+      if (fromFile) {
+        this._bitmap = fromFile;
+        return;
+      }
+    }
+    this._bitmap = this._uiRoot.getBitmap(id);
   }
   inregion(x: number, y: number): boolean {
     // Maybe this checks if the pixel is transparent?

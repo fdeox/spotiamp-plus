@@ -5,6 +5,8 @@ import config from "./objectData/config.json";
 import winampconfig from "./objectData/winampconfig.json";
 import application from "./objectData/application.json";
 import fileio from "./objectData/fileio.json";
+// Spotiamp+: Winamp 5.5's colour manager (lib/colormgr.mi) and its file helper, which ClassicPro's scripts use
+import colormgr from "./objectData/colormgr.json";
 import { DataType } from "./v";
 import { assert } from "../utils";
 
@@ -30,6 +32,7 @@ const objects: { [key: string]: ObjectDefinition } = {
   ...winampconfig,
   ...application,
   ...fileio,
+  ...colormgr,
 };
 
 export function getClass(id: string): ObjectDefinition {
@@ -59,7 +62,12 @@ export function getMethod(
   methodName: string
 ): MethodDefinition {
   const klass = getClass(classId);
-  assert(klass != null, `Could not find class matching id: ${classId}`);
+  if (klass == null) {
+    // Spotiamp+: a class of a Winamp part Spotiamp+ doesn't know: its calls
+    // do nothing, and the script runs on instead of being left out
+    console.warn(`Unknown class ${classId}: ${methodName} does nothing`);
+    return { name: methodName, parameters: [], result: "" };
+  }
   return getObjectFunction(klass, methodName);
 }
 

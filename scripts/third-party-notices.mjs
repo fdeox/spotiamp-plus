@@ -88,6 +88,16 @@ function webPackages() {
     dir: modern,
     files: licenseFiles(modern),
   });
+  // ClassicPro's engine, for ClassicPro's modern skins (src/lib/modern/winamp)
+  const winamp = join(modern, "winamp");
+  packages.push({
+    name: "ClassicPro engine",
+    version: "1.15",
+    license: "BSD-3-Clause",
+    source: "Skin Consortium, cpro.skinconsortium.com",
+    dir: winamp,
+    files: licenseFiles(winamp),
+  });
   return packages;
 }
 

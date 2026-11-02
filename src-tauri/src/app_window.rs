@@ -1087,6 +1087,12 @@ pub fn set_dock_visible(window: &WebviewWindow, visible: bool) {
         if label != MASTER {
             let _ = window.emit(if visible { "dockWindowShown" } else { "dockWindowHidden" }, &label);
         }
+        // a window shown while a modern skin is worn asks for its look again:
+        // it waited hidden from the start, and a hidden page can miss the
+        // look being made
+        if visible && crate::settings::Settings::current().modern_skin.is_some() {
+            let _ = window.emit_to(label.as_str(), "modernLook", ());
+        }
         let mut dock = dock().lock().expect("docking state lock");
         if visible {
             dock.visible.insert(label.clone(), true);

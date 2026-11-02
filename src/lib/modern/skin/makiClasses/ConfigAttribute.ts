@@ -41,6 +41,9 @@ export default class ConfigAttribute extends BaseObject {
   }
   setdata(value: string) {
     // console.log('setData:',this._id, '=',value)
+    // (Spotiamp+: as Winamp's: set to what it is, nothing changed, no one is
+    // told; two scripts setting it from onDataChanged went round for ever)
+    if (String(this._configItem.getValue(this._id) ?? "") === String(value ?? "")) return;
     this._configItem.setValue(this._id, value);
     this.trigger("datachanged");
     this.ondatachanged();

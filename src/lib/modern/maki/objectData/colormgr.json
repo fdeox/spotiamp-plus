@@ -1,0 +1,67 @@
+{
+  "AEE235FFEBD1498F96AFD7E0DAD4541A": {
+    "parent": "Object",
+    "name": "ColorMgr",
+    "deprecated": false,
+    "functions": [
+      {
+        "name": "onLoaded",
+        "parameters": [],
+        "result": "",
+        "deprecated": false
+      },
+      {
+        "name": "onBeforeLoadingElements",
+        "parameters": [],
+        "result": "",
+        "deprecated": false
+      },
+      {
+        "name": "onColorThemeChanged",
+        "parameters": [
+          [
+            "String",
+            "newtheme"
+          ]
+        ],
+        "result": "",
+        "deprecated": false
+      },
+      {
+        "name": "onColorThemesListChanged",
+        "parameters": [],
+        "result": "",
+        "deprecated": false
+      },
+      {
+        "name": "getColor",
+        "parameters": [
+          [
+            "String",
+            "colorid"
+          ]
+        ],
+        "result": "Object",
+        "deprecated": false
+      }
+    ]
+  },
+  "9D822FF49F864C7A8CEB3C02FE20D5A5": {
+    "parent": "Object",
+    "name": "ExploreFile",
+    "deprecated": false,
+    "functions": [
+      {
+        "name": "exploreFile",
+        "parameters": [
+          [
+            "String",
+            "path"
+          ]
+        ],
+        "result": "",
+        "deprecated": false
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import GuiObj from "./GuiObj";
 import { UIRoot } from "../../UIRoot";
-import { clamp, px } from "../../utils";
+import { clamp, cssColor, px } from "../../utils";
 // import Bitmap from "../Bitmap";
 
 type ColorTriplet = string;
@@ -36,6 +36,8 @@ export default class EqVis extends GuiObj {
     const ctx = this._canvas.getContext("2d");
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
+    // (Spotiamp+: an EQ graph of no size has nothing to draw)
+    if (w < 1 || h < 1) return;
     ctx.clearRect(0, 0, w, h);
     const amplitudes = [];
     for (let i = 1; i <= 10; i++) {
@@ -46,7 +48,11 @@ export default class EqVis extends GuiObj {
       0,
       h - 1
     );
-    ctx.drawImage(this._getPreampImg(), 0, preampValue);
+    // (Spotiamp+: a preamp line of no size isn't drawn)
+    const preampImg = this._getPreampImg();
+    if (preampImg.width > 0 && preampImg.height > 0) {
+      ctx.drawImage(preampImg, 0, preampValue);
+    }
 
     // Create gradient
     // var grd = ctx.createLinearGradient(0, 0, 0, h);
@@ -127,9 +133,9 @@ export default class EqVis extends GuiObj {
         this._fillStyle = ctx.createPattern(bitmap.getCanvas(), "repeat-x");
       } else {
         const grd = ctx.createLinearGradient(0, 0, 0, this._canvas.height);
-        grd.addColorStop(0, `rgb(${this._colorTop})`);
-        grd.addColorStop(0.5, `rgb(${this._colorMiddle})`);
-        grd.addColorStop(1, `rgb(${this._colorBotttom})`);
+        grd.addColorStop(0, cssColor(this._colorTop));
+        grd.addColorStop(0.5, cssColor(this._colorMiddle));
+        grd.addColorStop(1, cssColor(this._colorBotttom));
         this._fillStyle = grd;
       }
     }
@@ -138,7 +144,7 @@ export default class EqVis extends GuiObj {
 
   _getPreampImg(): HTMLCanvasElement {
     if (!this._preampImg.width) {
-      this._preampImg.width = this.getwidth();
+      this._preampImg.width = this.getwidth() || this._canvas.width;
       this._preampImg.height = 1;
       const ctx = this._preampImg.getContext("2d");
       ctx.fillStyle = `rgba(${this._colorPreamp},1)`;
@@ -146,8 +152,11 @@ export default class EqVis extends GuiObj {
       if (this._preampBitmapName) {
         //from bitmap. used by classic skin
         const bitmap = this._uiRoot.getBitmap(this._preampBitmapName);
-        this._preampImg.height = bitmap.getHeight(); //debug
-        ctx.drawImage(bitmap.getImg(), -bitmap.getLeft(), -bitmap.getTop());
+        const img = bitmap?.getImg?.();
+        if (img && bitmap.getHeight() > 0 && img.width > 0 && img.height > 0) {
+          this._preampImg.height = bitmap.getHeight(); //debug
+          ctx.drawImage(img, -bitmap.getLeft(), -bitmap.getTop());
+        }
       }
     }
     return this._preampImg;

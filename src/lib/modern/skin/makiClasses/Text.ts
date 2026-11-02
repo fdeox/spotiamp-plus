@@ -1,9 +1,11 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import GuiObj from "./GuiObj";
 import { UIRoot } from "../../UIRoot";
-import TrueTypeFont from "../TrueTypeFont";
+import TrueTypeFont, { windowsFontFamily } from "../TrueTypeFont";
 import BitmapFont from "../BitmapFont";
 import {
+  colorRgb,
+  cssColor,
   integerToTime,
   removeAllChildNodes,
   num,
@@ -188,7 +190,9 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       this._font_obj = this._uiRoot.getFont(this._font_id);
       if (!this._font_obj) {
         const newFont = new TrueTypeFont();
-        newFont._inlineFamily = this._font_id;
+        // (Spotiamp+: as Winamp, Windows' font of that name, kept under it)
+        newFont._id = this._font_id;
+        newFont._inlineFamily = windowsFontFamily(this._font_id);
         this._uiRoot.addFont(newFont);
         this._font_obj = newFont;
       }
@@ -198,8 +202,8 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
   // only applicable for TrueType Font
   _autoDetectColor() {
     if (this._color) {
-      if (this._color.split(",").length == 3) {
-        this._div.style.color = `rgb(${this._color})`;
+      if (colorRgb(this._color)) {
+        this._div.style.color = cssColor(this._color);
         return;
       }
       const color = this._uiRoot.getColor(this._color);
@@ -310,6 +314,17 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
           }
         );
         break;
+      case "songartist":
+      case "songalbum": {
+        // Spotiamp+: what's playing's artist, its album
+        const meta = () => this._uiRoot._songMeta?.[this._display.toLowerCase() === "songartist" ? "artist" : "album"] ?? "";
+        this._displayValue = meta();
+        this._disposeTrackChangedSubscription = this._uiRoot.playlist.on(
+          "trackchange",
+          () => this.setDisplayValue(meta())
+        );
+        break;
+      }
       case "songbitrate":
       case "songsamplerate":
       case "songinfo":
@@ -501,7 +516,7 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     } else {
       this._autoDetectColor();
       if (this._shadowColor) {
-        this._div.style.textShadow = `${this._shadowX}px ${this._shadowY}px rgb(${this._shadowColor})`;
+        this._div.style.textShadow = `${this._shadowX}px ${this._shadowY}px ${cssColor(this._shadowColor, "rgb(0, 0, 0)")}`;
       }
       if (font instanceof TrueTypeFont) {
         this._textWrapper.setAttribute("font", "TrueType");

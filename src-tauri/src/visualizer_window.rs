@@ -73,6 +73,8 @@ pub async fn set_visualizer_window_visible(
     if visible {
         window.show().map_err(|_| ())?;
         window.set_focus().map_err(|_| ())?;
+        // (a modern skin's visualizer place: it goes in there)
+        crate::modern_window::slots_again(&app_handle);
     } else {
         // Leave fullscreen first so the dock sees the real window rect, and it
         // comes back windowed next time.

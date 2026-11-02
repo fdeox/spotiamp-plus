@@ -68,7 +68,16 @@ export class Edges {
     const w = preferedWidth || canvas.width;
     const h = preferedHeight || canvas.height;
     this._w = w;
-    const ctx = canvas.getContext("2d");
+    if (w < 1 || h < 1) {
+      // Spotiamp+: an empty picture (a skin's bitmap of no size) has nothing
+      // to cut: a plain box, not a page stopped on it
+      this._top = [[0, 0], [w, 0]];
+      this._right = [];
+      this._bottom = [[w, h], [0, h]];
+      this._left = [];
+      return;
+    }
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     this._data = ctx.getImageData(0, 0, w, h);
     let points: number[][] = [];
     var x: number, y: number, lastX: number, lastY: number;

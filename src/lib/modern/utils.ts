@@ -22,7 +22,12 @@ export function getCaseInsensitiveFile(
   zip: JSZip,
   filePath: string
 ): JSZipObject | null {
-  const normalized = filePath.replace(/[\/\\]/g, `[/\\\\]`);
+  // (Spotiamp+: the path's characters as they are, "." and "*" too: a
+  // path isn't a pattern)
+  const normalized = filePath
+    .split(/[\/\\]/)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join(`[/\\\\]`);
   const files = zip.file(new RegExp(normalized, "i"));
   if (files && files.length > 1) {
     // console.log('asking',filePath,'got files:', files);
@@ -51,16 +56,41 @@ export function relative(size: number): string {
   return `calc(100% + ${size}px)`;
 }
 
-export function toBool(str: string) {
-  str = str.toLowerCase();
-  assume(
-    str === "0" || str === "1" || str === "false" || str === "true",
-    `Expected bool value to be "0" or "1", but it was "${str}".`
-  );
-  if (!isNaN(parseInt(str))) {
-    return parseInt(str) > 0;
+/**
+ * Spotiamp+: a skin's colour as red, green and blue: Winamp's "r,g,b", or
+ * "#rrggbb" / "#rgb" as some skins write it. Null for anything else.
+ */
+export function colorRgb(value: string): [number, number, number] | null {
+  const v = String(value ?? "").trim();
+  const parts = v.split(",");
+  if (parts.length >= 3) {
+    const rgb = parts.slice(0, 3).map((n) => parseInt(n, 10));
+    if (rgb.every((n) => Number.isFinite(n))) return rgb as [number, number, number];
   }
-  return str === "1" || str === "true";
+  const hex = v.match(/^#?([0-9a-f]{6}|[0-9a-f]{3})$/i)?.[1];
+  if (hex) {
+    const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex;
+    return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)) as [number, number, number];
+  }
+  return null;
+}
+
+/** Spotiamp+: a skin's colour for CSS or a canvas (white when it's no colour,
+ *  so a drawing never stops on one). */
+export function cssColor(value: string, fallback: string = "rgb(255, 255, 255)"): string {
+  const rgb = colorRgb(value);
+  return rgb ? `rgb(${rgb.join(", ")})` : fallback;
+}
+
+// (Spotiamp+: read as Winamp did: any number but 0 is on, "2" and "-1"
+// too, and words other than "true" are off; no warning, since skins that
+// write visible="2" meant it)
+export function toBool(str: string) {
+  str = String(str ?? "").trim().toLowerCase();
+  if (!isNaN(parseInt(str))) {
+    return parseInt(str) !== 0;
+  }
+  return str === "true";
 }
 
 let id = 0;

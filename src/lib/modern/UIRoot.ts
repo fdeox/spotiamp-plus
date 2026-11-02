@@ -4,6 +4,7 @@ import JSZip, { JSZipObject } from "jszip";
 import { XmlElement } from "@rgrove/parse-xml";
 import TrueTypeFont from "./skin/TrueTypeFont";
 import {
+  colorRgb,
   assert,
   assume,
   Emitter,
@@ -95,6 +96,8 @@ export class UIRoot {
   _songTitle: string = "";
   /** Spotiamp+: its kbps, kHz and channels, for the skin's info text */
   _songInfo: { kbps: number; khz: number; stereo: boolean } = { kbps: 0, khz: 0, stereo: true };
+  // Spotiamp+: what's playing's artist and album (modern/+page.svelte)
+  _songMeta: { artist: string; album: string } = { artist: "", album: "" };
 
   constructor(id: string = "ui-root") {
     this._id = id;
@@ -204,6 +207,8 @@ export class UIRoot {
   }
 
   getBitmap(id: string): Bitmap {
+    // (Spotiamp+: a part that names no bitmap has none)
+    if (!id) return null;
     let lowercaseId = id.toLowerCase();
     if (!this.hasBitmap(lowercaseId)) {
       lowercaseId = this._elementAlias[lowercaseId];
@@ -212,6 +217,17 @@ export class UIRoot {
 
     assume(found != null, `Could not find bitmap with id ${id}.`);
     return found;
+  }
+  /** Spotiamp+: a picture read straight from a file (the skin's, or
+   *  Winamp's own folder's), as Map.loadMap could; null if there's none. */
+  async bitmapFromFile(path: string): Promise<Bitmap | null> {
+    const file = String(path ?? "").replace(/\\/g, "/");
+    if (!file || !this._fileExtractor?._find(file)) return null;
+    const bitmap = new Bitmap();
+    bitmap.setXmlAttributes({ id: path, file });
+    this.addBitmap(bitmap);
+    await bitmap.ensureImageLoaded(this._imageManager);
+    return bitmap;
   }
   removeBitmap(id: string) {
     delete this._bitmaps[id.toLowerCase()];
@@ -262,6 +278,8 @@ export class UIRoot {
   }
 
   addAlias(id: string, target: string) {
+    // (Spotiamp+: one missing its id or target names nothing)
+    if (!id || !target) return;
     this._elementAlias[id.toLowerCase()] = target.toLowerCase();
   }
   getAlias(id: string): string {
@@ -283,6 +301,13 @@ export class UIRoot {
     if (bitmap) {
       this.addDimension(id, bitmap.getHeight());
     }
+  }
+
+  /** Spotiamp+: a colour's value, following one named after another colour. */
+  _colorValue(value: string, depth: number = 0): string {
+    if (colorRgb(value) || depth > 4) return value;
+    const other = findLast(this._colors, (c) => String(c._id).toLowerCase() === String(value).trim().toLowerCase());
+    return other ? this._colorValue(other.getValue(), depth + 1) : value;
   }
 
   getColor(id: string): Color {
@@ -440,7 +465,28 @@ export class UIRoot {
     return aliases;
   }
 
+  // Spotiamp+: one rebuild at a time; asked again during one, one more after
+  _cssVarsRunning: Promise<void> | null = null;
+  _cssVarsAgain: boolean = false;
   async _setCssVars() {
+    if (this._cssVarsRunning) {
+      this._cssVarsAgain = true;
+      return this._cssVarsRunning;
+    }
+    this._cssVarsRunning = (async () => {
+      do {
+        this._cssVarsAgain = false;
+        await this._buildCssVars();
+      } while (this._cssVarsAgain);
+    })();
+    try {
+      await this._cssVarsRunning;
+    } finally {
+      this._cssVarsRunning = null;
+    }
+  }
+
+  async _buildCssVars() {
     const cssRules = [];
 
     // bitmap aliases; support multiple names (<elementalias/>)
@@ -459,7 +505,18 @@ export class UIRoot {
       (font) => font instanceof BitmapFont && !font.useExternalBitmap()
     ) as BitmapFont[];
     // css of bitmaps
+    // (Spotiamp+: a breath every 40 pictures, so a skin of hundreds doesn't
+    // hold the page (and its calls to the app) for the whole of it; a
+    // message, not a timer, which a hidden window slows down)
+    let made = 0;
+    const breathe = () =>
+      new Promise<void>((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => resolve();
+        channel.port2.postMessage(0);
+      });
     for (const bitmap of [...Object.values(this._bitmaps), ...bitmapFonts]) {
+      if (++made % 40 === 0) await breathe();
       // const img = bitmap.getImg();
       // if (!img) {
       //   console.warn(`Bitmap/font ${bitmap.getId()} has no img!`);
@@ -486,7 +543,7 @@ export class UIRoot {
     for (const color of this._colors) {
       const groupId = color.getGammaGroup();
       const gammaGroup = this._getGammaGroup(groupId);
-      const url = gammaGroup.transformColor(color.getValue());
+      const url = gammaGroup.transformColor(this._colorValue(color.getValue()));
       cssRules.push(`  ${color.getCSSVar()}: ${url};`);
     }
     // css of dimensions

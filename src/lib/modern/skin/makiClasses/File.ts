@@ -17,21 +17,30 @@ export default class File extends BaseObject {
     this._path = path;
   }
 
-  exists(): boolean {
-    // return unimplemented(false)
-    // const response = await fetch(this._path);
-    // return response.status == 200;
+  // Spotiamp+: nothing is asked of the network (a skin's script looking for
+  // Winamp's files made the whole skin fail). A file is there when the skin
+  // has it, or when it's one of the plugins of a whole Winamp 5, whose parts
+  // Spotiamp+ stands in for (the media library, the visualizers...).
+  _entry(): any {
+    const path = String(this._path ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+    if (!path) return null;
+    try {
+      return this._uiRoot._fileExtractor?._find?.(path) ?? null;
+    } catch {
+      return null;
+    }
+  }
 
-    const request = new XMLHttpRequest();
-    request.open("GET", this._path, false); // `false` makes the request synchronous
-    request.send(null);
-    return request.status === 200;
+  exists(): boolean {
+    if (this._entry()) return true;
+    return WINAMP_PLUGINS.test(String(this._path ?? "").replace(/\\/g, "/"));
   }
 
   getsize(): number {
-    const request = new XMLHttpRequest();
-    request.open("GET", this._path, false); // `false` makes the request synchronous
-    request.send(null);
-    return Number(request.getResponseHeader("content-length"));
+    return Number(this._entry()?._data?.uncompressedSize ?? 0);
   }
 }
+
+/** The plugins every Winamp 5 install had (Spotiamp+ answers for them). */
+const WINAMP_PLUGINS =
+  /(^|\/)plugins\/(gen_ml|gen_ff|gen_hotkeys|gen_tray|vis_milk2|vis_avs|vis_nsfs|ml_local|ml_playlists|ml_history|ml_rg|ml_bookmarks|in_mp3|in_vorbis|in_flac|in_mp4|in_wm|in_wave|in_cdda|out_ds|out_wave)\.dll$/i;

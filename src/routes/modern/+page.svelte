@@ -216,28 +216,38 @@
   /** Where each place is, shown, and whether a closed window of the skin's own has one. */
   function slotState() {
     if (!pointerDown && performance.now() - slotsScanned > 2000) scanSlots();
-    /** @type {Record<"ml" | "vis", { rect: [number, number, number, number] | null, openable: boolean }>} */
-    const state = { ml: { rect: null, openable: false }, vis: { rect: null, openable: false } };
+    /** @typedef {[number, number, number, number]} Box */
+    /** @type {Record<"ml" | "vis", { rect: Box | null, openable: boolean, inline: Box | null }>} */
+    const state = { ml: { rect: null, openable: false, inline: null }, vis: { rect: null, openable: false, inline: null } };
     for (const kind of /** @type {const} */ (["ml", "vis"])) {
-      /** @type {[number, number, number, number] | null} */
+      /** @type {Box | null} */
       let best = null;
+      /** @type {Box | null} */
+      let inline = null;
       let area = 0;
+      let inlineArea = 0;
       for (const part of slotParts) {
         if (part._spotiampSlot !== kind) continue;
         const el = part.getDiv();
         const c = windowOf(part);
         if (!c?.getVisible() || !el.isConnected || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
         const r = el.getBoundingClientRect();
-        // room for it: a visualizer goes into a window of the skin's for it, or
-        // a big place; the skin's own small ones keep their own picture
-        if (r.width < 100 || r.height < 60) continue;
-        if (kind === "vis" && windowFor(c) !== "vis" && r.width * r.height < 200 * 150) continue;
-        if (r.width * r.height > area) {
+        if (r.width < 24 || r.height < 12) continue;
+        /** @type {Box} */
+        const box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+        // a visualizer's own window (or a big place) has it whenever it shows;
+        // a smaller place in a main window, once the visualizer is on
+        const own = kind === "ml" || windowFor(c) === "vis" || r.width * r.height >= 200 * 150;
+        if (own && r.width * r.height > area) {
           area = r.width * r.height;
-          best = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+          best = box;
+        } else if (!own && r.width * r.height > inlineArea) {
+          inlineArea = r.width * r.height;
+          inline = box;
         }
       }
       state[kind].rect = best;
+      state[kind].inline = inline;
       state[kind].openable =
         !best && slotParts.some((p) => p._spotiampSlot === kind && windowFor(windowOf(p) ?? {}) === kind && !windowOf(p).getVisible());
     }
@@ -359,9 +369,12 @@
       const info = { kbps: s.kbps || 0, khz: s.khz || 0, stereo: true };
       const artChanged = (s.art ?? null) !== audio._albumArtUrl;
       audio._albumArtUrl = s.art ?? null;
-      const titleChanged = s.title !== uiRoot._songTitle || artChanged;
+      const meta = { artist: s.artist ?? "", album: s.album ?? "" };
+      const titleChanged =
+        s.title !== uiRoot._songTitle || artChanged || meta.artist !== uiRoot._songMeta.artist || meta.album !== uiRoot._songMeta.album;
       const infoChanged = JSON.stringify(info) !== JSON.stringify(uiRoot._songInfo);
       uiRoot._songTitle = s.title;
+      uiRoot._songMeta = meta;
       uiRoot._songInfo = info;
       if (titleChanged || infoChanged) uiRoot.playlist.trigger("trackchange");
       // Spotiamp+'s repeat: 0 off, 1 all, 2 the song; Winamp's: 0, 1, -1
@@ -725,6 +738,8 @@
     // the engine works from these; the page has no others (see +page.svelte's head)
     engine = new SkinEngineWAL(ui);
     await engine.buildUI();
+    // the skin's pictures in their colours, before the window shows
+    await ui._cssVarsRunning;
     if (!containers().some((c) => c.getVisible())) throw new Error("the skin shows no window");
   }
 
@@ -759,7 +774,12 @@
       // window of its own for it
       const openSlot = getCurrentWindow().listen("modernOpenSlot", (e) => showSlotWindow(String(e.payload), true));
       const closeSlot = getCurrentWindow().listen("modernCloseSlot", (e) => showSlotWindow(String(e.payload), false));
-      cleanups.push(() => openSlot.then((u) => u()), () => closeSlot.then((u) => u()));
+      // one of them opened: where the places are, said again
+      const slotsAgain = getCurrentWindow().listen("modernSlotsAgain", () => {
+        lastSlots = "";
+        sendSlots();
+      });
+      cleanups.push(() => openSlot.then((u) => u()), () => closeSlot.then((u) => u()), () => slotsAgain.then((u) => u()));
       // the skin's frame and colours for Spotiamp+'s own windows (look.js)
       buildLook(uiRoot, engine, skinName)
         .then((made) => {

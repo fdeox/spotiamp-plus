@@ -78,11 +78,15 @@ export default class Container extends XmlObj {
   }
 
   init() {
+    // (Spotiamp+: Winamp's main window is always there, whatever its
+    // default_visible says; a skin's script may still hide it after)
+    if (this._id === "main" && !this._visible && this._layouts.length) this.show();
     for (const layout of this._layouts) {
-      layout.init();
+      layout.init?.();
     }
+    // (Spotiamp+: a skin may put a group straight in a container)
     for (const layout of this._layouts) {
-      layout.afterInited();
+      layout.afterInited?.();
     }
     // maki need 'onswitchtolayout':
     // this.switchtolayout(this.getcurlayout().getId())

@@ -58,6 +58,11 @@ enum Update {
 /// the commands only queue the change and return. One thread keeps the
 /// changes in order, so a quick pause after a play never ends up "listening".
 fn send(update: Update) {
+    // the app's own tests (.smoke/isolate.sh) play test tones: no one's
+    // Discord status (and the Discord server's weekly chart) should show them
+    if std::env::var_os("SPOTIAMP_NO_DISCORD").is_some() {
+        return;
+    }
     static QUEUE: OnceLock<Mutex<mpsc::Sender<Update>>> = OnceLock::new();
     let queue = QUEUE.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<Update>();

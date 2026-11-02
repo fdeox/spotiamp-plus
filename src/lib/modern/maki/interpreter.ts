@@ -59,6 +59,14 @@ export async function interpret(
   }
 }
 
+/** Spotiamp+: == and != as Winamp's: an object that's NULL is NULL however
+ *  it's held (null, undefined or 0), as Winamp compared pointers. */
+function sameValue(a: Variable, b: Variable): boolean {
+  const isNull = (v: any) => v == null || v === 0;
+  if ((a.type === "OBJECT" || b.type === "OBJECT") && isNull(a.value) && isNull(b.value)) return true;
+  return b.value === a.value;
+}
+
 function validateVariable(v: Variable) {
   if (v.type === "OBJECT" && typeof v.value !== "object" && v.value !== 0) {
     debugger;
@@ -113,7 +121,11 @@ class Interpreter {
     }
     // Instruction Pointer
     let ip = start;
+    // Spotiamp+: a script that never stops (a loop with no way out) is
+    // stopped, instead of freezing the skin's window for good
+    let steps = 0;
     while (ip < this.commands.length) {
+      if (++steps > 3_000_000) throw new Error("the script ran too long and was stopped");
       const command = this.commands[ip];
       if (this.debug) {
         console.log(command);
@@ -167,7 +179,7 @@ class Interpreter {
           if (a.type == "STRING" && b.type == "STRING") {
             result = V.newInt(b.value.toLowerCase() == a.value.toLowerCase());
           } else {
-            result = V.newInt(b.value === a.value);
+            result = V.newInt(sameValue(a, b));
           }
           this.push(result);
           break;
@@ -188,7 +200,7 @@ class Interpreter {
           if (a.type == "STRING" && b.type == "STRING") {
             result = V.newInt(b.value.toLowerCase() != a.value.toLowerCase());
           } else {
-            result = V.newInt(b.value !== a.value);
+            result = V.newInt(!sameValue(a, b));
           }
           this.push(result);
           break;
@@ -407,11 +419,15 @@ class Interpreter {
           }
           const obj = this.stack.pop();
 
-          assert(
-            (obj.type === "OBJECT" && typeof obj.value) === "object" &&
-              obj.value != null,
-            `Guru Meditation: Tried to call method ${klass.name}.${methodName} on null object. #${this.maki_id}`
-          );
+          // (Spotiamp+: a call on NULL (an object the skin didn't find) does
+          // nothing and gives back the type's nothing, and the script goes
+          // on, as in Winamp; Webamp stopped the whole script there)
+          if (!(obj?.value != null && typeof obj.value === "object")) {
+            console.warn(`${klass.name}.${methodName} called on NULL: nothing done. #${this.maki_id}`);
+            const empty = { INT: 0, DOUBLE: 0, FLOAT: 0, BOOLEAN: 0, STRING: "" }[returnType] ?? null;
+            this.push({ type: returnType, value: empty } as any);
+            break;
+          }
 
           // let value = obj.value[methodName](...methodArgs);
           let result = null;
@@ -448,9 +464,11 @@ class Interpreter {
               `Did not expect ${klass.name}.${methodName}: ${returnType} to return undefined`
             );
           }
+          // (Spotiamp+: nothing given back is the type's nothing: NULL for an
+          // object, "" for a string, 0 for a number; Webamp pushed
+          // variables[1], a variable, as the value, which never equalled NULL)
           if (result === null) {
-            // variables[1] holds global NULL value
-            result = this.variables[1];
+            result = returnType === "STRING" ? "" : returnType === "BOOLEAN" ? false : returnType === "OBJECT" || returnType === "NULL" ? null : 0;
           }
           if (returnType === "BOOLEAN") {
             assert(

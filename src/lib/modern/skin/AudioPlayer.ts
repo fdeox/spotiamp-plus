@@ -104,8 +104,10 @@ export class AudioPlayer {
 
   _setState(state: string) {
     if (state === this._state) return;
+    // (Spotiamp+: playing on after a pause is Winamp's resume, not a new play)
+    const resumed = state === AUDIO_PLAYING && this._state === AUDIO_PAUSED;
     this._state = state;
-    this.trigger(state === AUDIO_PLAYING ? "play" : state === AUDIO_PAUSED ? "pause" : "stop");
+    this.trigger(resumed ? "resume" : state === AUDIO_PLAYING ? "play" : state === AUDIO_PAUSED ? "pause" : "stop");
     this.trigger("statchanged");
   }
   _setPosition(seconds: number) {

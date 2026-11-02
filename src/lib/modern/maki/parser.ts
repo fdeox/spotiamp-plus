@@ -192,7 +192,7 @@ function readVersion(makiFile: MakiFile): number {
 }
 
 function readClasses(makiFile: MakiFile): string[] {
-  let count = makiFile.readUInt32LE();
+  let count = makiFile.readCount(16);
   const classes = [];
   while (count--) {
     let identifier = "";
@@ -206,7 +206,7 @@ function readClasses(makiFile: MakiFile): string[] {
 }
 
 function readMethods(makiFile: MakiFile, classes: string[]): Method[] {
-  let count = makiFile.readUInt32LE();
+  let count = makiFile.readCount(6);
   const methods: Method[] = [];
   while (count--) {
     const classCode = makiFile.readUInt16LE();
@@ -226,7 +226,7 @@ function readMethods(makiFile: MakiFile, classes: string[]): Method[] {
 }
 
 function readVariables({ makiFile, classes }) {
-  let count = makiFile.readUInt32LE();
+  let count = makiFile.readCount(8);
   const variables: Variable[] = [];
   while (count--) {
     const typeOffset = makiFile.readUInt8();
@@ -315,7 +315,7 @@ function readVariables({ makiFile, classes }) {
 }
 
 function readConstants({ makiFile, variables }) {
-  let count = makiFile.readUInt32LE();
+  let count = makiFile.readCount(6);
   while (count--) {
     const i = makiFile.readUInt32LE();
     const variable = variables[i];
@@ -327,7 +327,7 @@ function readConstants({ makiFile, variables }) {
 }
 
 function readBindings(makiFile: MakiFile, variables: Variable[]): Binding[] {
-  let count = makiFile.readUInt32LE();
+  let count = makiFile.readCount(12);
   const bindings = [];
   while (count--) {
     const variableOffset = makiFile.readUInt32LE();

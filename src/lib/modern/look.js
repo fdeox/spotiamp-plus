@@ -26,7 +26,17 @@ const H = 300;
 
 /** @param {string} text */
 const xmlText = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(undefined)));
+// A moment for the frame's scripts to place things: not a frame or a timer,
+// which a minimized window gets few of (one a second, then one a minute)
+const tick = () =>
+  new Promise((r) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => r(undefined);
+    channel.port2.postMessage(0);
+  });
+const settle = async () => {
+  for (let i = 0; i < 4; i++) await tick();
+};
 
 /** Each part that does something gets it written on it, for the other windows. @param {any} obj */
 function annotate(obj) {
@@ -91,8 +101,7 @@ async function drawFrame(uiRoot, engine, group, title, stage) {
   stage.appendChild(container.getDiv());
   container.init();
   container.setLocation(0, 0);
-  await nextFrame();
-  await nextFrame();
+  await settle();
   const layout = container._activeLayout;
   if (!layout) return null;
   annotate(layout);

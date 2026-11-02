@@ -29,6 +29,9 @@ document.addEventListener("mousemove", (e: MouseEvent) => {
   MOUSE_POS.y = e.pageY;
 });
 
+/** Spotiamp+: where Winamp's public values (getPublicInt...) are kept. */
+const PUBLIC_SECTION = "{Winamp public}";
+
 export default class SystemObject extends BaseObject {
   static GUID = "d6f50f6449b793fa66baf193983eaeef";
   _uiRoot: UIRoot;
@@ -64,6 +67,25 @@ export default class SystemObject extends BaseObject {
     );
     this._uiRoot.audio.on("stop", () =>
       this._uiRoot.vm.dispatch(this, "onstop", [])
+    );
+    // Spotiamp+: the rest of what Winamp told a skin's scripts: playing on
+    // after a pause, a new song's title and info (a skin's own tickers, its
+    // album art...), and the EQ switched on or off
+    this._uiRoot.audio.on("resume", () =>
+      this._uiRoot.vm.dispatch(this, "onresume", [])
+    );
+    this._uiRoot.playlist?.on?.("trackchange", () => {
+      this._uiRoot.vm.dispatch(this, "ontitlechange", [
+        { type: "STRING", value: this.getplayitemstring() },
+      ]);
+      this._uiRoot.vm.dispatch(this, "oninfochange", [
+        { type: "STRING", value: this.getsonginfotext() },
+      ]);
+    });
+    this._uiRoot.audio.on("eqenabled", () =>
+      this._uiRoot.vm.dispatch(this, "oneqchanged", [
+        { type: "INT", value: this._uiRoot.audio.getEqEnabled() ? 1 : 0 },
+      ])
     );
     // this._uiRoot.audio.onPlay(() => this._uiRoot.vm.dispatch(this, "onplay", []));
     this._uiRoot.audio.onVolumeChanged(() => {
@@ -140,7 +162,15 @@ export default class SystemObject extends BaseObject {
   }
 
   getskinname(): string {
-    return this._uiRoot.getSkinName();
+    // Spotiamp+: as Winamp named it, by its file (its folder in Winamp),
+    // which scripts compare and build paths from
+    const file = this._uiRoot._fileExtractor?._skinFile;
+    return file ? file.split(/[\\/]/).pop().replace(/\.(wal|zip)$/i, "") : this._uiRoot.getSkinName();
+  }
+
+  // Spotiamp+: Winamp 5.666's build, which skins check (ClassicPro wants 2405 or later)
+  getbuildnumber(): number {
+    return 3516;
   }
   getwinampversion(): string {
     return this._uiRoot.APPLICATION.getversionstring();
@@ -231,8 +261,13 @@ export default class SystemObject extends BaseObject {
    * @ret       The string representation of the time (H:MM:SS).
    * @param  value Timestamp to use.
    */
-  integertolongtime(value: number) {
-    // TODO
+  integertolongtime(value: number): string {
+    // Spotiamp+: H:MM:SS, as Winamp wrote it
+    const total = Math.max(0, Math.floor(Number(value) || 0));
+    const h = Math.floor(total / 3600);
+    const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+    const s = String(total % 60).padStart(2, "0");
+    return `${h}:${m}:${s}`;
   }
 
   /**
@@ -518,8 +553,10 @@ export default class SystemObject extends BaseObject {
     return PRIVATE_CONFIG.getPrivateString(section, item, defvalue);
   }
 
+  // Spotiamp+: Winamp's public values (shared by every skin) kept with the
+  // private ones, under a section of their own
   setpublicstring(item: string, value: string) {
-    // TODO
+    PRIVATE_CONFIG.setPrivateString(PUBLIC_SECTION, item, value);
   }
 
   /**
@@ -531,7 +568,7 @@ export default class SystemObject extends BaseObject {
    * @param  value The value of the entry.
    */
   setpublicint(item: string, value: number) {
-    // TODO
+    PRIVATE_CONFIG.setPrivateInt(PUBLIC_SECTION, item, value);
   }
 
   /**
@@ -545,7 +582,7 @@ export default class SystemObject extends BaseObject {
    * @param  defvalue  The default value to return if no item is found.
    */
   getpublicstring(item: string, defvalue: string) {
-    // TODO
+    return PRIVATE_CONFIG.getPrivateString(PUBLIC_SECTION, item, defvalue);
   }
 
   /**
@@ -560,7 +597,7 @@ export default class SystemObject extends BaseObject {
    * @param  defvalue  The default value to return if no item is found.
    */
   getpublicint(item: string, defvalue: number) {
-    // TODO
+    return PRIVATE_CONFIG.getPrivateInt(PUBLIC_SECTION, item, defvalue);
   }
 
   /**
@@ -891,14 +928,19 @@ export default class SystemObject extends BaseObject {
    * @param  metadataname    The name of the metadata field you want to read.
    */
   getplayitemmetadatastring(metadataname: string): string {
-    // Spotiamp+: "Artist - Title" is what's known of what plays
+    // Spotiamp+: the artist and album the player sends; the title from
+    // "Artist - Title"
     const name = this.getplayitemstring();
     const at = name.indexOf(" - ");
+    const meta = this._uiRoot._songMeta ?? { artist: "", album: "" };
     switch ((metadataname || "").toLowerCase()) {
       case "title":
         return at > 0 ? name.slice(at + 3) : name;
       case "artist":
-        return at > 0 ? name.slice(0, at) : "";
+      case "albumartist":
+        return meta.artist || (at > 0 ? name.slice(0, at) : "");
+      case "album":
+        return meta.album;
       default:
         return "";
     }

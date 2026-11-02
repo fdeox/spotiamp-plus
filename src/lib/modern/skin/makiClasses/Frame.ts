@@ -109,7 +109,9 @@ export default class Frame extends Group {
     ];
     assume(ret[0] != null, "Frame." + directions[0] + " NOT FOUND!");
     assume(ret[1] != null, "Frame." + directions[1] + " NOT FOUND!");
-    return ret;
+    // (Spotiamp+: a side the skin doesn't have is left alone)
+    const none = { setXmlAttributes() {} } as unknown as GuiObj;
+    return ret.map((el) => el ?? none);
   }
 
   alignChildren() {

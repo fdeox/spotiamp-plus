@@ -164,9 +164,12 @@ export async function loadImage(imgUrl: string): Promise<HTMLImageElement> {
     img.addEventListener("load", () => {
       resolve(img);
     });
-    img.addEventListener("error", (e) => {
+    img.addEventListener("error", () => {
       console.warn("cant load empty image:", imgUrl);
-      reject(e);
+      // (Spotiamp+: a picture that can't be read leaves a blank, not a skin
+      // that fails)
+      if (imgUrl === DEFAULT_IMAGE_URL) reject(new Error("no image"));
+      else img.src = DEFAULT_IMAGE_URL;
     });
     img.src = imgUrl;
   });
