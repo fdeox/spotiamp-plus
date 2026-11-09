@@ -7,7 +7,9 @@
     handleError,
     copyDiagnostics,
     REACTIVE_WINDOW_SIZE,
+    SKIN_APPLIED,
   } from "$lib/common.svelte.js";
+  import { paintPe, rowName, winampPeAvailable } from "$lib/modern/skin/winampPe";
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { emit } from "@tauri-apps/api/event";
@@ -288,6 +290,13 @@
       if (typeof c.play === "number") playlist.rows[c.play]?.play();
       if (typeof c.remove === "number") playlist.removeAt(c.remove);
       if (Array.isArray(c.move)) playlist.moveRow(c.move[0], c.move[1]);
+      // the rows selected in the skin's playlist: the menus act on them
+      if (Array.isArray(c.select)) {
+        const picked = c.select.map((i) => playlist.rows[i]).filter(Boolean);
+        playlist.selectedRows = picked;
+        playlist.focusedRow = picked[picked.length - 1];
+        playlist.selectionAnchor = picked[0];
+      }
       // the skin window's jump box searches the names
       if (c.loadNames) playlist.loadAllNames();
       // its link box and its "Save as a list"
@@ -737,15 +746,13 @@
       sep,
       {
         text: "Use the skin's font",
-        checked: skinFont,
-        action: () => {
-          skinFont = !skinFont;
-          try {
-            localStorage.setItem("skin-font", skinFont ? "1" : "0");
-          } catch {}
-          // this window too (the storage event only reaches the others)
-          window.dispatchEvent(new StorageEvent("storage", { key: "skin-font" }));
-        },
+        checked: rowFont === "skin",
+        action: () => setRowFont(rowFont === "skin" ? "winamp" : "skin"),
+      },
+      {
+        text: "Pixel font",
+        checked: rowFont === "pixel",
+        action: () => setRowFont(rowFont === "pixel" ? "winamp" : "pixel"),
       },
     ];
     const windowItems = [
@@ -1436,14 +1443,31 @@
     };
   }
 
-  // "Use the skin's font" (see +layout.svelte)
-  let skinFont = (() => {
+  // The rows' font, as Winamp 5 had it: Arial (its default, "custom font"
+  // on), the skin's (PLEDIT.TXT Font=, "Use the skin's font"), or the pixel
+  // font of Spotiamp+'s earlier versions. The first two are painted the way
+  // Winamp painted its rows (winampPe.ts); the skin's font also reaches the
+  // other windows' lists (see +layout.svelte).
+  /** @returns {"winamp" | "skin" | "pixel"} */
+  function readRowFont() {
     try {
-      return localStorage.getItem("skin-font") === "1";
+      if (localStorage.getItem("pixel-font") === "1") return "pixel";
+      return localStorage.getItem("skin-font") === "1" ? "skin" : "winamp";
     } catch {
-      return false;
+      return "winamp";
     }
-  })();
+  }
+  let rowFont = $state(readRowFont());
+  /** @param {"winamp" | "skin" | "pixel"} font */
+  function setRowFont(font) {
+    rowFont = font;
+    try {
+      localStorage.setItem("skin-font", font === "skin" ? "1" : "0");
+      localStorage.setItem("pixel-font", font === "pixel" ? "1" : "0");
+    } catch {}
+    // this window too (the storage event only reaches the others)
+    window.dispatchEvent(new StorageEvent("storage", { key: "skin-font" }));
+  }
 
   /** @param {string} name */
   async function chooseBundledSkin(name) {
@@ -1592,6 +1616,11 @@
   }
   let scroll = $state(0);
   const PLAYLIST_ROW_HEIGHT = 14.5;
+  // Winamp's rows (not the pixel font): painted as Winamp painted them, a
+  // row the font's height (15 px for Arial), whole rows scrolled
+  const nativeRows = $derived(rowFont !== "pixel" && winampPeAvailable());
+  let peRowH = $state(15);
+  const rowHeight = $derived(nativeRows ? peRowH : PLAYLIST_ROW_HEIGHT);
   /**
    * @type {HTMLElement | undefined}
    */
@@ -1609,10 +1638,15 @@
     // natural 14.5px (--zoom is 1) and scrollTop is measured in the page's own
     // unzoomed CSS pixels, so a row is 14.5 at every scale. (Not offsetHeight:
     // it rounds the fractional height and would drift over long lists.)
-    return PLAYLIST_ROW_HEIGHT;
+    return rowHeight;
   }
 
   function syncScrollThumb() {
+    // Winamp's rows: whole rows only, as Winamp scrolled its list
+    if (nativeRows && scrollElement) {
+      const want = Math.min(Math.round(scrollElement.scrollTop / rowHeight) * rowHeight, scrollMax());
+      if (Math.abs(scrollElement.scrollTop - want) > 0.5) scrollElement.scrollTop = want;
+    }
     const max = scrollMax();
     if (scrollElement && max > 0) {
       const value = Math.min(Math.max(0, scrollElement.scrollTop), max);
@@ -1660,6 +1694,10 @@
     }
 
     event.preventDefault();
+    if (nativeRows) {
+      winampWheel(event);
+      return;
+    }
     if (event.deltaMode == WheelEvent.DOM_DELTA_LINE) {
       delta *= scrollRowHeight();
     } else if (event.deltaMode == WheelEvent.DOM_DELTA_PAGE && scrollElement) {
@@ -1678,6 +1716,187 @@
     scrollByRows(rows);
     wheelDelta -= rows * scrollRowHeight();
   }
+
+  // Winamp's wheel (Pledit.cpp): a notch (120) two rows, the rest carried
+  // over to the next one
+  let wheelCarry = 0;
+  /** @param {WheelEvent} event */
+  function winampWheel(event) {
+    const d = event.deltaY || event.deltaX;
+    let z = Math.round(event.deltaMode === 1 ? -d * 40 : event.deltaMode === 2 ? -d * 360 : (-d / 100) * 120);
+    if ((z < 0 && wheelCarry > 0) || (z > 0 && wheelCarry < 0)) wheelCarry = 0;
+    else z += wheelCarry;
+    z *= 2;
+    let lines = Math.trunc(z / 120);
+    wheelCarry = z - lines * 120;
+    if (!lines && z > 0) lines = 1;
+    if (lines) scrollByRows(-lines);
+  }
+
+  // ---- Winamp's rows, painted ----
+  /** @type {HTMLCanvasElement | undefined} */
+  let peCanvas = $state();
+  let skinTick = $state(0);
+  let pePainting = false;
+  let peAgain = false;
+  /** the list's colours (PLEDIT.TXT), as the skin's variables have them */
+  function peColors() {
+    const style = getComputedStyle(document.body);
+    const ctx = document.createElement("canvas").getContext("2d");
+    /** @param {string} name @param {string} fallback @returns {[number, number, number]} */
+    const read = (name, fallback) => {
+      if (!ctx) return [0, 0, 0];
+      ctx.fillStyle = fallback;
+      ctx.fillStyle = style.getPropertyValue(name).trim() || fallback;
+      const hex = String(ctx.fillStyle);
+      const m = hex.match(/^#([0-9a-f]{6})$/i);
+      if (m) {
+        const v = parseInt(m[1], 16);
+        return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+      }
+      const n = hex.match(/\d+/g) ?? ["0", "0", "0"];
+      return [Number(n[0]), Number(n[1]), Number(n[2])];
+    };
+    return [read("--skin-plnormal", "#00ff00"), read("--skin-plcurrent", "#ffffff"), read("--skin-plbg", "#000000"), read("--skin-plselbg", "#0000c6")];
+  }
+  function peFace() {
+    if (rowFont !== "skin") return "Arial";
+    const face = getComputedStyle(document.body).getPropertyValue("--skin-plfont").trim().replace(/^["']|["']$/g, "");
+    return face || "Arial";
+  }
+  function schedulePePaint() {
+    if (pePainting) {
+      peAgain = true;
+      return;
+    }
+    pePainting = true;
+    paintPeRows()
+      .catch(() => {})
+      .finally(() => {
+        pePainting = false;
+        if (peAgain) {
+          peAgain = false;
+          schedulePePaint();
+        }
+      });
+  }
+  async function paintPeRows() {
+    const canvas = peCanvas;
+    if (!canvas || !nativeRows) return;
+    const W = playlist.width * 25;
+    const H = playlist.height * 29;
+    const w = W - 32;
+    const h = H - 58;
+    if (w <= 0 || h <= 0) return;
+    const offs = scrollElement ? Math.round(scrollElement.scrollTop / rowHeight) : 0;
+    const fits = Math.max(0, Math.floor((H - 60) / peRowH)) + 2;
+    /** @type {{ name: string, time: number, sel: number, fg?: [number, number, number] | null }[]} */
+    const rows = [];
+    if (queueShown) {
+      const songs = freeQueue.state === "ok" ? freeQueue.songs : [];
+      for (let i = offs; i < songs.length && rows.length < fits; i++) {
+        const song = songs[i];
+        const title = song.artist ? `${song.artist} - ${song.title}` : song.title;
+        rows.push({ name: rowName(i, songs.length, title), time: song.duration_ms ? Math.floor(song.duration_ms / 1000) : -1, sel: i === 0 ? 2 : 0 });
+      }
+      if (!songs.length && rows.length < fits) rows.push({ name: freeQueueNote, time: -1, sel: 0 });
+    } else {
+      const list = playlist.rows;
+      // the playing row, or the first while nothing is loaded: Winamp's
+      // playlist always has its place (the first row to begin with)
+      const current = playlist.loadedRow ?? list[0];
+      for (let i = offs; i < list.length && rows.length < fits; i++) {
+        const row = list[i];
+        const queued = playlist.queuePosition(row);
+        const loved = !row.isLocal && playlist.loved.has(row.uri.asString);
+        const title = `${queued ? `[${queued}] ` : ""}${loved ? "\u2661 " : ""}${row.displayName ?? ""}`;
+        const ms = /** @type {any} */ (row).durationMs || /** @type {any} */ (row).track?.durationInMs || 0;
+        const isCurrent = row === current;
+        rows.push({
+          name: rowName(i, list.length, title),
+          time: ms > 0 ? Math.floor(ms / 1000) : -1,
+          sel: (row.isSelected() ? 1 : 0) | (isCurrent ? 2 : 0),
+          fg: row.unavailable ? (isCurrent ? [140, 140, 140] : [80, 80, 80]) : null,
+        });
+      }
+    }
+    const painted = await paintPe({ face: peFace(), size: 12, w, h, rows, colors: peColors() });
+    if (!painted) return;
+    if (painted.rowH !== peRowH) {
+      // the font's own height: the list's rows follow, then again
+      peRowH = painted.rowH;
+      peAgain = true;
+    }
+    const pad = Math.max(0, h - 2 - painted.rows * painted.rowH);
+    document.body.style.setProperty("--pe-pad-bottom", `${pad}px`);
+    if (canvas.width !== painted.w) canvas.width = painted.w;
+    if (canvas.height !== painted.h) canvas.height = painted.h;
+    canvas.getContext("2d")?.putImageData(new ImageData(/** @type {any} */ (painted.data), painted.w, painted.h), 0, 0);
+  }
+  $effect(() => {
+    if (!nativeRows || !peCanvas) return;
+    // what the rows show: repainted when any of it changes
+    void scroll;
+    void skinTick;
+    void rowFont;
+    void peRowH;
+    void playlist.width;
+    void playlist.height;
+    void playlist.loadedRow;
+    void playlist.selectedRows;
+    void playlist.queue;
+    void queueShown;
+    void freeQueue.songs;
+    const list = playlist.rows;
+    const offs = scrollElement ? Math.round(scrollElement.scrollTop / rowHeight) : 0;
+    for (let i = offs; i < Math.min(list.length, offs + 60); i++) {
+      void list[i].displayName;
+      void list[i].displayDuration;
+      void list[i].unavailable;
+    }
+    schedulePePaint();
+  });
+  // Winamp's place in the list for the main window's title: the loaded row
+  // (its number), or the first row while nothing is loaded
+  let lastTitleRow = "";
+  let titleAgain = $state(0);
+  $effect(() => {
+    void titleAgain;
+    const list = playlist.rows;
+    const loaded = playlist.loadedRow;
+    const row = loaded ?? list[0];
+    const index = row ? list.indexOf(row) : -1;
+    const info =
+      index < 0 || queueShown
+        ? null
+        : {
+            position: index + 1,
+            name: row?.displayName ?? "",
+            durationMs: /** @type {any} */ (row)?.durationMs || /** @type {any} */ (row)?.track?.durationInMs || 0,
+            loaded: !!loaded,
+          };
+    const key = JSON.stringify(info);
+    if (key === lastTitleRow) return;
+    lastTitleRow = key;
+    emitWindowEvent("playlistWindow", { TitleRow: info });
+  });
+  onMount(() => {
+    const again = () => {
+      skinTick++;
+    };
+    window.addEventListener(SKIN_APPLIED, again);
+    // a player window that's (re)started is told the title row again
+    const ready = subscribeToWindowEvent("playerWindow", (e) => {
+      if (e.PlayerReady !== undefined) {
+        lastTitleRow = "";
+        titleAgain++;
+      }
+    });
+    return () => {
+      window.removeEventListener(SKIN_APPLIED, again);
+      ready.then((unlisten) => unlisten());
+    };
+  });
 
   /**
    * @param {Event} event
@@ -1893,9 +2112,10 @@
 <span
   role="presentation"
   class:inactive={!windowActive}
+  class:pe-native={nativeRows}
   style:--playlist-w={playlist.width}
   style:--playlist-h={playlist.height}
-  style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
+  style:--track-row-height={`${rowHeight}px`}
   oncontextmenu={openMenu}
 >
   {#if updateAvailable}
@@ -2003,7 +2223,7 @@
               <span
                 class="playlist-track-name"
                 title={row.displayName}
-                use:marquee={playlist.selectedRows.length === 1 && row.isSelected()}
+                use:marquee={!nativeRows && playlist.selectedRows.length === 1 && row.isSelected()}
               >{row.displayName}</span>
             </td>
             <td class="playlist-track-duration">{row.displayDuration}</td>
@@ -2019,6 +2239,10 @@
       oninput={onManualScroll}
     />
   </div>
+  {#if nativeRows}
+    <!-- Winamp's rows, painted over the list (whose rows stay for the mouse) -->
+    <canvas class="pe-rows" bind:this={peCanvas}></canvas>
+  {/if}
 
   {#if playlist.jumpOpen}
     <!-- J: jump to file -->
@@ -2273,6 +2497,36 @@
     /* the whole list in the skin's PLEDIT.TXT NormalBG, rows or not, as
        Winamp fills it (an empty list showed the window's black) */
     background: var(--skin-plbg, #000);
+  }
+
+  /* Winamp's rows: the list where Winamp had it (x 12 to width - 20, y 20 to
+     height - 38, the first row 2 px down), its rows painted on .pe-rows */
+  .pe-native .tracks-container {
+    box-sizing: border-box;
+    margin-left: calc(12px * var(--zoom));
+    width: calc((var(--playlist-w) * 25px - 32px) * var(--zoom));
+    height: calc((var(--playlist-h) * 29px - 58px) * var(--zoom));
+    padding-top: calc(2px * var(--zoom));
+    padding-bottom: calc(var(--pe-pad-bottom, 0px) * var(--zoom));
+  }
+  .pe-native #playlist-tracks,
+  .pe-native .playlist-track.loaded,
+  .pe-native .playlist-track.unavailable,
+  .pe-native .playlist-track-queue {
+    color: transparent;
+  }
+  .pe-native .playlist-track.selected {
+    background-color: transparent;
+  }
+  .pe-rows {
+    position: absolute;
+    left: calc(12px * var(--zoom));
+    top: calc(20px * var(--zoom));
+    width: calc((var(--playlist-w) * 25px - 32px) * var(--zoom));
+    height: calc((var(--playlist-h) * 29px - 58px) * var(--zoom));
+    pointer-events: none;
+    image-rendering: pixelated;
+    z-index: 1;
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */

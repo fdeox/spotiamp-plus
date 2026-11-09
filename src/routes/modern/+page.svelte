@@ -15,6 +15,7 @@
   import AUDIO_PLAYER from "$lib/modern/skin/AudioPlayer";
   import { HOST } from "$lib/modern/host";
   import { buildLook } from "$lib/modern/look.js";
+  import { ensurePlaylistWindow, playlistContainer } from "$lib/modern/pleditFrame.js";
   import { frameInsets, paintFrame, setFrameActive, wireFrame } from "$lib/modern-look.js";
   import { invoke } from "@tauri-apps/api/core";
   import { getVersion } from "@tauri-apps/api/app";
@@ -137,6 +138,13 @@
         else if (!at[2] && c.getVisible()) c.hide();
       }
     } else {
+      // the playlist open, as Winamp opened it the first time when its
+      // playlist was open (pe_open): Spotiamp+'s playlist window was
+      const shown = await invoke("get_player_settings")
+        .then((/** @type {any} */ p) => p?.show_playlist ?? p?.showPlaylist ?? true)
+        .catch(() => true);
+      const pl = playlistContainer(uiRoot);
+      if (shown && pl && !pl.getVisible()) pl.show();
       // the skin's own spots, moved as one so its main window is where the player was
       const [px, py] = /** @type {[number, number]} */ (await invoke("modern_player_spot").catch(() => [100, 100]));
       const main = containers().find((c) => c.getId() === "main") ?? containers().find((c) => c.getVisible());
@@ -740,6 +748,20 @@
     // the engine works from these; the page has no others (see +page.svelte's head)
     engine = new SkinEngineWAL(ui);
     await engine.buildUI();
+    // what the skin's playlist and its shuffle and repeat ask of Spotiamp+'s
+    // (only now: a skin's stored shuffle or repeat, read while it loads,
+    // isn't sent; the player's own come in instead)
+    ui.playlist.commands = {
+      play: (index) => emitWindowEvent("skinPlaylistCommand", { play: index }),
+      remove: (index) => emitWindowEvent("skinPlaylistCommand", { remove: index }),
+      move: (from, to) => emitWindowEvent("skinPlaylistCommand", { move: [from, to] }),
+      shuffle: (on) => emitWindowEvent("skinCommand", { shuffle: on }),
+      // Winamp's repeat: 0, 1 all, -1 the song; Spotiamp+'s: 0, 1, 2
+      repeat: (mode) => emitWindowEvent("skinCommand", { repeat: mode === -1 ? 2 : mode ? 1 : 0 }),
+      select: (rows) => emitWindowEvent("skinPlaylistCommand", { select: rows }),
+    };
+    // the playlist's window: the skin's, or Winamp's own in the skin's frame
+    await ensurePlaylistWindow(ui, engine).catch((e) => console.warn("modern skin: no playlist window:", e));
     // the skin's pictures in their colours, before the window shows
     await ui._cssVarsRunning;
     if (!containers().some((c) => c.getVisible())) throw new Error("the skin shows no window");

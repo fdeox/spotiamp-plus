@@ -59,11 +59,16 @@ import Vis, { VisPaintHandler } from "./makiClasses/Vis";
 import Wac from "./makiClasses/Wac";
 import WasabiButton from "./makiClasses/WasabiButton";
 import WasabiTitleBar from "./makiClasses/WasabiTitle";
+// (and the engine's own outside that folder)
+import ColorThemesList from "./ColorThemesList";
+import AudioEventedGui from "./AudioEventedGui";
 import WinampConfig, { WinampConfigGroup } from "./makiClasses/WinampConfig";
 import WindowHolder from "./makiClasses/WindowHolder";
 import XmlDoc from "./makiClasses/XmlDoc";
 
 const CLASSES = {
+  ColorThemesList,
+  AudioEventedGui,
   AlbumArt,
   AnimatedLayer,
   Application,

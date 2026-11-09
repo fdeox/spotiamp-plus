@@ -1,5 +1,10 @@
 button.wasabi {
     background-image: none;
+  /* Spotiamp+: its name as Wasabi's button wrote it: the skin's button
+     text colour, its default font (14, so 11 px Arial), in the middle */
+  color: var(--color-wasabi-button-text, #000);
+  font: normal 11px Arial, sans-serif;
+  text-align: center;
   border: 4px solid transparent;
   border-image-source: var(--bitmap-studio-button);  
   /* border-image-slice: 4 4 4 5 fill; */

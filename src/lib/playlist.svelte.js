@@ -321,7 +321,10 @@ function stationHost(link) {
  * @param {Row} r
  */
 function rowMs(r) {
-    return r instanceof LocalRow ? (r.durationMs ?? 0) : (r.track?.durationInMs ?? 0);
+    const ms = r instanceof LocalRow ? (r.durationMs ?? 0) : (r.track?.durationInMs ?? 0);
+    // whole seconds, as the row shows it: Winamp added up its rows' lengths
+    // in seconds, so a long list's total came out as the rows' sum
+    return Math.floor(ms / 1000) * 1000;
 }
 
 export class Playlist {

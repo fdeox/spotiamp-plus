@@ -14,6 +14,8 @@ import Text from "./makiClasses/Text";
 import Menu from "./makiClasses/Menu";
 import Frame from "./makiClasses/Frame";
 import Status from "./makiClasses/Status";
+import LayoutStatus from "./makiClasses/LayoutStatus";
+import TabSheet from "./makiClasses/TabSheet";
 import { parse as parseMaki } from "../maki/parser";
 import SystemObject from "./makiClasses/SystemObject";
 import ToggleButton from "./makiClasses/ToggleButton";
@@ -432,6 +434,7 @@ export default class SkinEngineWAL extends SkinEngine {
         return this.componentBucket(node, parent);
       case "playlisteditor":
       case "wasabi:tabsheet":
+        return this.tabSheet(node, parent);
       case "snappoint":
       case "accelerators":
       case "browser":
@@ -966,6 +969,14 @@ export default class SkinEngineWAL extends SkinEngine {
     color.setXmlAttributes(node.attributes);
 
     this._uiRoot.addColor(color);
+    // (Spotiamp+: one of an older name is the newer one too, as Wasabi took
+    // it when it read the skin: after Winamp's own of that name, so it wins)
+    const target = this._uiRoot.aliasTarget(node.attributes.id ?? "");
+    if (target && target !== String(node.attributes.id ?? "").toLowerCase()) {
+      const same = new Color();
+      same.setXmlAttributes({ ...node.attributes, id: target });
+      this._uiRoot.addColor(same);
+    }
   }
 
   async elementalias(node: XmlElement) {
@@ -1158,9 +1169,8 @@ export default class SkinEngineWAL extends SkinEngine {
       }
     }
     //TODO: parse dynamic element by guid value
-    if (
-      node.attributes.param == "guid:{45F3F7C1-A6F3-4ee6-A15E-125E92FC3F8D}"
-    ) {
+    // (the playlist editor by its guid in any case, or as "guid:pl")
+    if (this._uiRoot.guid2alias(String(node.attributes.param ?? "").toLowerCase()) === "pl") {
       await this.buildWasabiButtonFace();
       return this.newGui(PlayListGui, node, parent);
     }
@@ -1176,10 +1186,7 @@ export default class SkinEngineWAL extends SkinEngine {
     if (held === "ml") frame._spotiampSlot = "ml";
     if (held === "vis" || held === "avs") frame._spotiampSlot = "vis";
     // console.log('window-holder'); debugger;
-    if (
-      hold &&
-      hold.toLowerCase() == "guid:{45f3f7c1-a6f3-4ee6-a15e-125e92fc3f8d}"
-    ) {
+    if (held === "pl") {
       await this.buildWasabiButtonFace();
       const node2 = new XmlElement("component", {
         fitparent: "1",
@@ -1196,6 +1203,39 @@ export default class SkinEngineWAL extends SkinEngine {
     this._uiRoot.addContainers(container);
     await this.traverseChildren(node, container);
     return container;
+  }
+
+  // Spotiamp+: Wasabi:TabSheet: its pages (the groups "children" names), a
+  // tab for each from the skin's or the base's tab groups, the row's rest
+  // and the content's frame (makiClasses/TabSheet.ts lays them out)
+  async tabSheet(node: XmlElement, parent: any) {
+    const sheet = (await this.newGroup(TabSheet, node, parent)) as TabSheet;
+    const ids = String(node.attributes.children ?? "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const part = async (id: string) =>
+      this._uiRoot.getGroupDef(id) ? await this.group(new XmlElement("group", { id, x: "0", y: "0", w: "0", h: "0" }), sheet) : null;
+    sheet._content = await part("wasabi.tabsheet.content");
+    sheet._bottom = await part("wasabi.tabsheet.nobutton.group");
+    const pages = [];
+    for (const id of ids) {
+      if (!this._uiRoot.getGroupDef(id)) continue;
+      const page = await this.group(new XmlElement("group", { id, x: "0", y: "0", w: "0", h: "0" }), sheet);
+      pages.push({ id, page });
+    }
+    // the tabs' row: as high as the highest tab (its groupdef's h)
+    const tallest = ["wasabi.tabsheet.button.selected.group", "wasabi.tabsheet.button.unselected.group"].map(
+      (id) => Number(this._uiRoot.getGroupDef(id)?.attributes?.h) || 0
+    );
+    sheet._barH = Math.max(0, ...tallest);
+    for (const { id, page } of pages) {
+      const name = this._uiRoot.getGroupDef(id)?.attributes?.name ?? "[?]";
+      const on = await part("wasabi.tabsheet.button.selected.group");
+      const off = await part("wasabi.tabsheet.button.unselected.group");
+      sheet._tabs.push({ name, page, on, off });
+    }
+    return sheet;
   }
 
   async colorThemesList(node: XmlElement, parent: any) {
@@ -1241,6 +1281,16 @@ export default class SkinEngineWAL extends SkinEngine {
       node.children.length === 0,
       "Unexpected children in <layoutStatus> XML node."
     );
+    // (Spotiamp+: a window's status bar, with the buttons of what it holds
+    // and the skin's wasabi.statusbar between them, as Wasabi's StatusBar)
+    const status = (await this.newGroup(LayoutStatus, node, parent)) as LayoutStatus;
+    if (this._uiRoot.getGroupDef("wasabi.statusbar")) {
+      status._bar = await this.group(
+        new XmlElement("group", { id: "wasabi.statusbar", x: "0", y: "0", w: "0", h: "0", relatw: "1", relath: "1" }),
+        status
+      );
+    }
+    return status;
   }
 
   async xuiElement(node: XmlElement, parent: any) {

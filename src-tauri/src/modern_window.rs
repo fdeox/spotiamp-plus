@@ -426,6 +426,20 @@ pub async fn wasabi_text_face(id: String) -> Result<String, ()> {
     Ok(crate::wasabi_text::face_of_system_font(&id))
 }
 
+/// A playlist's rows painted as Winamp 5's playlist editor painted them
+/// (winamp_pe.rs): [w, h, row height, rows] then the pixels; empty when not.
+#[tauri::command]
+pub async fn winamp_pe_paint(paint: crate::winamp_pe::PePaint) -> Result<tauri::ipc::Response, ()> {
+    Ok(tauri::ipc::Response::new(crate::winamp_pe::paint(&paint).map(|p| p.to_bytes()).unwrap_or_default()))
+}
+
+/// A line of text as Winamp 5's main window wrote the song's title in a
+/// font (winamp_pe.rs): [w, h, 0, 0] then the pixels; empty when not.
+#[tauri::command]
+pub async fn winamp_line_paint(paint: crate::winamp_pe::LinePaint) -> Result<tauri::ipc::Response, ()> {
+    Ok(tauri::ipc::Response::new(crate::winamp_pe::paint_line(&paint).map(|p| p.to_bytes()).unwrap_or_default()))
+}
+
 /// The worn skin's file, whole.
 #[tauri::command]
 pub fn modern_skin_file() -> Result<tauri::ipc::Response, String> {

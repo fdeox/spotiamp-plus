@@ -14,6 +14,8 @@ export type PlaylistCommands = {
   shuffle(on: boolean): void;
   /** 0 off, 1 all, -1 the song */
   repeat(mode: number): void;
+  /** the rows selected in the skin's playlist (for Spotiamp+'s menus) */
+  select?(rows: number[]): void;
 };
 
 const nothing = () => {};
@@ -46,6 +48,7 @@ export class PlEdit {
     move: nothing,
     shuffle: nothing,
     repeat: nothing,
+    select: nothing,
   };
 
   constructor(uiRoot: UIRoot) {
@@ -134,9 +137,9 @@ export class PlEdit {
     return this._selection.length;
   }
 
+  // (as Winamp's: the first selected row after i, -1 for none)
   getnextselectedtrack(i: number): number {
-    const current = this._selection.indexOf(i);
-    const next = this._selection[current + 1];
+    const next = this._selection.find((row) => row > i);
     return next ?? -1;
   }
 

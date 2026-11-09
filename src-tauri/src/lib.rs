@@ -20,6 +20,7 @@ mod art_window;
 mod m3u;
 mod modern_window;
 mod wasabi_text;
+mod winamp_pe;
 #[cfg(target_os = "windows")]
 mod mf;
 mod osd;
@@ -818,6 +819,8 @@ pub fn run() {
             modern_window::wasabi_text_paint,
             modern_window::wasabi_text_font,
             modern_window::wasabi_text_face,
+            modern_window::winamp_pe_paint,
+            modern_window::winamp_line_paint,
             modern_window::pick_modern_skin,
             modern_window::wear_modern_skin,
             modern_window::leave_modern_skin,

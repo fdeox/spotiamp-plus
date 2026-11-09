@@ -227,6 +227,9 @@ export default class Text extends GuiObj {
     if (!this._wGiven) this._div.style.width = px(painted.suggested);
     if (this._ticker != "off") {
       this._textFullWidth = painted.w;
+      // (cur_len: the text and, when it fit them, its paddings)
+      const pads = (this._lpadding ?? 0) + (this._rpadding ?? 0);
+      this._tickLen = painted.textW + (painted.textW <= painted.w - 2 - pads ? pads : 0);
       this._div.style.setProperty("--full-width", px(painted.w));
     }
   }
@@ -309,6 +312,12 @@ export default class Text extends GuiObj {
         this._antialias = toBool(value);
         this._div.dataset.aa = this._antialias ? "1" : "0";
         this._gdiSchedule();
+        break;
+      case "showlen":
+        // (Spotiamp+: the song's length after its title, as Wasabi's text
+        // added it: " (m:ss)")
+        this._showlen = toBool(value);
+        if (this._display && /^song(name|title)$/i.test(this._display)) this.setDisplayValue(this._songTitleText());
         break;
       case "forceupcase":
       case "forceuppercase":
@@ -570,11 +579,11 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
         break;
       case "songname":
       case "songtitle":
-        this._displayValue = this._uiRoot.playlist.getCurrentTrackTitle();
+        this._displayValue = this._songTitleText();
         this._disposeTrackChangedSubscription = this._uiRoot.playlist.on(
           "trackchange",
           () => {
-            this._displayValue = this._uiRoot.playlist.getCurrentTrackTitle();
+            this._displayValue = this._songTitleText();
             this._renderText();
           }
         );
@@ -635,6 +644,19 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
     };
     return `${fmt(selected)}/${fmt(total)}`;
+  }
+
+  // Spotiamp+: showlen: the title, and " (m:ss)" when the song's length is
+  // known (Wasabi's Text: core_getTitle and wa2.getLength)
+  _showlen: boolean = false;
+  _songTitleText(): string {
+    const title = this._uiRoot.playlist.getCurrentTrackTitle();
+    if (!this._showlen) return title;
+    const pl = this._uiRoot.playlist;
+    const track = pl.currentTrack?.();
+    const sec = Math.floor(this._uiRoot.audio.getLength?.() || track?.duration || 0);
+    if (!track || sec <= 0) return title;
+    return `${title} (${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")})`;
   }
 
   _songLength(): string {
@@ -728,7 +750,8 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     if (this._display) {
       if (this._display == "songinfo") {
         const track = this._uiRoot.playlist.currentTrack();
-        if (track) {
+        // (Spotiamp+: its rows carry no file metadata: the player's info then)
+        if (track?.metadata) {
           const m = track.metadata;
           return `${m.bitrate}kbps ${m.channelMode} ${Math.floor(
             m.sampleRate / 1000
@@ -964,10 +987,35 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     this._div.classList.add("webamp--img");
   }
 
+  // Spotiamp+: Wasabi's ticker (text.cpp, advanceTicker): only a song's
+  // texts, the time and a component bucket's move: a pixel every second
+  // tick (Winamp's "Text Ticker Speed", a half) of 25 ms (250 for the time,
+  // 50 for a bucket), there and back, waiting 4 s at each end and at the
+  // start of each new text; any other text stays put
+  _tickPos: number = 0;
+  _tickSens: number = 0;
+  _tickTts: number = 20;
+  _tickTimeTts: number = 20;
+  _tickSkip: number = 0;
+  _tickText: string | null = null;
+  /** the text's width as Wasabi measured it (cur_len), Windows' when painted */
+  _tickLen: number = 0;
+
+  _tickerPeriod(): number {
+    const d = String(this._display ?? "").toLowerCase();
+    if (/^song(name|title|artist|album|length|info|info_translated)$/.test(d)) return 25;
+    if (d === "time") return 250;
+    if (d.startsWith("componentbucket")) return 50;
+    return 0;
+  }
+
   _prepareScrolling() {
-    this._scrollDirection = -1;
+    const period = this._tickerPeriod();
+    if (!period) return;
+    this._tickTimeTts = Math.floor(4000 / period);
+    this._tickTts = this._tickTimeTts;
     const timer = (this._scrollTimer = new Timer(this._uiRoot));
-    timer.setdelay(50);
+    timer.setdelay(period);
     timer.setOnTimer(() => {
       this.doScrollText();
     });
@@ -975,26 +1023,38 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
   }
 
   doScrollText() {
-    const curL = this._scrollLeft;
-    const step = 1; //pixel
-    const idle = 20; //when overflow
-    const container = this._div.getBoundingClientRect();
-    const wrapperWidth = this._textFullWidth;
-    if (wrapperWidth <= container.width) return;
-    var l = curL + step * this._scrollDirection;
-    if (l + wrapperWidth < container.width - step * idle) {
-      // too left
-      this._scrollDirection *= -1; //? flip dir!
-      l = curL + step * this._scrollDirection;
-    } else if (l > step * idle) {
-      // too right
-      this._scrollDirection *= -1; //? flip dir!
-      l = curL + step * this._scrollDirection;
+    const text = this._printedText();
+    if (text !== this._tickText) {
+      // (resetTicker: a new text from its start, after the wait)
+      this._tickText = text;
+      this._tickSens = 0;
+      this._tickPos = 0;
+      this._tickTts = this._tickTimeTts;
     }
-    this._scrollLeft = l;
-    l = clamp(l, -(wrapperWidth - container.width), 0);
-    this._textWrapper.style.left = px(Math.round(l));
-    if (this._gdiCanvas) this._gdiCanvas.style.left = px(Math.round(l));
+    const w = this._div.offsetWidth;
+    const len = this._gdiCanvas ? this._tickLen : this._textFullWidth;
+    const room = w - 2;
+    if (len < room) this._tickPos = 0;
+    else if (this._tickTts > 0) this._tickTts--;
+    else if (this._tickSkip < 1) this._tickSkip++;
+    else {
+      this._tickSkip = 0;
+      this._tickPos += this._tickSens ? -1 : 1;
+      if (this._tickPos < 0) this._tickPos = 0;
+      if (this._tickPos > len - room) this._tickPos = len - room;
+      if (len <= this._tickPos + room) {
+        this._tickSens = 1;
+        this._tickTts = this._tickTimeTts;
+      }
+      if (this._tickPos <= 0) {
+        this._tickSens = 0;
+        this._tickPos = 0;
+        this._tickTts = this._tickTimeTts;
+      }
+    }
+    const left = px(-Math.round(this._tickPos));
+    if (this._textWrapper.style.left !== left) this._textWrapper.style.left = left;
+    if (this._gdiCanvas && this._gdiCanvas.style.left !== left) this._gdiCanvas.style.left = left;
   }
 
   dispose() {

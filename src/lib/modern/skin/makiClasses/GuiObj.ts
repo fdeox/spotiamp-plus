@@ -159,19 +159,23 @@ export default class GuiObj extends XmlObj {
         this._maximumWidth = num(value);
         break;
       case "relatw":
-        this._relatw = value;
+        // (Spotiamp+: "%" is a percentage of the parent, Wasabi's 2)
+        this._relatw = String(value ?? "").trim() === "%" ? "2" : value;
         this._renderWidth();
         break;
       case "relath":
-        this._relath = value;
+        // (Spotiamp+: "%" is a percentage of the parent, Wasabi's 2)
+        this._relath = String(value ?? "").trim() === "%" ? "2" : value;
         this._renderHeight();
         break;
       case "relatx":
-        this._relatx = value;
+        // (Spotiamp+: "%" is a percentage of the parent, Wasabi's 2)
+        this._relatx = String(value ?? "").trim() === "%" ? "2" : value;
         this._renderX();
         break;
       case "relaty":
-        this._relaty = value;
+        // (Spotiamp+: "%" is a percentage of the parent, Wasabi's 2)
+        this._relaty = String(value ?? "").trim() === "%" ? "2" : value;
         this._renderY();
         break;
       case "droptarget":
@@ -1067,22 +1071,22 @@ export default class GuiObj extends XmlObj {
   }
   _renderX() {
     this._div.style.left =
-      this._relatx == "1" ? relative(this._x ?? 0) : px(this._x ?? 0);
+      this._relatx == "1" ? relative(this._x ?? 0) : this._relatx == "2" ? `${this._x ?? 0}%` : px(this._x ?? 0);
   }
 
   _renderY() {
     this._div.style.top =
-      this._relaty == "1" ? relative(this._y ?? 0) : px(this._y ?? 0);
+      this._relaty == "1" ? relative(this._y ?? 0) : this._relaty == "2" ? `${this._y ?? 0}%` : px(this._y ?? 0);
   }
 
   _renderWidth() {
     this._div.style.width =
-      this._relatw == "1" ? relative(this._w ?? 0) : px(this.getwidth());
+      this._relatw == "1" ? relative(this._w ?? 0) : this._relatw == "2" ? `${this._w ?? 0}%` : px(this.getwidth());
   }
 
   _renderHeight() {
     this._div.style.height =
-      this._relath == "1" ? relative(this._h ?? 0) : px(this.getheight());
+      this._relath == "1" ? relative(this._h ?? 0) : this._relath == "2" ? `${this._h ?? 0}%` : px(this.getheight());
   }
 
   _renderDimensions() {

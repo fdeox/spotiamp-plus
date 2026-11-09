@@ -15,7 +15,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  * The events the windows send each other: name -> the payload's shape. The
  * enum-like ones carry one `{ Variant: value }` at a time.
  * @typedef {{
- *   playlistWindow: { event: DockDrag & { Ready: null, CloseRequested: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, PlayNow: boolean, EndReached: null, LocalFilesPicked: string[], LocalTrackLoaded: { path: string, name: string, station?: string, durationMs: number, sampleRate?: number, kbps?: number }, StopAfterCurrentChanged: boolean } },
+ *   playlistWindow: { event: DockDrag & { Ready: null, CloseRequested: null, PlayRequested: null, PauseRequested: null, StopRequested: null, TrackLoaded: SpotifyTrack, PlayNow: boolean, EndReached: null, LocalFilesPicked: string[], LocalTrackLoaded: { path: string, name: string, station?: string, durationMs: number, sampleRate?: number, kbps?: number }, StopAfterCurrentChanged: boolean, TitleRow: { position: number, name: string, durationMs: number, loaded: boolean } | null } },
  *   playerWindow: { event: DockDrag & { CloseRequested: null, UrlsDropped: string[], NextPressed: null, PreviousPressed: null, AddLocalFiles: string[], LocalFilesSent: { items: { path: string, name?: string, artist?: string, durationMs?: number, sampleRate?: number, kbps?: number }[], replace: boolean, play?: boolean }, JumpRequested: null, JumpToTimeRequested: null, OpenUrlRequested: null, StreamInfo: { path: string, station: string, title: string }, QueueRequested: null, PlayerReady: null, MenuRequested: null, UrlsAppended: string[], ShuffleChanged: boolean, RepeatChanged: number, TrackEnded: null, StopAfterCurrentToggle: null } },
  *   eqWindow: { event: DockDrag & { CloseRequested: null } },
  *   libraryWindow: { event: DockDrag },
@@ -39,7 +39,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *     play?: boolean, pause?: boolean, stop?: boolean, next?: boolean, previous?: boolean } },
  *   skinPlaylist: { event: { rows: { title: string, durationMs: number }[], current: number } },
  *   skinPlaylistCommand: { event: { play?: number, remove?: number, move?: [number, number], ask?: boolean,
- *     openUrl?: string, saveList?: string, loadNames?: boolean } },
+ *     openUrl?: string, saveList?: string, loadNames?: boolean, select?: number[] } },
  *   modernMenu: { event: { name: string } },
  *   modernDialog: { event: { kind: "jump" | "time" | "url" | "savelist" | "toast" | "card", text?: string } },
  *   modernFace: { event: boolean },

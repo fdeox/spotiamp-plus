@@ -57,6 +57,11 @@ function crispPixelFont(zoom) {
     if (!body) return;
     const scale = (window.devicePixelRatio || 1) * (zoom || 1);
     const step = Math.max(1, Math.round(scale));
+    // a scale between whole ones (125 %): the text Windows paints (Winamp's
+    // playlist rows and title) is smoothed up rather than blocked up, its
+    // strokes otherwise one or two pixels by turns
+    if (Math.abs(scale - Math.round(scale)) > 0.01) body.dataset.fractionalScale = "";
+    else delete body.dataset.fractionalScale;
     body.style.setProperty("--px-crisp", `${step / scale}`);
     // one whole step bigger, for text meant to be read at length (lyrics)
     body.style.setProperty("--px-crisp-up", `${(step + 1) / scale}`);

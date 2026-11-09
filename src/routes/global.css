@@ -166,6 +166,13 @@ body {
     outline: 0 !important;
 }
 
+/* Text Windows painted at 1x (Winamp's playlist rows, the main window's
+   title): blocky at a scale between whole ones, so smoothed up there */
+body[data-fractional-scale] canvas.pe-rows,
+body[data-fractional-scale] canvas.winamp-title {
+    image-rendering: auto !important;
+}
+
 /* "Use the skin's font": the lists in the font the skin names (Winamp's
    PLEDIT.TXT Font=), smooth, at Winamp's playlist size */
 body[data-skin-font] #playlist-tracks,

@@ -17,6 +17,8 @@
     SpotifyTrack,
   } from "$lib/spotify.svelte.js";
   import TextTicker from "../../TextTicker.svelte";
+  import WinampTitle from "../../WinampTitle.svelte";
+  import { winampPeAvailable } from "$lib/modern/skin/winampPe";
   import MiniTime from "../../MiniTime.svelte";
   import MainVis from "../../MainVis.svelte";
   import NumberDisplay from "../../NumberDisplay.svelte";
@@ -218,14 +220,42 @@
   getVersion()
     .then((version) => (idleTitle = `Spotiamp+ ${version}`))
     .catch(() => {});
-  const trackDisplayText = $derived(
-    loadedTrack
-      ? // a radio station has no length: just its song
-        loadedTrack.displayDuration
-        ? `${loadedTrack.displayName} (${loadedTrack.displayDuration})`
-        : loadedTrack.displayName
-      : idleTitle,
-  );
+  // Winamp's place in the playlist (the playlist window tells): the loaded
+  // row, or the first one while nothing is loaded, as Winamp's playlist
+  // always had one; its number goes before the title, as Winamp wrote it
+  let titleRow = $state(/** @type {{ position: number, name: string, durationMs: number, loaded: boolean } | null} */ (null));
+  const trackDisplayText = $derived.by(() => {
+    if (loadedTrack) {
+      const number = titleRow?.loaded ? `${titleRow.position}. ` : "";
+      // a radio station has no length: just its song
+      return loadedTrack.displayDuration
+        ? `${number}${loadedTrack.displayName} (${loadedTrack.displayDuration})`
+        : `${number}${loadedTrack.displayName}`;
+    }
+    if (titleRow && !titleRow.loaded && titleRow.name) {
+      return titleRow.durationMs > 0
+        ? `${titleRow.position}. ${titleRow.name} (${durationToString(titleRow.durationMs)})`
+        : `${titleRow.position}. ${titleRow.name}`;
+    }
+    return idleTitle;
+  });
+  // The title in a font, Winamp 5's default, unless the pixel font of
+  // Spotiamp+'s earlier versions is chosen (the playlist's menu): then the
+  // skin's bitmap letters, as Winamp's "bitmap font for main title" had it
+  const readPixelFont = () => {
+    try {
+      return localStorage.getItem("pixel-font") === "1";
+    } catch {
+      return false;
+    }
+  };
+  let pixelFont = $state(readPixelFont());
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", (e) => {
+      if (e.key === "skin-font" || e.key === "pixel-font") pixelFont = readPixelFont();
+    });
+  }
+  const fontTitle = $derived(!pixelFont && winampPeAvailable());
   const stoppedOrUnavailable = $derived.by(() =>
     playerState == "stopped" || playerState == "unavailable",
   );
@@ -1229,6 +1259,8 @@
           stop();
         } else if (event.EndReached !== undefined) {
           stop();
+        } else if (event.TitleRow !== undefined) {
+          titleRow = event.TitleRow;
         } else if (event.StopAfterCurrentChanged !== undefined) {
           flashTicker(`STOP AFTER CURRENT: ${event.StopAfterCurrentChanged ? "ON" : "OFF"}`);
         } else if (event.LocalTrackLoaded) {
@@ -1765,13 +1797,17 @@
 
   <div class="sprite side-buttons"></div>
 
-  <TextTicker
-    unavailable={playerState == "unavailable"}
-    text={trackDisplayText}
-    textOverride={tickerOverrideText}
-    x={111}
-    y={27}
-  />
+  {#if fontTitle}
+    <WinampTitle unavailable={playerState == "unavailable"} text={trackDisplayText} textOverride={tickerOverrideText} />
+  {:else}
+    <TextTicker
+      unavailable={playerState == "unavailable"}
+      text={trackDisplayText}
+      textOverride={tickerOverrideText}
+      x={111}
+      y={27}
+    />
+  {/if}
   <div class:hidden={timeDisplayHidden}>
     <NumberDisplay number={currentTime.m} x={48} y={26} />
     <NumberDisplay number={currentTime.s} x={78} y={26} />

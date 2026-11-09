@@ -14,6 +14,7 @@ import {
 } from "./utils";
 import BitmapFont from "./skin/BitmapFont";
 import Color from "./skin/Color";
+import { legacyTarget } from "./skin/legacyNames";
 import GammaGroup from "./skin/GammaGroup";
 import Vm from "./skin/VM";
 import AUDIO_PLAYER, { AudioPlayer, Track } from "./skin/AudioPlayer";
@@ -209,6 +210,17 @@ export class UIRoot {
   addBitmap(bitmap: Bitmap) {
     const id = bitmap.getId().toLowerCase();
     this._bitmaps[id] = bitmap;
+    // (Spotiamp+: one of an older name is the newer one too, as Wasabi took
+    // it when it read the skin: over Winamp's own of that name)
+    const target = this.aliasTarget(id);
+    if (target && target !== id) this._bitmaps[target] = bitmap;
+  }
+
+  /** Spotiamp+: the name an element of this name is to Wasabi: an alias the
+   *  skin set, or a Winamp 3 name's Winamp 5 one (legacyNames.ts) */
+  aliasTarget(id: string): string | null {
+    const lower = String(id ?? "").toLowerCase();
+    return this._elementAlias[lower] ?? legacyTarget(lower);
   }
 
   getBitmap(id: string): Bitmap {
@@ -216,7 +228,7 @@ export class UIRoot {
     if (!id) return null;
     let lowercaseId = id.toLowerCase();
     if (!this.hasBitmap(lowercaseId)) {
-      lowercaseId = this._elementAlias[lowercaseId];
+      lowercaseId = this.aliasTarget(lowercaseId);
     }
     const found = this._bitmaps[lowercaseId];
 
@@ -317,10 +329,15 @@ export class UIRoot {
 
   getColor(id: string): Color {
     const lowercaseId = id.toLowerCase();
-    const found = findLast(
+    let found = findLast(
       this._colors,
       (color) => color._id.toLowerCase() === lowercaseId
     );
+    // (Spotiamp+: an older name asked for: the newer one's)
+    if (!found) {
+      const target = this.aliasTarget(lowercaseId);
+      if (target) found = findLast(this._colors, (color) => color._id.toLowerCase() === target);
+    }
 
     assume(found != null, `Could not find color with id ${id}.`);
     return found;
@@ -545,7 +562,15 @@ export class UIRoot {
         channel.port1.onmessage = () => resolve();
         channel.port2.postMessage(0);
       });
+    // (Spotiamp+: a bitmap known by a second name, an older one's newer
+    // name, is that name's picture too)
+    const seen = new Set();
+    for (const [name, bitmap] of Object.entries(this._bitmaps)) {
+      if (name !== bitmap.getId().toLowerCase()) cssRules.push(`${genCssVar(name)}: var(${bitmap.getCSSVar()});`);
+    }
     for (const bitmap of [...Object.values(this._bitmaps), ...bitmapFonts]) {
+      if (seen.has(bitmap)) continue;
+      seen.add(bitmap);
       if (++made % 40 === 0) await breathe();
       // const img = bitmap.getImg();
       // if (!img) {

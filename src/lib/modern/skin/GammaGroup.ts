@@ -92,6 +92,17 @@ export default class GammaGroup {
     w: number,
     h: number
   ): string {
+    return this.transformCanvas(img, x, y, w, h).toDataURL();
+  }
+
+  /** Spotiamp+: the picture (its x, y, w, h part) in these colours, as a canvas */
+  transformCanvas(
+    img: CanvasImageSource,
+    x: number,
+    y: number,
+    w: number,
+    h: number
+  ): HTMLCanvasElement {
     // because some <bitmap> didn't has explicit "w" attribute
     const safeWidth = w || img.width;
     const safeHeight = h || img.height;
@@ -153,7 +164,7 @@ export default class GammaGroup {
       data[i + 2] = ib;
     }
     ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL();
+    return canvas;
   }
 
   transformColor2rgb(color: string): [number, number, number] {
