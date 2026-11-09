@@ -19,6 +19,7 @@ mod library_window;
 mod art_window;
 mod m3u;
 mod modern_window;
+mod wasabi_text;
 #[cfg(target_os = "windows")]
 mod mf;
 mod osd;
@@ -814,6 +815,9 @@ pub fn run() {
             modern_window::modern_skin,
             museum::museum_apply_modern,
             modern_window::modern_skin_file,
+            modern_window::wasabi_text_paint,
+            modern_window::wasabi_text_font,
+            modern_window::wasabi_text_face,
             modern_window::pick_modern_skin,
             modern_window::wear_modern_skin,
             modern_window::leave_modern_skin,

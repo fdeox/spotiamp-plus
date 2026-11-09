@@ -96,6 +96,8 @@ text {
   text-align: center;
   /* padding: 2px; */
   --valign: center;
+  /* Spotiamp+: Wasabi's colour for a text the skin gives none */
+  color: #fff;
 }
 text i {
   pointer-events: none;
@@ -114,15 +116,19 @@ text wrap {
   font-family: monospace;
   white-space: pre;
 }
-text wrap {
-  margin-left: 2px;
-}
-text wrap[font="TrueType"] {
-  /* needed for titlebar */
-  font-size: 10.5px;
-  line-height: 10px; 
-  vertical-align: var(--valign, center);
-  text-align: var(--align, center);
+/* (Spotiamp+: no margin: Wasabi draws a text from its own left edge; this
+   put every bitmap-font text 2px right of where Winamp has it) */
+text wrap[font="TrueType"],
+text[style*="--fontMode: Null"] wrap {
+  /* Spotiamp+: the text's own font and size (set on the text), placed in
+     its box by its align and valign, as Wasabi draws it */
+  font-family: inherit;
+  font-size: inherit;
+  line-height: normal;
+  display: flex;
+  align-items: var(--tvalign, center);
+  justify-content: var(--talign, flex-start);
+  margin-left: 0;
 }
 text wrap[font="BitmapFont"] {
   display: flex;
@@ -195,6 +201,12 @@ windowholder
 group {
   overflow: visible;
 }
+/* Spotiamp+: as in Wasabi, where every object is a window inside its
+   window: nothing shows outside it (a group clips too, along a side whose
+   size it has: Group._renderClip) */
+layout {
+  overflow: hidden;
+}
 albumart {
   /* background-size: cover; */
   background-size: contain;
@@ -258,20 +270,14 @@ animatedlayer {
         color: black;
       } */
 
-/* titleBar active state */
-[inactivealpha="0"] {
-  opacity: 0;
+/* Spotiamp+: an object's alpha while its window is the active one, and while
+   it isn't (GuiObj._renderAlpha), as Wasabi's */
+[data-alpha="1"] {
+  opacity: var(--alpha-inactive);
 }
-[inactivealpha="128"] {
-  opacity: 0.5;
-}
-container:focus-within [activealpha="0"],
-container:active [activealpha="0"] {
-  opacity: 0;
-}
-container:focus-within [inactivealpha],
-container:active [inactivealpha] {
-  opacity: 1;
+container:focus-within [data-alpha="1"],
+container:active [data-alpha="1"] {
+  opacity: var(--alpha-active);
 }
 container:not(:active):not(container:focus-within) .webamp--img.inactivable {
   background-image: var(--inactive-background-image, var(--background-image));
@@ -382,3 +388,27 @@ componentbucket[id="component list"] wrapper button {
     /* top: unset; */
     /* background: red; */
 }
+
+/* Spotiamp+: TrueType text smoothed as Winamp's (Text.ts): grey, or hard-edged
+   for antialias="0"; bitmap fonts are pictures and stay as they are */
+text[data-aa="1"] > wrap[font="TrueType"],
+text[data-aa="1"] > wrap:not([font]) {
+  filter: url(#wasabi-text-grey);
+}
+text[data-aa="0"] > wrap[font="TrueType"],
+text[data-aa="0"] > wrap:not([font]) {
+  filter: url(#wasabi-text-hard);
+}
+
+/* Spotiamp+: text Windows drew, as Winamp's (Text.ts, wasabiText.ts): at the
+   box's corner, the browser's own kept for measuring, unseen */
+text > canvas.gdi-text {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+text[data-gdi="1"] > wrap {
+  visibility: hidden;
+}
+

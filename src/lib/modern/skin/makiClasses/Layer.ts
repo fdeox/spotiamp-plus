@@ -1,7 +1,6 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import GuiObj from "./GuiObj";
 import Movable from "./Movable";
-import { Edges } from "../Clippath";
 import Region from "./Region";
 
 // http://wiki.winamp.com/wiki/XML_GUI_Objects#.3Clayer.2F.3E
@@ -17,6 +16,7 @@ export default class Layer extends Movable {
   static GUID = "5ab9fa1545579a7d5765c8aba97cc6a6";
   _image: string;
   _inactiveImage: string;
+  _tile: boolean = false;
 
   setXmlAttr(key: string, value: string): boolean {
     if (super.setXmlAttr(key, value)) {
@@ -35,6 +35,11 @@ export default class Layer extends Movable {
       case "inactiveimage":
         this._inactiveImage = value;
         this._renderBackground();
+        break;
+      case "tile":
+        this._tile = value !== "0";
+        this._renderBackground();
+        break;
       default:
         return false;
     }
@@ -43,6 +48,8 @@ export default class Layer extends Movable {
 
   // This shadows `getheight()` on GuiObj
   getheight(): number {
+    const rel = this._relativeSize("h");
+    if (rel != null) return rel;
     if (this._h) {
       return this._h;
     }
@@ -55,6 +62,8 @@ export default class Layer extends Movable {
 
   // This shadows `getwidth()` on GuiObj
   getwidth(): number {
+    const rel = this._relativeSize("w");
+    if (rel != null) return rel;
     if (this._w) {
       return this._w;
     }
@@ -65,11 +74,21 @@ export default class Layer extends Movable {
     return super.getwidth();
   }
 
+  // (Spotiamp+: stretched to the layer, or tiled, as Wasabi draws it; a
+  // kind of layer that places its picture itself keeps its own way)
+  _stretches(): boolean {
+    return this.constructor === Layer;
+  }
+
   _renderBackground() {
     const bitmap =
       this._image != null ? this._uiRoot.getBitmap(this._image) : null;
     this.setBackgroundImage(bitmap);
     this.setInactiveBackgroundImage(bitmap);
+    if (this._stretches()) {
+      this._div.style.backgroundSize = this._tile ? "auto" : "100% 100%";
+      this._div.style.backgroundRepeat = this._tile ? "repeat" : "no-repeat";
+    }
     if (this._inactiveImage) {
       this.setInactiveBackgroundImage(
         this._uiRoot.getBitmap(this._inactiveImage)
@@ -78,21 +97,13 @@ export default class Layer extends Movable {
     }
   }
 
+  // (Spotiamp+: as Wasabi: sysregion="1" makes the layer's opaque part part
+  // of the window's shape (the app's region); it never cuts the layer's own
+  // picture, whose see-through pixels are see-through anyway. Webamp cut it
+  // along a traced outline, which a concave picture got wrong: Classic
+  // Modern's equalizer lost its right side)
   _renderRegion() {
-    if (this._sysregion == 1 && this._image) {
-      const bitmap = this._uiRoot.getBitmap(this._image);
-      if (bitmap && bitmap.getImg()) {
-        const canvas = bitmap.getCanvas();
-        const edge = new Edges();
-        edge.parseCanvasTransparency(canvas, this.getwidth(), this.getheight());
-        if (!edge.isSimpleRect()) {
-          this._div.style.clipPath = edge.getPolygon();
-          return;
-        }
-      }
-      // if anything failed, don't repeat:
-      this.setXmlAttr("sysregion", "0");
-    }
+    this._div.style.removeProperty("clip-path");
   }
 
   draw() {

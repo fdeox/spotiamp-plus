@@ -94,6 +94,9 @@ export class UIRoot {
   playlist: PlEdit;
   /** Spotiamp+: the song playing, as its display shows it (host.ts sets it) */
   _songTitle: string = "";
+  /** Spotiamp+: the title while nothing plays, "Spotiamp+ <version>" (the
+   *  modern page sets it; Winamp showed its own name and build there) */
+  _idleTitle: string = "Spotiamp+";
   /** Spotiamp+: its kbps, kHz and channels, for the skin's info text */
   _songInfo: { kbps: number; khz: number; stereo: boolean } = { kbps: 0, khz: 0, stereo: true };
   // Spotiamp+: what's playing's artist and album (modern/+page.svelte)
@@ -163,6 +166,8 @@ export class UIRoot {
     this._gammaSets = new Map();
     this._xuiGroupDefs = {};
     this._activeGammaSet = [];
+    this._gammaCache.clear();
+    this._skinVersion = null;
     this._containers = [];
     this._systemObjects = [];
     this._gammaNames = {};
@@ -348,6 +353,10 @@ export class UIRoot {
 
   addGroupDef(groupDef: XmlElement) {
     const groupdef_id = groupDef.attributes.id.toLowerCase();
+    // (Spotiamp+: the one it's defined over is kept as its ancestor, for
+    // Wasabi's inheritance: SkinEngine_WAL.applyGroupDef)
+    const before = this._groupDefs[groupdef_id];
+    if (before && before !== groupDef) (groupDef as any)._ancestor = before;
     this._groupDefs[groupdef_id] = groupDef;
     if (groupDef.attributes.xuitag) {
       // this._xuiGroupDefs[groupDef.attributes.xuitag.toLowerCase()] =
@@ -394,7 +403,9 @@ export class UIRoot {
     this._gammaSets.set(lower, gammaSet);
   }
 
-  enableGammaSet(id: string | null) {
+  // (Spotiamp+: remembered for the skin only when picked, as Winamp's: its
+  // own default isn't written down)
+  enableGammaSet(id: string | null, remember: boolean = true) {
     if (id) {
       console.log(`Enabling gammaset: '${id}'`);
       const found = this._gammaSets.get(id.toLowerCase());
@@ -406,7 +417,8 @@ export class UIRoot {
       );
       this._activeGammaSetName = id;
       this._activeGammaSet = found || [];
-      PRIVATE_CONFIG.setPrivateString(this.getSkinName(), "_gammagroup_", id);
+      this._gammaCache.clear();
+      if (remember) PRIVATE_CONFIG.setPrivateString(this.getSkinName(), "_gammagroup_", id);
     }
     this.trigger("colorthemechanged", id || "");
     this._setCssVars();
@@ -415,28 +427,46 @@ export class UIRoot {
   enableDefaultGammaSet() {
     const start = performance.now();
 
+    // Spotiamp+: as Winamp's (GammaMgr::loadDefault, setGammaSet): the set
+    // last picked for this skin, else one named "Default"; one the skin
+    // doesn't have falls to its first set
     const gammaSetNames = Array.from(this._gammaSets.keys());
-    const firstName = gammaSetNames[0] || "";
-    const lastGamma = PRIVATE_CONFIG.getPrivateString(
-      this.getSkinName(),
-      "_gammagroup_",
-      firstName
-    );
-    this.enableGammaSet(lastGamma);
+    const wanted = PRIVATE_CONFIG.getPrivateString(this.getSkinName(), "_gammagroup_", "Default");
+    const key = String(wanted ?? "").toLowerCase();
+    const lastGamma = this._gammaSets.has(key) ? wanted : gammaSetNames[0] ? this._gammaNames[gammaSetNames[0]] ?? gammaSetNames[0] : "";
+    this.enableGammaSet(lastGamma, false);
 
     const end = performance.now();
     console.log(`Loading initial gamma took: ${(end - start) / 1000}s`);
   }
 
-  _getGammaGroup(id: string): GammaGroup | null {
-    if (!id) {
-      return this._getGammaGroupDummy();
-    }
-    const lower = id.toLowerCase();
-    const found = findLast(this._activeGammaSet, (gammaGroup) => {
-      return gammaGroup.getId().toLowerCase() === lower;
-    });
-    return found ?? this._getGammaGroupDummy();
+  // Spotiamp+: what each group is filtered with in the colour theme on
+  _gammaCache: Map<string, GammaGroup> = new Map();
+
+  /** Spotiamp+: the skin's version (skin.xml's root), which picked how
+   *  Winamp drew its text: Windows' GDI from 1.3, FreeType before */
+  _skinVersion: number | null = null;
+
+  /** Spotiamp+: a skin colour's value in the colour theme on, as its CSS has it */
+  _namedColorRgb(id: string): [number, number, number] | null {
+    const color = this.getColor(id);
+    if (!color) return null;
+    return this._getGammaGroup(color.getGammaGroup() || "Text").transformColor2rgb(this._colorValue(color.getValue()));
+  }
+
+  // Spotiamp+: as Winamp's colour themes: the group's values plus the set's
+  // "General" ones; General's alone for no group or one the set lacks
+  _getGammaGroup(id: string): GammaGroup {
+    const lower = (id || "").toLowerCase();
+    const cached = this._gammaCache.get(lower);
+    if (cached) return cached;
+    const named = (name: string) =>
+      findLast(this._activeGammaSet, (gammaGroup) => String(gammaGroup.getId() ?? "").toLowerCase() === name) ?? null;
+    const general = named("general");
+    const own = lower && lower !== "general" ? named(lower) : null;
+    const found = GammaGroup.combine(own, general);
+    this._gammaCache.set(lower, found);
+    return found;
   }
 
   _getGammaGroupDummy() {
@@ -541,7 +571,8 @@ export class UIRoot {
     // );
     // css of colors
     for (const color of this._colors) {
-      const groupId = color.getGammaGroup();
+      // (Spotiamp+: a colour with no group of its own is in "Text", as Wasabi's)
+      const groupId = color.getGammaGroup() || "Text";
       const gammaGroup = this._getGammaGroup(groupId);
       const url = gammaGroup.transformColor(this._colorValue(color.getValue()));
       cssRules.push(`  ${color.getCSSVar()}: ${url};`);
@@ -587,8 +618,10 @@ export class UIRoot {
         continue; // some dummy ttf (eg Arial) doesn't has url.
       }
       // src: url(data:font/truetype;charset=utf-8;base64,${ttf.getBase64()}) format('truetype');
+      // (Spotiamp+: under the name its texts use, so a window that takes the
+      // skin's look (look.js) finds it)
       cssRules.push(`@font-face {
-        font-family: '${ttf.getId()}';
+        font-family: '${String(ttf._fontFace?.family ?? ttf.getId()).replace(/["']/g, "")}';
         src: url(${ttf.getBase64()}) format('truetype');
         font-weight: normal;
         font-style: normal;
@@ -760,6 +793,15 @@ export class UIRoot {
     for (const container of this.getContainers()) {
       container.draw();
       this._div.appendChild(container.getDiv());
+    }
+    // (Spotiamp+: the frames laid out now, all in place, before the
+    // scripts start and ask how big things are; outer ones first)
+    const layOut = (obj: any) => {
+      obj?._layoutFrame?.();
+      for (const child of obj?._children ?? []) layOut(child);
+    };
+    for (const container of this.getContainers()) {
+      for (const layout of container._layouts ?? []) layOut(layout);
     }
   }
 

@@ -58,7 +58,12 @@ export default class ConfigItem extends BaseObject {
     // configAttribute_system_repeatType = ciMisc.getAttribute("repeat");
     let cfg = this._attributes[att_name];
     if (!cfg) {
-      return this.newattribute(att_name, "0");
+      // (Spotiamp+: asked for before the skin's script has made it (a
+      // button's cfgattrib, read with the XML): it's there, with no value
+      // yet, so the script's newAttribute still gives it its default;
+      // Webamp set it to "0" here, and Big Bento's playlist never enlarged)
+      cfg = new ConfigAttribute(this, att_name);
+      this._attributes[att_name] = cfg;
     }
     return cfg;
   }

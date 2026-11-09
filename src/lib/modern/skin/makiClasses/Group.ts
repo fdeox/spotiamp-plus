@@ -53,12 +53,52 @@ export default class Group extends Movable {
 
     super.init();
 
-    for (const systemObject of this._systemObjects) {
-      systemObject.init();
-    }
+    // Spotiamp+: as Wasabi: its objects first, then its scripts
     for (const child of this._children) {
       child.init();
     }
+    for (const systemObject of this._systemObjects) {
+      systemObject.init();
+      this._scriptStarted(systemObject);
+    }
+    // Spotiamp+: told each time its size changes, whatever changed it (a
+    // frame laying it out, its window shown or resized), as in Wasabi
+    const root = this._uiRoot as any;
+    root._groupSizes ??= new ResizeObserver((entries) => {
+      const changed = entries.map((entry) => entry.target as HTMLElement);
+      // told after this frame's layout, so a script resizing things from
+      // its onResize starts the next round, not a loop inside this one
+      requestAnimationFrame(() => {
+        for (const el of changed) {
+          // a hidden one keeps its size, as a hidden window does
+          if (!el.isConnected || el.getClientRects().length === 0) continue;
+          (el as any).__group?.doResize();
+        }
+      });
+    });
+    (this._div as any).__group = this;
+    root._groupSizes.observe(this._div);
+  }
+
+  // a script of this group has just started (XuiElement tells it its params)
+  _scriptStarted(systemObject: SystemObject) {}
+
+  // Spotiamp+: as Wasabi, where each object is a window inside its group's,
+  // nothing shows outside a group along a side whose size it has (Winamp
+  // Modern's closed drawer); a group given no size is as big as it needs
+  _renderWidth() {
+    super._renderWidth();
+    this._renderClip();
+  }
+  _renderHeight() {
+    super._renderHeight();
+    this._renderClip();
+  }
+  _renderClip() {
+    if (this._isLayout) return;
+    const known = (relat, size) => relat == "1" || (size ?? 0) > 0;
+    this._div.style.overflowX = known(this._relatw, this._w) ? "clip" : "visible";
+    this._div.style.overflowY = known(this._relath, this._h) ? "clip" : "visible";
   }
 
   dispose() {
@@ -126,6 +166,8 @@ export default class Group extends Movable {
 
   // This shadows `getheight()` on GuiObj
   getheight(): number {
+    const rel = this._relativeSize("h");
+    if (rel != null) return rel;
     const h = super.getheight();
     if (h == 0 && this._allowZeroSize) {
       return h;
@@ -139,6 +181,8 @@ export default class Group extends Movable {
 
   // This shadows `getwidth()` on GuiObj
   getwidth(): number {
+    const rel = this._relativeSize("w");
+    if (rel != null) return rel;
     if (this._autowidthsource) {
       const widthSource = this.findobject(this._autowidthsource);
       if (widthSource) {
@@ -163,15 +207,6 @@ export default class Group extends Movable {
     } else {
       this.setBackgroundImage(null);
     }
-  }
-
-  async doResize() {
-    this._uiRoot.vm.dispatch(this, "onresize", [
-      { type: "INT", value: 0 },
-      { type: "INT", value: 0 },
-      { type: "INT", value: this.getwidth() },
-      { type: "INT", value: this.getheight() },
-    ]);
   }
 
   /**

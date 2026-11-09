@@ -55,21 +55,22 @@ export default class Vm {
   _burstTurn: boolean = false;
   _burstWarned: boolean = false;
 
-  async dispatch(
+  dispatch(
     object: BaseObject,
     event: string,
     args: Variable[] = [],
     out?: { value?: any }
-  ): number {
+  ): Promise<number> {
     // Spotiamp+: a script whose event sets itself off again and again is
-    // stopped there, not left to run the page out of stack
-    if (this._dispatchDepth > 200) return 0;
+    // stopped there, not left to run the page out of stack (the events
+    // running inside one another now, not all the ones still to finish)
+    if (this._dispatchDepth > 200) return Promise.resolve(0);
     // and events set off from events round and round, the page never
     // getting a turn (scripts answering each other), cut off
     if (++this._burst > 20000) {
       if (!this._burstWarned) console.warn(`events going round and round: ${event} and the rest left out`);
       this._burstWarned = true;
-      return 0;
+      return Promise.resolve(0);
     }
     if (!this._burstTurn) {
       this._burstTurn = true;
@@ -82,7 +83,7 @@ export default class Vm {
     }
     this._dispatchDepth++;
     try {
-      return await this._dispatch(object, event, args, out);
+      return this._dispatch(object, event, args, out);
     } finally {
       this._dispatchDepth--;
     }

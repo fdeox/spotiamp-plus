@@ -37,7 +37,9 @@ export default class ConfigAttribute extends BaseObject {
 
   getdata(): string {
     // console.log('getData:',this._id, '=',this._configItem.getValue(this._id))
-    return this._configItem.getValue(this._id);
+    // (Spotiamp+: one with no value yet is "", as Winamp's: undefined stopped
+    // the script asking, Big Bento's suicore among them)
+    return this._configItem.getValue(this._id) ?? "";
   }
   setdata(value: string) {
     // console.log('setData:',this._id, '=',value)

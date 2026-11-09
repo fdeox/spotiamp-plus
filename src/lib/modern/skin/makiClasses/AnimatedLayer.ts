@@ -6,6 +6,8 @@ import Layer from "./Layer";
 export default class AnimatedLayer extends Layer {
   static GUID = "6b64cd274c4b5a26a7e6598c3a49f60c";
   _vertical: boolean = true;
+  // Spotiamp+: whether the skin said which way its frames run
+  _directionSet: boolean = false;
   _currentFrame: number = 0;
   _startFrame: number = 0;
   _endFrame: number = 0;
@@ -44,6 +46,7 @@ export default class AnimatedLayer extends Layer {
         // strip of cells in the given bitmap.
         this._frameHeight = num(value);
         this._vertical = true;
+        this._directionSet = true;
         break;
       case "framewidth":
         // (int) The height in pixels of each cell of animation.
@@ -51,6 +54,7 @@ export default class AnimatedLayer extends Layer {
         // strip of cells in the given bitmap.
         this._frameWidth = num(value);
         this._vertical = false;
+        this._directionSet = true;
         break;
       case "autoplay":
         this._autoPlay = toBool(value);
@@ -212,8 +216,21 @@ export default class AnimatedLayer extends Layer {
 
   init() {
     super.init();
+    // (Spotiamp+: as Wasabi (animlayer.cpp onInit): a frame is the layer's own
+    // size, and the frames run across when the picture is wider than it,
+    // else down: Classic Modern's equalizer bars run across)
     if (!this._frameHeight) {
       this._frameHeight = this.getheight();
+    }
+    if (!this._frameWidth) {
+      this._frameWidth = this.getwidth();
+    }
+    if (!this._directionSet) {
+      const bitmap = this._image ? this._uiRoot.getBitmap(this._image) : null;
+      if (bitmap) {
+        if (this._w && bitmap.getWidth() !== this._w) this._vertical = false;
+        else if (this._h && bitmap.getHeight() !== this._h) this._vertical = true;
+      }
     }
     if (this._endFrame == 0 && this.getlength() > 0) {
       this._endFrame = this.getlength() - 1;

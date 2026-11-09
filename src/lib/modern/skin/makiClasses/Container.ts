@@ -93,6 +93,23 @@ export default class Container extends XmlObj {
     this._uiRoot.vm.dispatch(this, "onswitchtolayout", [
       { type: "OBJECT", value: this.getcurlayout() },
     ]);
+    this._inited = true;
+    this._tellLayoutShown();
+  }
+
+  // Spotiamp+: the layout Winamp last told it was shown (onSetVisible(1)),
+  // when the window opened, switched to it or came back; it's told it's
+  // hidden (0) when it goes. Only once the scripts are there to hear it.
+  _inited: boolean = false;
+  _shownLayout: any = null;
+  _tellLayoutShown() {
+    if (!this._inited) return;
+    const now = this._visible ? this._activeLayout : null;
+    if (now === this._shownLayout) return;
+    const before = this._shownLayout;
+    this._shownLayout = now;
+    before?.onsetvisible?.(false);
+    now?.onsetvisible?.(true);
   }
 
   dispose() {
@@ -202,10 +219,12 @@ export default class Container extends XmlObj {
     }
     this._visible = true;
     this._renderLayout();
+    this._tellLayoutShown();
   }
   hide() {
     this._visible = false;
     this._renderLayout();
+    this._tellLayoutShown();
   }
   toggle() {
     if (!this._visible) this.show();
@@ -294,6 +313,7 @@ export default class Container extends XmlObj {
     this._clearCurrentLayout();
     this._activeLayout = layout;
     this._renderLayout();
+    this._tellLayoutShown();
   }
 
   dispatchAction(

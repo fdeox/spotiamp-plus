@@ -6,9 +6,14 @@
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
+  import { watchWindowActive } from "$lib/window-active.js";
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
+
+  // lit while this window is in front, dim otherwise (lib/window-active.js)
+  let windowActive = $state(true);
+  onMount(() => watchWindowActive((active) => (windowActive = active)));
 
   // Classic Winamp presets, dB per band (60,170,310,600,1k,3k,6k,12k,14k,16k)
   const PRESETS = {
@@ -76,70 +81,114 @@
     invoke("eq_auto_delete", { scope }).catch(() => {});
   }
 
-  // window-space geometry (px). Band faders every 18px starting at x=78.
+  // window-space geometry (px), Winamp's: band faders every 18px from x=78,
+  // each 63px tall from y=38, its thumb 11px with 52px to travel
   const BAND_X = [78, 96, 114, 132, 150, 168, 186, 204, 222, 240];
-  const WELL_TOP = 37;
-  const WELL_H = 64;
+  const WELL_H = 63;
   const THUMB_H = 11;
-  const TRAVEL = WELL_H - THUMB_H; // 53
+  const TRAVEL = 52;
 
-  // dB (+12..-12) -> one of the 28 EQMAIN slider background frames (0 = top/green).
+  // dB (+12..-12) as Winamp's slider position: 0 at the top (+12 dB), 63 at
+  // the bottom, its flat 31 (Winamp's dB is (31.5 - pos) / 31.5 * 12)
   /** @param {number} db */
-  function dbToV(db) {
-    let v = Math.round(((12 - db) / 24) * 27);
-    return Math.max(0, Math.min(27, v));
+  function winampPos(db) {
+    return Math.max(0, Math.min(63, Math.round(31.5 - (db * 31.5) / 12 - 1e-6)));
   }
+  // the fader's background, one of EQMAIN's 28 frames: 27 (red) at the top,
+  // 0 (green) at the bottom
   /** @param {number} db */
   function frameBg(db) {
-    const v = dbToV(db);
-    const x = -(13 + (v % 14) * 15);
-    const y = -(v < 14 ? 164 : 229);
+    const n = 27 - Math.floor((winampPos(db) * 28) / 64);
+    const x = -(13 + (n % 14) * 15);
+    const y = -(n < 14 ? 164 : 229);
     return `${x}px ${y}px`;
   }
-  // smooth thumb position (unlike the snapped colour frame)
+  // the thumb, from the fader's top
   /** @param {number} db */
   function thumbTop(db) {
-    let f = (12 - db) / 24;
-    f = Math.max(0, Math.min(1, f));
-    return f * TRAVEL;
+    return WELL_H - 12 - Math.floor(((63 - winampPos(db)) * TRAVEL) / 64);
   }
 
-  // --- EQ response spline (the little animated curve in the top graph box) ---
-  // Classic Winamp draws it in a compact 19px-tall preview over the grid, NOT
-  // over the full fader travel, and colours it top=green .. bottom=red.
-  const SP_X0 = 88; // first grid column
-  const SP_STEP = 12; // grid columns are 12px apart
-  const SP_TOP = 17; // +12 dB
-  const SP_BOT = 34; // -12 dB
-  /** @param {number} db */
-  function splineY(db) {
-    return SP_TOP + ((12 - db) / 24) * (SP_BOT - SP_TOP);
-  }
-  /** @param {{ x: number, y: number }[]} pts */
-  function catmullRom(pts) {
-    if (pts.length < 2) return "";
-    let d = `M ${pts[0].x} ${pts[0].y}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i - 1] ?? pts[i];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[i + 2] ?? p2;
-      const c1x = p1.x + (p2.x - p0.x) / 6;
-      const c1y = p1.y + (p2.y - p0.y) / 6;
-      const c2x = p2.x - (p3.x - p1.x) / 6;
-      const c2y = p2.y - (p3.y - p1.y) / 6;
-      d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  // --- the graph (the little curve in the top box), as Winamp draws it ---
+  // From the skin's EQMAIN.BMP: the graph's background, the preamp line at
+  // the preamp's height and the bands' curve through them 12 px apart, each
+  // pixel row in the skin's own line colour for it. What the bitmap hasn't
+  // got stays as the window has it there (Winamp copies nothing for it).
+  const GRAPH_W = 113;
+  const GRAPH_H = 19;
+  /** @type {HTMLCanvasElement | undefined} */
+  let graphCanvas = $state();
+  /** @type {HTMLDivElement | undefined} */
+  let bgElement = $state();
+  /** @type {{ bg: HTMLCanvasElement, preampLine: HTMLCanvasElement, colors: HTMLCanvasElement } | null} */
+  let graphSkin = $state(null);
+
+  async function loadGraphSkin() {
+    // the window's background as drawn, its address resolved (a built-in
+    // skin's is relative to the stylesheet)
+    const value = bgElement ? getComputedStyle(bgElement).backgroundImage : "";
+    const url = value.match(/^url\(["']?(.*?)["']?\)$/)?.[1];
+    if (!url) return (graphSkin = null);
+    const img = new Image();
+    img.src = url;
+    try {
+      await img.decode();
+    } catch {
+      return (graphSkin = null);
     }
-    return d;
+    /** what the bitmap has of x,y w*h (the rest transparent) @param {number} x @param {number} y @param {number} w @param {number} h */
+    const part = (x, y, w, h) => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const cw = Math.min(w, img.width - x);
+      const ch = Math.min(h, img.height - y);
+      if (cw > 0 && ch > 0) /** @type {CanvasRenderingContext2D} */ (c.getContext("2d")).drawImage(img, x, y, cw, ch, 0, 0, cw, ch);
+      return c;
+    };
+    graphSkin = { bg: part(0, 294, GRAPH_W, GRAPH_H), preampLine: part(0, 314, GRAPH_W, 1), colors: part(115, 294, 1, GRAPH_H) };
   }
-  const splinePath = $derived.by(() => {
-    const pts = bands.map((db, i) => ({ x: SP_X0 + i * SP_STEP, y: splineY(db) }));
-    const ext = [
-      { x: SP_X0 - 2, y: pts[0].y },
-      ...pts,
-      { x: SP_X0 + 9 * SP_STEP + 2, y: pts[pts.length - 1].y },
-    ];
-    return catmullRom(ext);
+
+  /**
+   * The curve's height at `frame` (1 = the first band, 10 the last) through
+   * `keys` (a key before and after the bands, copies of the end ones): a
+   * cubic Hermite between neighbouring keys, its slopes 0.45 times the
+   * difference of the keys on either side (a Kochanek-Bartels spline of
+   * tension 0.1, as Winamp's).
+   * @param {number[]} keys @param {number} frame
+   */
+  function curveAt(keys, frame) {
+    const i = Math.floor(frame);
+    const at = (/** @type {number} */ k) => keys[(k + keys.length) % keys.length];
+    const p0 = at(i), p1 = at(i + 1);
+    const m0 = 0.45 * (p1 - at(i - 1));
+    const m1 = 0.45 * (at(i + 2) - p0);
+    const s = frame - i, s2 = s * s, s3 = s2 * s;
+    return (2 * s3 - 3 * s2 + 1) * p0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * p1 + (s3 - s2) * m1;
+  }
+
+  $effect(() => {
+    const canvas = graphCanvas;
+    if (!canvas) return;
+    const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+    ctx.clearRect(0, 0, GRAPH_W, GRAPH_H);
+    const skin = graphSkin;
+    // (read before any return, so the effect follows them)
+    const pre = winampPos(preamp);
+    const keys = bands.map((db) => (winampPos(db) * 19) / 64);
+    if (!skin) return;
+    ctx.drawImage(skin.bg, 0, 0);
+    ctx.drawImage(skin.preampLine, 0, GRAPH_H - 1 - Math.trunc((pre * 19) / 64));
+    keys.unshift(keys[0]);
+    keys.push(keys[keys.length - 1]);
+    ctx.fillStyle = /** @type {CanvasPattern} */ (ctx.createPattern(skin.colors, "repeat-x"));
+    let last = -1;
+    for (let x = 0; x < 109; x++) {
+      const y = Math.max(0, Math.min(GRAPH_H - 1, Math.trunc(curveAt(keys, 1 + x / 12))));
+      const top = last === -1 ? y : Math.min(y, last);
+      ctx.fillRect(2 + x, top, 1, 1 + (last === -1 ? 0 : Math.abs(last - y)));
+      last = y;
+    }
   });
 
   function push() {
@@ -261,9 +310,12 @@
   let shapeTick = $state(0);
   onMount(() => {
     const redo = () => shapeTick++;
+    loadGraphSkin();
+    window.addEventListener(SKIN_APPLIED, loadGraphSkin);
     window.addEventListener(SKIN_APPLIED, redo);
     window.addEventListener("resize", redo);
     return () => {
+      window.removeEventListener(SKIN_APPLIED, loadGraphSkin);
       window.removeEventListener(SKIN_APPLIED, redo);
       window.removeEventListener("resize", redo);
     };
@@ -276,9 +328,9 @@
 
 <!-- --zoom stays the body's 1: the UI scale is a CSS zoom on the whole page,
      and scaling the sprites here too would double it. -->
-<div class="eq">
+<div class="eq" class:inactive={!windowActive}>
   <!-- full-window skin background -->
-  <div class="eq-bg"></div>
+  <div class="eq-bg" bind:this={bgElement}></div>
 
   <!-- titlebar (draggable); the X is baked into the sprite, we just add a hit area -->
   <div class="eq-titlebar" use:makeEqDraggable></div>
@@ -402,46 +454,8 @@
     </div>
   {/each}
 
-  <!-- live EQ response spline in the top preview box, rainbow-coloured by
-       height like classic Winamp (green = boost, red = cut) -->
-  <svg class="eq-curve" viewBox="0 0 275 116" preserveAspectRatio="none">
-    <defs>
-      <linearGradient
-        id="eqspline"
-        gradientUnits="userSpaceOnUse"
-        x1="0"
-        y1={SP_TOP}
-        x2="0"
-        y2={SP_BOT}
-      >
-        <stop offset="0%" stop-color="#2a9a16" />
-        <stop offset="25%" stop-color="#a4e238" />
-        <stop offset="45%" stop-color="#efdc31" />
-        <stop offset="65%" stop-color="#e09228" />
-        <stop offset="85%" stop-color="#ef5221" />
-        <stop offset="100%" stop-color="#d3221b" />
-      </linearGradient>
-    </defs>
-    <!-- preamp reference line: the flat WHITE line behind the band spline that
-         rides up and down with the preamp, exactly like classic Winamp -->
-    <line
-      x1={SP_X0 - 2}
-      y1={splineY(preamp)}
-      x2={SP_X0 + 9 * SP_STEP + 2}
-      y2={splineY(preamp)}
-      stroke="#ffffff"
-      stroke-width="1"
-      opacity="0.85"
-    />
-    <path
-      d={splinePath}
-      fill="none"
-      stroke="url(#eqspline)"
-      stroke-width="1"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </svg>
+  <!-- the graph, drawn as Winamp draws it (see the script) -->
+  <canvas class="eq-graph" width="113" height="19" bind:this={graphCanvas}></canvas>
 </div>
 
 <style>
@@ -495,6 +509,10 @@
     background-image: var(--skin-eqmain);
     background-repeat: no-repeat;
     background-position: 0 -134px;
+  }
+  /* another window in front: EQMAIN's dim titlebar, as Winamp's */
+  .eq.inactive .eq-titlebar {
+    background-position: 0 -149px;
   }
   .eq-close {
     position: absolute;
@@ -584,20 +602,21 @@
     background: #4a4a6a;
   }
 
-  .eq-curve {
+  .eq-graph {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 275px;
-    height: 116px;
+    left: 86px;
+    top: 17px;
+    width: 113px;
+    height: 19px;
     pointer-events: none;
+    image-rendering: pixelated;
   }
 
   .fader {
     position: absolute;
-    top: 37px;
+    top: 38px;
     width: 14px;
-    height: 64px;
+    height: 63px;
     background-image: var(--skin-eqmain);
     background-repeat: no-repeat;
     cursor: pointer;

@@ -146,7 +146,9 @@
       px[o + 2] = c[2];
       px[o + 3] = 255;
     };
-    if (mode === "off") {
+    // off, or nothing playing: the skin's own picture shows there, as on
+    // Winamp, which paints the box only while it plays (Nucleo's has art in it)
+    if (mode === "off" || (!visualizer.running && visualizer.clearAfterStop)) {
       ctx.clearRect(0, 0, W, H);
       return;
     }

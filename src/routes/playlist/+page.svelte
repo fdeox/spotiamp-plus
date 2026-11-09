@@ -22,6 +22,11 @@
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { ask, message } from "@tauri-apps/plugin-dialog";
+  import { watchWindowActive } from "$lib/window-active.js";
+
+  // lit while this window is in front, dim otherwise (lib/window-active.js)
+  let windowActive = $state(true);
+  onMount(() => watchWindowActive((active) => (windowActive = active)));
 
   /** @type {{data: import('./$types').PageData}} */
   const { data: playlistSettings } = $props();
@@ -1887,6 +1892,7 @@
 
 <span
   role="presentation"
+  class:inactive={!windowActive}
   style:--playlist-w={playlist.width}
   style:--playlist-h={playlist.height}
   style:--track-row-height={`${PLAYLIST_ROW_HEIGHT}px`}
@@ -2158,8 +2164,8 @@
        draws them: the running time (selected/total) above, the song's time
        below, around the colon the skin paints there -->
   <div class="pl-corner">
-    <TextTicker unavailable={false} text={runningTime} textOverride={undefined} x={7} y={10} chars={17} />
-    <MiniTime minutes={songTime.m} seconds={songTime.s} x={66} y={23} />
+    <TextTicker unavailable={false} text={runningTime.slice(0, 18).padEnd(18)} textOverride={undefined} x={7} y={10} chars={18} />
+    <MiniTime minutes={songTime.m} seconds={songTime.s} x={66} y={23} clear={playlist.playState === "stopped"} />
   </div>
 
   <div class="draggable-corner" use:makeResizable></div>
@@ -2264,6 +2270,9 @@
     height: calc((var(--playlist-h) - 2) * 2 * var(--track-row-height) * var(--zoom));
     overflow-x: hidden;
     overflow-y: scroll;
+    /* the whole list in the skin's PLEDIT.TXT NormalBG, rows or not, as
+       Winamp fills it (an empty list showed the window's black) */
+    background: var(--skin-plbg, #000);
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
@@ -2515,6 +2524,19 @@
     --y: 0;
     --sprite-x: calc((var(--x) - 1) * 25px);
     background-position: -153px 0px;
+  }
+  /* another window in front: PLEDIT's dim titlebar, 21 px lower, as Winamp's */
+  .inactive > .playlist-tl-sprite {
+    background-position: 0px -21px;
+  }
+  .inactive > .playlist-t-sprite {
+    background-position: -127px -21px;
+  }
+  .inactive > .playlist-title-sprite {
+    background-position: -26px -21px;
+  }
+  .inactive > .playlist-tr-sprite {
+    background-position: -153px -21px;
   }
 
   .playlist-l-sprite {

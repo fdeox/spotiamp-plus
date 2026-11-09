@@ -45,6 +45,9 @@ colorthemeslist > select {
 }
 .pl > .content-list > div {
   display: flex;
+  /* Spotiamp+: Winamp's playlist font (Arial), never the browser's serif */
+  font-family: Arial, sans-serif;
+  font-size: 11px;
 }
 .pl > .content-list div>span:first-child{
   /* color:red; */

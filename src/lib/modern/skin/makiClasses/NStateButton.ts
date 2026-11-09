@@ -44,7 +44,8 @@ export default class NStateButton extends ToggleButton {
     // super._cfgAttribChanged(newValue)
 
     const inewValue = parseInt(newValue);
-    const newIndex = this._states.indexOf(inewValue);
+    // (Spotiamp+: a value none of its states has shows its first)
+    const newIndex = Math.max(0, this._states.indexOf(inewValue));
     if (newIndex != this._stateIndex) {
       this._stateIndex = newIndex;
       this._updateBitmaps();

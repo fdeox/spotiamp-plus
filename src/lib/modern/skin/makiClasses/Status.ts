@@ -48,6 +48,8 @@ export default class Status extends GuiObj {
 
   // This shadows `getheight()` on GuiObj
   getheight(): number {
+    const rel = this._relativeSize("h");
+    if (rel != null) return rel;
     if (this._h) {
       return this._h;
     }
@@ -60,6 +62,8 @@ export default class Status extends GuiObj {
 
   // This shadows `getwidth()` on GuiObj
   getwidth(): number {
+    const rel = this._relativeSize("w");
+    if (rel != null) return rel;
     if (this._w) {
       return this._w;
     }

@@ -28,6 +28,28 @@ import ColorThemesList from "./ColorThemesList";
 import { UIRoot } from "../UIRoot";
 import AlbumArt from "./makiClasses/AlbumArt";
 import WindowHolder from "./makiClasses/WindowHolder";
+import Edit from "./makiClasses/Edit";
+import TitleBox from "./makiClasses/TitleBox";
+
+// Spotiamp+: what a groupdef takes from the one it's defined over (Wasabi's
+// GROUP_INHERIT_*): its objects, its scripts, its params
+const INHERIT_XUI = 1;
+const INHERIT_SCRIPTS = 2;
+const INHERIT_PARAMS = 4;
+const INHERIT_ALL = INHERIT_XUI | INHERIT_SCRIPTS | INHERIT_PARAMS;
+function inheritanceOf(value: string | undefined): number {
+  if (value == null || value === "") return 0;
+  if (value === "1") return INHERIT_ALL;
+  if (value === "0") return 0;
+  let flags = 0;
+  for (const part of value.split(/[;,\s]+/)) {
+    const p = part.toLowerCase();
+    if (p === "xui") flags |= INHERIT_XUI;
+    if (p === "scripts") flags |= INHERIT_SCRIPTS;
+    if (p === "params") flags |= INHERIT_PARAMS;
+  }
+  return flags;
+}
 import Grid from "./makiClasses/Grid";
 import ProgressGrid from "./makiClasses/ProgressGrid";
 import WasabiTitle from "./makiClasses/WasabiTitle";
@@ -267,7 +289,40 @@ export default class SkinEngineWAL extends SkinEngine {
     }
   }
 
+  /**
+   * Spotiamp+: Winamp's variables in a skin's XML values, as Wasabi worked
+   * them out (PublicVarManager::translate): a copy of the node with them in,
+   * the node itself left as it is (a groupdef's are used again).
+   */
+  _publicVars(node: XmlElement, parent: any): XmlElement {
+    const tag = node.name.toLowerCase();
+    let changed: { [key: string]: string } | null = null;
+    for (const [key, value] of Object.entries(node.attributes)) {
+      if (typeof value !== "string" || !/[@:]/.test(value)) continue;
+      let v = value;
+      // gen_ff's own: the whole value only. A window for the Library is
+      // shown or not as Spotiamp+'s Library is (its default left alone)
+      if (v.toUpperCase() === "@HAVE_LIBRARY@" && !(tag === "container" && key.toLowerCase() === "default_visible")) v = "1";
+      // a script's param is worked out without its place (translate_nocontext)
+      if (tag !== "script" && /@(GROUPID|CONTAINERID|COMPONENTNAME)@|:groupid|:containerid/i.test(v)) {
+        let container = null;
+        for (let o = parent; o && !container; o = o._parent) if (o instanceof Container) container = o;
+        const groupId = parent && !(parent instanceof Container) ? parent._id : null;
+        const name = container ? container._name ?? container.getname?.() : null;
+        if (name != null) v = v.replace(/@COMPONENTNAME@/gi, name);
+        if (container?._id != null) v = v.replace(/@CONTAINERID@|:containerid/gi, container._originalId ?? container._id);
+        if (groupId != null) v = v.replace(/@GROUPID@|:groupid/gi, groupId);
+      }
+      if (v !== value) (changed ??= { ...node.attributes })[key] = v;
+    }
+    if (!changed) return node;
+    const copy = Object.create(node);
+    copy.attributes = changed;
+    return copy;
+  }
+
   async traverseChild(node: XmlElement, parent: any) {
+    node = this._publicVars(node, parent);
     const tag = node.name.toLowerCase();
     await this._implicitBitmaps(node);
     switch (tag) {
@@ -332,6 +387,11 @@ export default class SkinEngineWAL extends SkinEngine {
         return this.script(node, parent);
       case "scripts":
         return this.scripts(node, parent);
+      case "wasabi:titlebox":
+        return this.titleBox(node, parent);
+      case "edit":
+        // Spotiamp+: a line to type in (Big Bento's playlist search)
+        return this.newGui(Edit, node, parent);
       case "text":
         return this.text(node, parent);
       case "menu":
@@ -474,11 +534,20 @@ export default class SkinEngineWAL extends SkinEngine {
   /* Individual Element Parsers */
 
   async wasabiXml(node: XmlElement, parent: any) {
+    this._noteSkinVersion(node);
     await this.traverseChildren(node, parent);
   }
 
   async winampAbstractionLayer(node: XmlElement, parent: any) {
+    this._noteSkinVersion(node);
     await this.traverseChildren(node, parent);
+  }
+
+  // Spotiamp+: skin.xml's root (the first read) says the skin's version
+  _noteSkinVersion(node: XmlElement) {
+    if (this._uiRoot._skinVersion == null) {
+      this._uiRoot._skinVersion = parseFloat(node.attributes.version) || 0;
+    }
   }
 
   async elements(node: XmlElement, parent: any) {
@@ -511,6 +580,28 @@ export default class SkinEngineWAL extends SkinEngine {
     const ifileExtractor: FileExtractor = this._uiRoot._fileExtractor;
     const fileExtractor: FileExtractor = new PathFileExtractor();
     this._uiRoot.setFileExtractor(fileExtractor);
+  }
+
+  // Spotiamp+: Wasabi:TitleBox (TitleBox.ts): its title parts and box from
+  // their groupdefs, the content group the skin names inside the box
+  async titleBox(node: XmlElement, parent: any) {
+    const box = new TitleBox(this._uiRoot);
+    box.setXmlAttributes(node.attributes);
+    this.addToGroup(box, parent);
+    const part = (id: string, attrs: { [k: string]: string } = {}) =>
+      this.group(new XmlElement("group", { id, x: "0", y: "0", ...attrs }), box);
+    box._left = await part("wasabi.titlebox.left.group");
+    box._center = await part("wasabi.titlebox.center.group");
+    box._right = await part("wasabi.titlebox.right.group");
+    box._main = await part("wasabi.titlebox.main.group", { w: "0", h: "0", relatw: "1", relath: "1" });
+    const holder = box._main.findobject("titlebox.content");
+    if (holder && box._contentId) {
+      box._content = await this.group(
+        new XmlElement("group", { id: box._contentId, x: "0", y: "0", w: "0", h: "0", relatw: "1", relath: "1" }),
+        holder
+      );
+    }
+    return box;
   }
 
   async dynamicXuiElement(node: XmlElement, parent: any) {
@@ -611,10 +702,15 @@ export default class SkinEngineWAL extends SkinEngine {
           // parent
           frame
         );
+        // (Spotiamp+: which side each is, for the frame's layout)
+        if (direction === "left" || direction === "top") frame._first = pair;
+        else frame._second = pair;
         i++;
         // Element.addChild(content);
       }
     }
+    // (Spotiamp+: the groups are in; the frame lays them out)
+    frame._layoutFrame?.();
 
     return frame;
   }
@@ -978,17 +1074,46 @@ export default class SkinEngineWAL extends SkinEngine {
 
   async maybeApplyGroupDefId(group: GuiObj, groupdef_id: string) {
     const groupDef = this._uiRoot.getGroupDef(groupdef_id);
-    if (groupDef != null) {
-      group.setXmlAttributes(groupDef.attributes);
-      if (groupDef.attributes.inherit_group) {
-        await this.maybeApplyGroupDefId(
-          group,
-          groupDef.attributes.inherit_group
-        );
-      }
-      await this.traverseChildren(groupDef, group);
-      // TODO: Maybe traverse groupDef's children?
+    if (groupDef != null) await this.applyGroupDef(group, groupDef, INHERIT_ALL, 0);
+  }
+
+  /**
+   * Spotiamp+: a groupdef put on a group as Wasabi's SkinParser::parseGroup:
+   * first what it inherits (the groupdef it was defined over, or its
+   * inherit_group's), then its own params over those and its content after
+   * theirs, each only as far as `flags` lets.
+   */
+  async applyGroupDef(group: GuiObj, groupDef: XmlElement, flags: number, depth: number) {
+    if (depth > 16) return;
+    const attr = (name: string) => {
+      const key = Object.keys(groupDef.attributes).find((k) => k.toLowerCase() === name);
+      return key == null ? undefined : groupDef.attributes[key];
+    };
+    const content = attr("inherit_content");
+    let other = attr("inherit_group");
+    const params = attr("inherit_params");
+    let inherits = inheritanceOf(content);
+    if (other && !content) inherits = INHERIT_ALL;
+    if (params == null || params === "" || Number(params) !== 0) inherits |= INHERIT_PARAMS;
+    if (other && other.toLowerCase() === String(attr("id") ?? "").toLowerCase()) other = undefined;
+    if (inherits) {
+      const prior = other ? this._uiRoot.getGroupDef(other) : (groupDef as any)._ancestor;
+      if (prior && prior !== groupDef) await this.applyGroupDef(group, prior, inherits, depth + 1);
     }
+    if (flags & INHERIT_PARAMS) group.setXmlAttributes(groupDef.attributes);
+    if (!(flags & (INHERIT_XUI | INHERIT_SCRIPTS))) return;
+    if ((flags & INHERIT_XUI) && (flags & INHERIT_SCRIPTS)) {
+      await this.traverseChildren(groupDef, group);
+      return;
+    }
+    const wanted = groupDef.children.filter((child: any) => {
+      if (!(child instanceof XmlElement)) return false;
+      const isScript = child.name.toLowerCase() === "script";
+      return isScript ? !!(flags & INHERIT_SCRIPTS) : !!(flags & INHERIT_XUI);
+    });
+    const only = Object.create(groupDef);
+    only.children = wanted;
+    await this.traverseChildren(only, group);
   }
 
   async layout(node: XmlElement, parent: any) {

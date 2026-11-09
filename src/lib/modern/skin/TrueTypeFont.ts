@@ -1,6 +1,7 @@
 // @ts-nocheck: Webamp Modern's code, written for a looser TypeScript setup than Spotiamp+'s
 import * as Utils from "../utils";
 import ImageManager from "./ImageManager";
+import { skinFace } from "./wasabiText";
 
 /**
  * Spotiamp+: a font a skin names that it doesn't have, as Winamp found it in
@@ -57,8 +58,15 @@ export default class TrueTypeFont {
     return this._id || "";
   }
 
+  // (Spotiamp+: a family CSS can match: a list as it is, one name quoted
+  // once; a loaded face's family is already quoted when it has spaces, and
+  // quoting it again made every skin font fall back to Times)
   getFontFamily() {
-    return `'${this._inlineFamily || this._fontFace?.family || this.getId()}'`;
+    const inline = this._inlineFamily;
+    if (inline) return /[,'"]/.test(inline) ? inline : `"${inline}"`;
+    const face = this._fontFace?.family;
+    if (face) return /^["']/.test(face) ? face : `"${face}"`;
+    return `"${String(this.getId()).replace(/"/g, "")}"`;
   }
 
   dispose() {
@@ -75,6 +83,25 @@ export default class TrueTypeFont {
     return this._imageManager != null;
   }
 
+  // Spotiamp+: the file loaded for Windows to draw with (wasabiText.ts), once;
+  // its face as Winamp named it, "" when it can't be
+  _windowsFace: Promise<string> | null = null;
+  windowsFace(): Promise<string> {
+    if (!this._windowsFace) {
+      this._windowsFace = (async () => {
+        if (!this._imageManager || !this._file) return "";
+        try {
+          const url = await this._imageManager.getUrl(this._file);
+          if (!url) return "";
+          return await skinFace(await (await fetch(url)).arrayBuffer());
+        } catch {
+          return "";
+        }
+      })();
+    }
+    return this._windowsFace;
+  }
+
   // Ensure we've loaded the font into our asset loader.
   async ensureFontLoaded(imageManager: ImageManager) {
     if (!this._file) return;
@@ -85,8 +112,8 @@ export default class TrueTypeFont {
     this._imageManager = imageManager;
     const fontUrl = await imageManager.getUrl(this._file);
 
-    const sanitizedFile = this._file.replace(/\./, "_");
-    const fontFamily = `font-${Utils.getId()}-${this.getId()}-${sanitizedFile}`;
+    // (a name of letters, digits and dashes only)
+    const fontFamily = `font-${Utils.getId()}-${this.getId()}-${this._file}`.replace(/[^A-Za-z0-9_-]+/g, "_");
 
     // Spotiamp+: a font file the skin doesn't have (Winamp took it from
     // Windows' fonts), or one that won't load: Windows' font of that name,

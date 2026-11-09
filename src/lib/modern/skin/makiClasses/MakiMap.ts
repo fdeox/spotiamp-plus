@@ -34,6 +34,7 @@ export default class MakiMap extends BaseObject {
 
   // 0-255
   getvalue(x: number, y: number): number {
+    if (!this._bitmap) return 0;
     assume(x >= 0, `Expected x to be positive but it was ${x}`);
     assume(y >= 0, `Expected y to be positive but it was ${y}`);
     const canvas = this._bitmap.getCanvas(true); // since it used manytime, let bitmap remember (keep)
@@ -48,6 +49,7 @@ export default class MakiMap extends BaseObject {
   }
   // 0-255
   getUnsafeValue(x: number, y: number): number | null {
+    if (!this._bitmap) return null;
     const canvas = this._bitmap.getCanvas(true); // since it used manytime, let bitmap remember (keep)
     if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) {
       return null;
@@ -59,11 +61,13 @@ export default class MakiMap extends BaseObject {
     }
     return data[0];
   }
+  // (Spotiamp+: a map with no picture loaded is 0 wide and high, as
+  // Winamp's: a skin looking for its cover picture went round for ever)
   getwidth(): number {
-    return this._bitmap.getWidth();
+    return this._bitmap?.getWidth() ?? 0;
   }
   getheight(): number {
-    return this._bitmap.getHeight();
+    return this._bitmap?.getHeight() ?? 0;
   }
 
   /*

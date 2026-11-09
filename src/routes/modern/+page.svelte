@@ -17,6 +17,7 @@
   import { buildLook } from "$lib/modern/look.js";
   import { frameInsets, paintFrame, setFrameActive, wireFrame } from "$lib/modern-look.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { message } from "@tauri-apps/plugin-dialog";
@@ -729,6 +730,7 @@
     skinName = worn.name;
     const bytes = /** @type {ArrayBuffer} */ (await invoke("modern_skin_file"));
     const ui = new UIRoot("ui-root-1");
+    ui._idleTitle = `Spotiamp+ ${await getVersion().catch(() => "")}`.trim();
     root.appendChild(ui.getRootDiv());
     const extractor = new ZipFileExtractor();
     await extractor.prepare(skinName, new Response(new Blob([bytes])));

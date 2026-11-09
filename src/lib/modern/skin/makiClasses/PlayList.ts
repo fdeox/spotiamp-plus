@@ -105,6 +105,10 @@ export class PlEdit {
     const configItem = this._uiRoot.CONFIG.getitem(guid);
     this._shuffleAttrib = configItem.getattribute("shuffle");
     this._repeatAttrib = configItem.getattribute("repeat");
+    // (Spotiamp+: Winamp's own settings always have a value: off until the
+    // player says; a button showing them found none and drew nothing)
+    if (this._shuffleAttrib.getdata() === "") configItem.setValue("shuffle", "0");
+    if (this._repeatAttrib.getdata() === "") configItem.setValue("repeat", "0");
     this._shuffleAttrib.on("datachanged", this._shuffleChanged);
     this._repeatAttrib.on("datachanged", this._repeatChanged);
   }
@@ -192,7 +196,10 @@ export class PlEdit {
 
   getCurrentTrackTitle(): string {
     if (this._currentIndex < 0 || this._currentIndex >= this._tracks.length) {
-      return this._uiRoot.audio.getState() === "stopped" ? "" : this._uiRoot._songTitle;
+      // Spotiamp+: nothing to play: the app and its version, where Winamp 5
+      // put its own (the classic face says the same)
+      if (this._uiRoot.audio.getState() === "stopped") return this._uiRoot._idleTitle;
+      return this._uiRoot._songTitle || this._uiRoot._idleTitle;
     }
     return this.gettitle(this._currentIndex);
   }

@@ -70,6 +70,9 @@ export default class GuiObj extends XmlObj {
   _droptarget: string;
   _visible: boolean = true;
   _alpha: number = 255;
+  // Spotiamp+: the alpha while its window isn't the active one (_alpha is
+  // the active one's), as Wasabi keeps both
+  _inactiveAlpha: number = 255;
   _ghost: boolean = false;
   _sysregion: number = 0;
   _tooltip: string = "";
@@ -188,8 +191,14 @@ export default class GuiObj extends XmlObj {
         this._renderVisibility();
         break;
       case "activealpha":
+        // Spotiamp+: (int) its alpha while its window is the active one
+        this._alpha = wasabiAlpha(value);
+        this._renderAlpha();
+        break;
       case "inactivealpha":
-        this._div.setAttribute(key, value); // set directly to html attribute
+        // Spotiamp+: (int) ...and while it isn't
+        this._inactiveAlpha = wasabiAlpha(value);
+        this._renderAlpha();
         break;
 
       case "tooltip":
@@ -197,7 +206,7 @@ export default class GuiObj extends XmlObj {
         break;
       // (int) An integer [0,255] specifying the alpha blend mode of the object (0 is transparent, 255 is opaque). Default is 255.
       case "alpha":
-        this.setalpha(num(value));
+        this.setalpha(wasabiAlpha(value));
       case "sysregion":
         this._sysregion = num(value);
         break;
@@ -344,7 +353,8 @@ export default class GuiObj extends XmlObj {
   hide() {
     this._visible = false;
     this._renderVisibility();
-    this.onsetvisible(true);
+    // (Spotiamp+: hidden is hidden: Webamp said true here)
+    this.onsetvisible(false);
   }
   isvisible(): boolean {
     return this._visible;
@@ -369,7 +379,35 @@ export default class GuiObj extends XmlObj {
    * @ret The top edge's position (in screen coordinates).
    */
   gettop(): number {
-    return this._y;
+    const rel = this._relativeAt("y");
+    return rel ?? this._y;
+  }
+
+  /**
+   * Spotiamp+: a relative size's or place's pixels now, as Winamp's
+   * getWidth()/getHeight()/getLeft()/getTop() gave them (relat 1: the
+   * parent's size less what it takes off; 2: a share of it in percent);
+   * null for one that isn't relative (its own number is it). getGuiW() and
+   * the rest still give what it was given.
+   */
+  _relativeSize(axis: "w" | "h"): number | null {
+    const relat = axis === "w" ? this._relatw : this._relath;
+    if (relat !== "1" && relat !== "2") return null;
+    const d = this._div;
+    const shown = d && d.isConnected ? (axis === "w" ? d.offsetWidth : d.offsetHeight) : 0;
+    if (shown > 0) return shown;
+    const own = (axis === "w" ? this._w : this._h) || 0;
+    const parent = this._parent;
+    const whole = parent ? (axis === "w" ? parent.getwidth?.() : parent.getheight?.()) ?? 0 : 0;
+    return relat === "2" ? Math.round((whole * own) / 100) : Math.max(0, whole + own);
+  }
+  _relativeAt(axis: "x" | "y"): number | null {
+    const relat = axis === "x" ? this._relatx : this._relaty;
+    if (relat !== "1" && relat !== "2") return null;
+    const own = (axis === "x" ? this._x : this._y) || 0;
+    const parent = this._parent;
+    const whole = parent ? (axis === "x" ? parent.getwidth?.() : parent.getheight?.()) ?? 0 : 0;
+    return relat === "2" ? Math.round((whole * own) / 100) : whole + own;
   }
 
   /**
@@ -379,7 +417,8 @@ export default class GuiObj extends XmlObj {
    * @ret The left edge's position (in screen coordinates).
    */
   getleft(): number {
-    return this._x;
+    const rel = this._relativeAt("x");
+    return rel ?? this._x;
   }
 
   /**
@@ -388,6 +427,8 @@ export default class GuiObj extends XmlObj {
    * @ret The height of the object.
    */
   getheight(): number {
+    const rel = this._relativeSize("h");
+    if (rel != null) return rel;
     if (this._h || this._minimumHeight || this._maximumHeight) {
       let h = Math.max(this._h || 0, this._minimumHeight);
       h = Math.min(h, this._maximumHeight || h);
@@ -409,6 +450,8 @@ export default class GuiObj extends XmlObj {
    * @ret The width of the object.
    */
   getwidth(): number {
+    const rel = this._relativeSize("w");
+    if (rel != null) return rel;
     if (this._w || this._minimumWidth || this._maximumWidth) {
       let w = Math.max(this._w || 0, this._minimumWidth);
       if (this._maximumHeight) {
@@ -802,7 +845,8 @@ export default class GuiObj extends XmlObj {
       this._y = this._targetY ?? this._y;
       this._w = this._targetWidth ?? this._w;
       this._h = this._targetHeight ?? this._h;
-      this._alpha = this._targetAlpha ?? this._alpha;
+      // (Spotiamp+: a target alpha is both, as Wasabi's setAlpha)
+      this._alpha = this._inactiveAlpha = this._targetAlpha ?? this._alpha;
       this._renderDimensions();
       this._renderAlpha();
       this._uiRoot.vm.dispatch(this, "ontargetreached");
@@ -844,8 +888,25 @@ export default class GuiObj extends XmlObj {
    * @param  alpha   The alpha value.
    */
   setalpha(alpha: number) {
-    this._alpha = alpha;
+    // (Spotiamp+: as Wasabi, both its active and inactive alpha)
+    this._alpha = this._inactiveAlpha = wasabiAlpha(alpha);
     this._renderAlpha();
+  }
+
+  // Spotiamp+: Wasabi's script methods for each
+  setactivealpha(alpha: number) {
+    this._alpha = wasabiAlpha(alpha);
+    this._renderAlpha();
+  }
+  getactivealpha(): number {
+    return this._alpha;
+  }
+  setinactivealpha(alpha: number) {
+    this._inactiveAlpha = wasabiAlpha(alpha);
+    this._renderAlpha();
+  }
+  getinactivealpha(): number {
+    return this._inactiveAlpha;
   }
 
   /**
@@ -864,40 +925,47 @@ export default class GuiObj extends XmlObj {
    * Given the screen coordinates of a point, is there some way to calculate the coordinates of that point on the actual page of the browser?
    */
 
+  // Spotiamp+: as Wasabi: an object's client space is its window's (the
+  // layout's, scaled as it's drawn), whatever group it sits in; a script
+  // centring a titlebar by it lands where Winamp's did
+  _clientSpace(): { x: number; y: number; ratio: number } {
+    const layout = this.getparentlayout?.() ?? this;
+    const element = (layout ?? this).getDiv();
+    const rect = element.getBoundingClientRect();
+    const ratio = element.offsetWidth ? rect.width / element.offsetWidth : 1;
+    return { x: window.screenX + rect.left, y: window.screenY + rect.top, ratio: ratio || 1 };
+  }
+
   clienttoscreenx(x: number): number {
-    const element = this.getDiv();
-    const position = element.getBoundingClientRect();
-    return window.screenX + position.left + x;
+    const s = this._clientSpace();
+    return Math.trunc(s.x + x * s.ratio);
   }
 
   clienttoscreeny(y: number): number {
-    const element = this.getDiv();
-    const position = element.getBoundingClientRect();
-    return window.screenX + position.top + y;
+    const s = this._clientSpace();
+    return Math.trunc(s.y + y * s.ratio);
   }
   clienttoscreenw(w: number): number {
-    return unimplemented(this.clienttoscreenx(w));
+    return Math.trunc(w * this._clientSpace().ratio);
   }
   clienttoscreenh(h: number): number {
-    return unimplemented(this.clienttoscreeny(h));
+    return Math.trunc(h * this._clientSpace().ratio);
   }
 
   screentoclientx(x: number): number {
-    const element = this.getDiv();
-    const position = element.getBoundingClientRect();
-    return x - (window.screenX + position.left);
+    const s = this._clientSpace();
+    return Math.trunc((x - s.x) / s.ratio);
   }
 
   screentoclienty(y: number): number {
-    const element = this.getDiv();
-    const position = element.getBoundingClientRect();
-    return y - (window.screenX + position.top);
+    const s = this._clientSpace();
+    return Math.trunc((y - s.y) / s.ratio);
   }
   screentoclientw(w: number): number {
-    return unimplemented(this.screentoclienty(w));
+    return Math.trunc(w / this._clientSpace().ratio);
   }
   screentoclienth(h: number): number {
-    return unimplemented(this.screentoclienty(h));
+    return Math.trunc(h / this._clientSpace().ratio);
   }
 
   getparent(): Group {
@@ -967,11 +1035,23 @@ export default class GuiObj extends XmlObj {
   }
 
   _renderAlpha() {
-    if (this._alpha != 255) {
-      this._div.style.opacity = `${this._alpha / 255}`;
-    } else {
-      this._div.style.removeProperty("opacity");
+    // Spotiamp+: one alpha while its window is the active one, another while
+    // it isn't (elements.css)
+    const active = this._alpha;
+    const inactive = this._inactiveAlpha ?? active;
+    if (active === inactive) {
+      delete this._div.dataset.alpha;
+      if (active != 255) {
+        this._div.style.opacity = `${active / 255}`;
+      } else {
+        this._div.style.removeProperty("opacity");
+      }
+      return;
     }
+    this._div.style.removeProperty("opacity");
+    this._div.style.setProperty("--alpha-active", `${active / 255}`);
+    this._div.style.setProperty("--alpha-inactive", `${inactive / 255}`);
+    this._div.dataset.alpha = "1";
   }
   _renderVisibility() {
     if (!this._visible) {
@@ -1021,12 +1101,19 @@ export default class GuiObj extends XmlObj {
     this._renderHeight();
   }
 
+  // (Spotiamp+: once per real change of its size, as Wasabi's onResize)
+  _lastResize: string = "";
   doResize() {
+    const w = this.getwidth();
+    const h = this.getheight();
+    const key = `${w},${h}`;
+    if (key === this._lastResize) return;
+    this._lastResize = key;
     this._uiRoot.vm.dispatch(this, "onresize", [
       { type: "INT", value: 0 },
       { type: "INT", value: 0 },
-      { type: "INT", value: this.getwidth() },
-      { type: "INT", value: this.getheight() },
+      { type: "INT", value: w },
+      { type: "INT", value: h },
     ]);
   }
 
@@ -1086,3 +1173,14 @@ export default class GuiObj extends XmlObj {
     this._renderDimensions();
   }
 }
+
+// Spotiamp+: an alpha as Wasabi takes one: a whole number (none is 255,
+// what isn't one 0), 254 as 255 and 1 as 0, within 0-255
+function wasabiAlpha(value: string | number): number {
+  let a = typeof value === "number" ? Math.trunc(value) : String(value ?? "").trim() === "" ? 255 : parseInt(String(value), 10) || 0;
+  if (!Number.isFinite(a)) a = 0;
+  if (a === 254) a = 255;
+  if (a === 1) a = 0;
+  return Math.min(255, Math.max(0, a));
+}
+

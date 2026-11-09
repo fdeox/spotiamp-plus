@@ -4,7 +4,7 @@ import { getClass } from "../../maki/objects";
 import { ParsedMaki } from "../../maki/parser";
 import BaseObject from "./BaseObject";
 import Container from "./Container";
-import { clamp, integerToTime, unimplemented } from "../../utils";
+import { clamp, unimplemented } from "../../utils";
 import Group from "./Group";
 import PRIVATE_CONFIG from "../PrivateConfig";
 import { UIRoot } from "../../UIRoot";
@@ -262,12 +262,11 @@ export default class SystemObject extends BaseObject {
    * @param  value Timestamp to use.
    */
   integertolongtime(value: number): string {
-    // Spotiamp+: H:MM:SS, as Winamp wrote it
-    const total = Math.max(0, Math.floor(Number(value) || 0));
-    const h = Math.floor(total / 3600);
-    const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
-    const s = String(total % 60).padStart(2, "0");
-    return `${h}:${m}:${s}`;
+    // Spotiamp+: H:MM:SS of a time in milliseconds, as Winamp wrote it
+    const i = Math.trunc(Number(value) || 0);
+    const m = String(Math.trunc((i % 3600000) / 60000)).padStart(2, "0");
+    const s = String(Math.trunc((i % 60000) / 1000)).padStart(2, "0");
+    return `${Math.trunc(i / 3600000)}:${m}:${s}`;
   }
 
   /**
@@ -276,7 +275,9 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   datetotime(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    const d = new Date(datetime * 1000);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
   /**
@@ -285,7 +286,9 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   datetolongtime(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    const d = new Date(datetime * 1000);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
   }
 
   /**
@@ -294,7 +297,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   formatdate(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).toLocaleString();
   }
   /**
    * String
@@ -302,7 +306,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   formatlongdate(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).toLocaleString(undefined, { dateStyle: "full", timeStyle: "medium" });
   }
 
   /**
@@ -311,7 +316,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdateyear(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getFullYear() - 1900;
   }
 
   /**
@@ -320,7 +326,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatemonth(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getMonth();
   }
 
   /**
@@ -329,7 +336,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdateday(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getDate();
   }
 
   /**
@@ -338,7 +346,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatedow(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getDay();
   }
 
   /**
@@ -347,7 +356,9 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatedoy(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    const d = new Date(datetime * 1000);
+    return Math.floor((+new Date(d.getFullYear(), d.getMonth(), d.getDate()) - +new Date(d.getFullYear(), 0, 1)) / 86400000);
   }
 
   /**
@@ -356,7 +367,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatehour(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getHours();
   }
 
   /**
@@ -365,7 +377,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatemin(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getMinutes();
   }
 
   /**
@@ -374,7 +387,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatesec(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return new Date(datetime * 1000).getSeconds();
   }
 
   /**
@@ -383,7 +397,11 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdatedst(datetime: number) {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    const d = new Date(datetime * 1000);
+    const jan = new Date(d.getFullYear(), 0, 1).getTimezoneOffset();
+    const jul = new Date(d.getFullYear(), 6, 1).getTimezoneOffset();
+    return d.getTimezoneOffset() < Math.max(jan, jul) ? 1 : 0;
   }
 
   /**
@@ -392,7 +410,8 @@ export default class SystemObject extends BaseObject {
    * @param datetime
    */
   getdate() {
-    // TODO
+    // (Spotiamp+: as Winamp's, from localtime)
+    return Math.floor(Date.now() / 1000);
   }
 
   /**
@@ -869,8 +888,11 @@ export default class SystemObject extends BaseObject {
    * @ret The name of what is playing.
    */
   getplayitemstring(): string {
-    // Spotiamp+: what plays, as its display shows it
-    return this._uiRoot._songTitle || this._uiRoot.playlist.getCurrentTrackTitle();
+    // Spotiamp+: what plays, as its display shows it ("" when nothing
+    // does, as Winamp: not the version its display shows then)
+    const pl = this._uiRoot.playlist;
+    if (pl._currentIndex >= 0 && pl._currentIndex < pl._tracks.length) return pl.gettitle(pl._currentIndex);
+    return this._uiRoot.audio.getState() === "stopped" ? "" : this._uiRoot._songTitle || "";
   }
 
   getplaylistlength(): number {
@@ -1148,8 +1170,9 @@ export default class SystemObject extends BaseObject {
    *
    * @ret Length of the track, in seconds.
    */
+  // (Spotiamp+: in milliseconds, as Winamp's, as getPosition)
   getplayitemlength(): number {
-    return this._uiRoot.audio.getLength();
+    return Math.round(this._uiRoot.audio.getLength() * 1000);
   }
 
   /**
@@ -1191,8 +1214,10 @@ export default class SystemObject extends BaseObject {
    * @ret       The string representation of the time (M:SS).
    * @param  value Timestamp to use.
    */
+  // (Spotiamp+: M:SS of a time in milliseconds, as Winamp's)
   integertotime(value: number): string {
-    return integerToTime(value);
+    const i = Math.trunc(Number(value) || 0);
+    return `${Math.trunc(i / 60000)}:${String(Math.trunc((i % 60000) / 1000)).padStart(2, "0")}`;
   }
 
   /**

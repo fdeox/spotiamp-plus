@@ -14,6 +14,11 @@ edition = "2024"
 name = "spotiamp_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = ["freetype"]
+# older modern skins' text drawn as Winamp's FreeType renderer drew it (wasabi_text.rs)
+freetype = ["dep:freetype-sys"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -113,6 +118,9 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_Storage_EnhancedStorage",
 ] }
+# Modern skins older than 1.3: their text as Winamp's FreeType renderer drew
+# it (wasabi_text.rs), FreeType built from source (see .cargo/config.toml)
+freetype-sys = { version = "0.23", features = ["bundled"], optional = true }
 # MilkDrop: projectM-4.dll / glew32.dll are loaded at runtime, so the app still
 # runs (without MilkDrop) if they're missing
 libloading = "0.8"

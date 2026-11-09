@@ -295,16 +295,18 @@ export default class Slider extends GuiObj {
   }
 
   // extern Int Slider.getPosition();
+  // (Spotiamp+: in its low..high range, as Wasabi's: an equalizer band's is
+  // -127..127, so a script's getPosition() + 127 is 0..254 as in Winamp)
   getposition(): number {
-    return this._position * this._high;
+    return this._low + this._position * (this._high - this._low);
   }
 
   /**
    *
-   * @param newpos 0..MAX
+   * @param newpos LOW..HIGH
    */
   setposition(newpos: number) {
-    this._position = newpos / this._high;
+    this._position = this._high === this._low ? 0 : clamp((newpos - this._low) / (this._high - this._low), 0, 1);
     this._renderThumbPosition();
     this.doSetPosition(this.getposition());
   }
@@ -458,12 +460,28 @@ class SeekActionHandler extends ActionHandler {
   }
 
   _registerOnAudioProgress() {
-    this._subscription = this._uiRoot.audio.onCurrentTimeChange(
-      this._onAudioProgres
-    );
+    const offTime = this._uiRoot.audio.onCurrentTimeChange(this._onAudioProgres);
+    const offState = this._uiRoot.audio.on("statchanged", this._syncShown);
+    this._subscription = () => {
+      offTime();
+      offState();
+    };
+    // once the skin has it
+    setTimeout(this._syncShown, 0);
   }
 
+  // Spotiamp+: as Wasabi's SSeeker (a slider with action="seek"): there only
+  // while something with a length plays, hidden when stopped, whatever its
+  // XML said (Big Bento's seek bar shows no thumb when stopped)
+  _syncShown = () => {
+    const audio = this._uiRoot.audio;
+    const on = audio.getState() !== "stopped" && audio.getLength() > 0;
+    if (on && !this._slider._visible) this._slider.show();
+    else if (!on && this._slider._visible) this._slider.hide();
+  };
+
   _onAudioProgres = () => {
+    this._syncShown();
     if (!this._pendingChange) {
       this._slider._position = this._uiRoot.audio.getCurrentTimePercent();
       this._slider._renderThumbPosition();
@@ -491,10 +509,13 @@ const EqGlobalVar = { eqMouseDown: false, targetSlider: null };
 // eslint-disable-next-line rulesdir/proper-maki-types
 class EqActionHandler extends ActionHandler {
   _kind: string;
+  // (Spotiamp+: Wasabi's equalizer sliders run -127..127, 0 flat)
 
   constructor(slider: Slider, kind: string) {
     super(slider);
     this._kind = kind;
+    slider._low = -127;
+    slider._high = 127;
     const update = () => {
       slider._position = this._uiRoot.audio.getEq(kind);
       slider._renderThumbPosition();
@@ -531,16 +552,19 @@ class EqActionHandler extends ActionHandler {
   }
 
   onsetposition(position: number): void {
-    this._uiRoot.audio.setEq(this._kind, position / this._slider._high);
+    this._uiRoot.audio.setEq(this._kind, (position + 127) / 254);
   }
 }
 
 // eslint-disable-next-line rulesdir/proper-maki-types
 class PreampActionHandler extends ActionHandler {
   _kind: string;
+  // (Spotiamp+: Wasabi's equalizer sliders run -127..127, 0 flat)
   constructor(slider: Slider, kind: string) {
     super(slider);
     this._kind = kind;
+    slider._low = -127;
+    slider._high = 127;
     const update = () => {
       slider._position = this._uiRoot.audio.getEq(kind);
       slider._renderThumbPosition();
@@ -550,7 +574,7 @@ class PreampActionHandler extends ActionHandler {
   }
 
   onsetposition(position: number): void {
-    this._uiRoot.audio.setEq(this._kind, position / this._slider._high);
+    this._uiRoot.audio.setEq(this._kind, (position + 127) / 254);
   }
 }
 

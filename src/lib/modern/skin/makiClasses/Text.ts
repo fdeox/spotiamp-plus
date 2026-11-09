@@ -14,6 +14,7 @@ import {
   clamp,
 } from "../../utils";
 import Timer from "./Timer";
+import { paintText, systemFace, wasabiTextAvailable } from "../wasabiText";
 
 // http://wiki.winamp.com/wiki/XML_GUI_Objects#.3Ctext.2F.3E_.26_.3CWasabi:Text.2F.3E
 export default class Text extends GuiObj {
@@ -33,12 +34,19 @@ export default class Text extends GuiObj {
   _font_id: string;
   _font_obj: TrueTypeFont | BitmapFont;
   _fontSize: number;
+  // Spotiamp+: the skin's own number (Wasabi's default is 14); _fontSize is
+  // the pixels it's drawn at
+  _fontSizeSkin: number = 14;
+  _lpadding: number = 0;
+  _rpadding: number = 0;
   _color: string;
   _ticker: string = "off"; // "scroll" | "bounce" | "off"
   _paddingX: number = 2;
   _timeColonWidth: number | null = null;
   _timeroffstyle: number = 0;
   _textWrapper: HTMLElement;
+  // Spotiamp+: smoothed (Wasabi's default) or hard-edged
+  _antialias: boolean = true;
   _scrollTimer: Timer;
   _scrollDirection: -1 | 1;
   _scrollPaused: boolean = false;
@@ -54,13 +62,229 @@ export default class Text extends GuiObj {
     this._uiRoot = uiRoot;
     this._textWrapper = document.createElement("wrap");
     this._div.appendChild(this._textWrapper);
+    ensureTextSmoothing();
+    this._div.dataset.aa = "1";
+    // Spotiamp+: its colours follow the colour theme, as Wasabi's text's
+    this._disposeThemeSubscription = uiRoot.on("colorthemechanged", () => this._applyColors());
+  }
+
+  _disposeThemeSubscription: Function;
+
+  // Spotiamp+: Winamp's text drawn by Windows (wasabiText.ts) when the app
+  // can and the skin is one Winamp drew that way: the canvas it's shown in
+  _gdiCanvas: HTMLCanvasElement | null = null;
+  _gdiQueued: boolean = false;
+  _gdiSeq: number = 0;
+  _gdiResize: ResizeObserver | null = null;
+  _offsetX: number = 0;
+  _offsetY: number = 0;
+  _forceFixed: boolean = false;
+  _wrapped: boolean = false;
+  _timerHours: boolean = false;
+  // Winamp's suggested width for the text last painted, and the one a script
+  // was last told (getautowidth): a script laying out by it hears again when
+  // Windows' measure differs from the browser's
+  _gdiAuto: { text: string; w: number } | null = null;
+  _autoWidthTold: number | null = null;
+
+  _printedText(): string {
+    const text = this.gettext() ?? "";
+    if (this._forceuppercase) return text.toUpperCase();
+    if (this._forcelowercase) return text.toLowerCase();
+    return text;
+  }
+
+  _gdiOn(): boolean {
+    if (this._font_obj instanceof BitmapFont) return false;
+    return wasabiTextAvailable();
+  }
+
+  // Winamp drew 1.3 and later skins' text with Windows' GDI, older ones with
+  // its FreeType renderer
+  _renderer(): "gdi" | "freetype" {
+    return (this._uiRoot._skinVersion ?? 0) >= 1.3 ? "gdi" : "freetype";
+  }
+
+  // FreeType's font, as that renderer found it: the skin's own file (and the
+  // name it knew it by: the file's, up to its first dot), else Windows'
+  _ftFont(face: string): { ft_font: string; ft_name: string } {
+    const font = this._font_obj;
+    if (font instanceof TrueTypeFont && font.hasUrl() && face) {
+      const name = String(font._file ?? "").split(".")[0].split(/[\/]/).pop() ?? "";
+      return { ft_font: `face:${face}`, ft_name: name };
+    }
+    return { ft_font: `sys:${this._font_id || "Arial"}`, ft_name: this._font_id || "Arial" };
+  }
+
+  _gdiSchedule() {
+    if (this._gdiQueued || !this._drawn || !this._gdiOn()) return;
+    this._gdiQueued = true;
+    setTimeout(() => this._gdiPaint(), 0);
+  }
+
+  // the face Windows draws it with, as Winamp found the font
+  async _gdiFace(): Promise<string> {
+    const font = this._font_obj;
+    if (font instanceof TrueTypeFont && font.hasUrl()) {
+      const face = await font.windowsFace();
+      if (face) return face;
+    }
+    // none of the skin's: Windows' fonts folder by that name, else Arial
+    return systemFace(this._font_id || "Arial");
+  }
+
+  _gdiColor(): [number, number, number] {
+    if (this._color && !colorRgb(this._color)) {
+      return this._uiRoot._namedColorRgb(this._color) ?? [255, 255, 255];
+    }
+    return this._uiRoot._getGammaGroup("Text").transformColor2rgb(this._color || "255,255,255");
+  }
+
+  _gdiShadowColor(): [number, number, number] {
+    if (this._shadowColor && !colorRgb(this._shadowColor)) {
+      return this._uiRoot._namedColorRgb(this._shadowColor) ?? [0, 0, 0];
+    }
+    return this._uiRoot._getGammaGroup("Text backgrounds").transformColor2rgb(this._shadowColor || "0,0,0");
+  }
+
+  _isTimeDisplay(): boolean {
+    const d = (this._display ?? "").toLowerCase();
+    return d === "time" || d === "timeelapsed" || d === "timeremaining";
+  }
+
+  async _gdiPaint() {
+    this._gdiQueued = false;
+    if (!this._gdiOn()) return;
+    const seq = ++this._gdiSeq;
+    if (!this._gdiResize && typeof ResizeObserver !== "undefined") {
+      this._gdiResize = new ResizeObserver(() => this._gdiSchedule());
+      this._gdiResize.observe(this._div);
+    }
+    const w = this._div.offsetWidth;
+    const h = this._div.offsetHeight;
+    const text = this._printedText();
+    const face = await this._gdiFace();
+    if (seq !== this._gdiSeq) return;
+    if (!w || !h) {
+      this._gdiShow(null);
+      return;
+    }
+    const painted = await paintText({
+      face,
+      size: this._fontSizeSkin,
+      bold: this._bold ? 1 : 0,
+      antialias: this._antialias,
+      text,
+      w,
+      h,
+      align: { left: 0, center: 1, right: 2 }[String(this._align).toLowerCase()] ?? 0,
+      valign: { top: 0, bottom: 2 }[String(this._valign).toLowerCase()] ?? 1,
+      lpadding: this._lpadding,
+      rpadding: this._rpadding,
+      offsetx: this._offsetX,
+      offsety: this._offsetY,
+      color: this._gdiColor(),
+      shadow: { x: this._shadowX || 0, y: this._shadowY || 0, color: this._gdiShadowColor() },
+      wrapped: this._wrapped,
+      time: this._isTimeDisplay()
+        ? { hours: this._timerHours, fixed: this._forceFixed, colon: this._timeColonWidth ?? -1 }
+        : null,
+      renderer: this._renderer(),
+      ...this._ftFont(face),
+    });
+    if (seq !== this._gdiSeq) return;
+    this._gdiShow(painted);
+    if (painted) {
+      this._gdiAuto = { text, w: painted.suggested };
+      if (this._autoWidthTold != null && this._autoWidthTold !== painted.suggested) {
+        this._autoWidthTold = null;
+        this._uiRoot.vm.dispatch(this, "ontextchanged", [{ type: "STRING", value: this.gettext() }]);
+      }
+    }
+  }
+
+  // the painted text at the box's corner (a ticker moves it), the browser's
+  // hidden; nothing painted: the browser's back
+  _gdiShow(painted: { w: number; h: number; textW: number; suggested: number; data: Uint8ClampedArray } | null) {
+    if (!painted) {
+      delete this._div.dataset.gdi;
+      this._gdiCanvas?.remove();
+      this._gdiCanvas = null;
+      if (!this._wGiven) this._div.style.removeProperty("width");
+      return;
+    }
+    if (!this._gdiCanvas) {
+      this._gdiCanvas = document.createElement("canvas");
+      this._gdiCanvas.className = "gdi-text";
+      this._div.appendChild(this._gdiCanvas);
+    }
+    const canvas = this._gdiCanvas;
+    if (canvas.width !== painted.w) canvas.width = painted.w;
+    if (canvas.height !== painted.h) canvas.height = painted.h;
+    canvas.getContext("2d").putImageData(new ImageData(painted.data, painted.w, painted.h), 0, 0);
+    canvas.style.left = this._textWrapper.style.left || "0px";
+    this._div.dataset.gdi = "1";
+    if (!this._wGiven) this._div.style.width = px(painted.suggested);
+    if (this._ticker != "off") {
+      this._textFullWidth = painted.w;
+      this._div.style.setProperty("--full-width", px(painted.w));
+    }
+  }
+
+  // Spotiamp+: the skin (or a script) gave it a height; else it's its own,
+  // as Wasabi's group sizes an object given none
+  _hGiven: boolean = false;
+  // ...and a width (else Winamp's suggested one, once Windows has measured)
+  _wGiven: boolean = false;
+
+  resize(x: number, y: number, w: number, h: number) {
+    this._hGiven = true;
+    this._wGiven = true;
+    super.resize(x, y, w, h);
+  }
+
+  getheight(): number {
+    return this._hGiven ? super.getheight() : this.getautoheight();
+  }
+
+  // as Wasabi's text: its font size (the skin's number) times its lines,
+  // 32 with no text
+  getautoheight(): number {
+    const text = this.gettext();
+    return text ? this._fontSizeSkin * String(text).split("\n").length : 32;
+  }
+
+  _renderHeight() {
+    if (this._hGiven) return super._renderHeight();
+    this._div.style.height = px(this.getautoheight());
+  }
+
+  // Spotiamp+: the text's and its shadow's colours in the colour theme on
+  _applyColors() {
+    this._gdiSchedule();
+    if (!(this._font_obj instanceof BitmapFont)) this._autoDetectColor();
+    if (this._shadowColor) {
+      this._div.style.textShadow = `${this._shadowX}px ${this._shadowY}px ${this._shadowCss()}`;
+    }
+  }
+
+  // Spotiamp+: as Wasabi's text: a skin colour as the skin has it, else
+  // its own (black when none) in the "Text backgrounds" group
+  _shadowCss(): string {
+    const named = !colorRgb(this._shadowColor) && this._uiRoot.getColor(this._shadowColor);
+    if (named) return `var(${named.getCSSVar()}, ${named.getRgb()})`;
+    const own = colorRgb(this._shadowColor) ? this._shadowColor : "0,0,0";
+    return this._uiRoot._getGammaGroup("Text backgrounds").transformColor(own);
   }
 
   setXmlAttr(key: string, value: string): boolean {
+    const lower = key.toLowerCase();
+    if (lower === "h" || lower === "default_h") this._hGiven = true;
+    if (lower === "w" || lower === "default_w") this._wGiven = true;
     if (super.setXmlAttr(key, value)) {
       return true;
     }
-    switch (key.toLowerCase()) {
+    switch (lower) {
       case "display":
         // (str) Either a specific system display string or the string identifier of a text feed. Setting this value will override the text parameter. See below.
         this._setDisplay(value);
@@ -79,6 +303,12 @@ export default class Text extends GuiObj {
         // (str) A static string to be displayed.
         this._bold = toBool(value);
         this._prepareCss();
+        break;
+      case "antialias":
+        // Spotiamp+: (bool) smoothed or hard-edged, as Wasabi asks Windows
+        this._antialias = toBool(value);
+        this._div.dataset.aa = this._antialias ? "1" : "0";
+        this._gdiSchedule();
         break;
       case "forceupcase":
       case "forceuppercase":
@@ -106,12 +336,54 @@ export default class Text extends GuiObj {
         this._prepareCss();
         break;
 
-      case "fontsize":
+      case "fontsize": {
         // (int) The size to render the chosen font.
-        this._fontSize = num(value);
+        // Spotiamp+: as Wasabi, "+2", "-2", "*2" and "/2" change the size it has
+        const n = num(value.replace(/^[-+*/]/, "")) ?? 0;
+        const op = value.trim()[0];
+        const cur = this._fontSizeSkin;
+        this._fontSizeSkin =
+          op == "+" ? cur + n : op == "-" ? cur - n : op == "*" ? cur * n : op == "/" ? (n ? Math.trunc(cur / n) : cur) : (num(value) ?? 14);
+        this._fontSize = this._fontSizeSkin;
         this.ensureFontSize();
         this._invalidateFullWidth();
         this._prepareCss();
+        break;
+      }
+      case "leftpadding":
+        this._lpadding = num(value) ?? 0;
+        this._gdiSchedule();
+        break;
+      case "rightpadding":
+        this._rpadding = num(value) ?? 0;
+        this._gdiSchedule();
+        break;
+      // Spotiamp+: the rest of Winamp's text's layout, for Windows' drawing
+      case "offsetx":
+        this._offsetX = num(value) ?? 0;
+        this._gdiSchedule();
+        break;
+      case "offsety":
+        this._offsetY = num(value) ?? 0;
+        this._gdiSchedule();
+        break;
+      case "forcefixed":
+        this._forceFixed = toBool(value);
+        this._gdiSchedule();
+        break;
+      case "wrap":
+      case "wrapped":
+        this._wrapped = toBool(value);
+        this._gdiSchedule();
+        break;
+      case "timerhours":
+        this._timerHours = toBool(value);
+        this._gdiSchedule();
+        break;
+      case "forcelocase":
+      case "forcelowercase":
+        this._forcelowercase = toBool(value);
+        this._renderText();
         break;
       case "color":
         // (int[sic?]) The comma delimited RGB color of the text.
@@ -201,11 +473,13 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
 
   // only applicable for TrueType Font
   _autoDetectColor() {
+    // Spotiamp+: as Wasabi's TextBase: its own colour (white when none) in
+    // the colour theme's "Text" group; a skin colour is in its own (UIRoot)
+    if (!this._color || colorRgb(this._color)) {
+      this._div.style.color = this._uiRoot._getGammaGroup("Text").transformColor(this._color || "255,255,255");
+      return;
+    }
     if (this._color) {
-      if (colorRgb(this._color)) {
-        this._div.style.color = cssColor(this._color);
-        return;
-      }
       const color = this._uiRoot.getColor(this._color);
       if (color) {
         this._div.style.color = `var(${color.getCSSVar()}, ${color.getRgb()})`;
@@ -213,21 +487,12 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     }
   }
 
+  // Spotiamp+: as Wasabi (truetypefont_win32): a font of size n is drawn
+  // MulDiv(n, 72, 96) pixels high, whatever the font (and Wasabi's own
+  // Arial when the skin names none)
   ensureFontSize() {
-    if (this._font_obj instanceof TrueTypeFont && this._fontSize) {
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
-      context.font = `${this._fontSize}px ${
-        this._font_obj.getFontFamily() || "Arial"
-      }`;
-      const metrics = context.measureText("IWjgyFH");
-      const fontHeight =
-        metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
-
-      this._fontSize =
-        this._fontSize *
-        (1 - (1.0 * fontHeight - this._fontSize) / (1.0 * this._fontSize));
-    }
+    this._fontSize =
+      this._font_obj instanceof BitmapFont ? this._fontSizeSkin : Math.round((this._fontSizeSkin * 72) / 96);
   }
 
   init() {
@@ -336,7 +601,10 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
         );
         break;
       case "componentbucket":
-        this._displayValue = "componentbucket";
+        // Spotiamp+: Wasabi's feed of that name: the component under the
+        // mouse in a component bucket, else nothing (ComponentBucket.ts)
+        this._displayValue = "";
+        this._disposeTrackChangedSubscription = this._uiRoot.on("componentbuckettext", (name) => this.setDisplayValue(name ?? ""));
         break;
       case "custom": // not winamp api
         // needed by a custom DisplayHandler
@@ -349,11 +617,24 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     this._renderText();
   }
 
+  // Spotiamp+: as Winamp's playlist shows it: the selected songs' length and
+  // the whole list's, "0:00/0:00" when empty
   _playlistInfo(): string {
     const pl = this._uiRoot.playlist;
     let total = 0;
-    for (const track of pl._tracks) total += track.duration || 0;
-    return pl._tracks.length ? `${pl._tracks.length} songs, ${integerToTime(total)}` : "";
+    let selected = 0;
+    pl._tracks.forEach((track, i) => {
+      total += track.duration || 0;
+      if (pl._selection.includes(i)) selected += track.duration || 0;
+    });
+    const fmt = (s: number) => {
+      s = Math.floor(s);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = String(s % 60).padStart(2, "0");
+      return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+    };
+    return `${fmt(selected)}/${fmt(total)}`;
   }
 
   _songLength(): string {
@@ -476,12 +757,14 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
   //to speedup animation like text-scrolling, we spit rendering processes.
   //This function is only rendering static styles
   _prepareCss() {
+    this._gdiSchedule();
     if (!this._font_obj && this._font_id) {
       this._font_obj = this._uiRoot.getFont(this._font_id);
     }
     const font = this._font_obj;
     if (font instanceof BitmapFont) {
       this._textWrapper.setAttribute("font", "BitmapFont");
+      this._div.style.removeProperty("background-image");
       //? font-size
       this._div.style.setProperty(
         "--fontSize",
@@ -515,8 +798,16 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       this._div.style.setProperty("--charheight", px(font._charHeight));
     } else {
       this._autoDetectColor();
+      // Spotiamp+: a TrueType text has no picture of its own: not one a
+      // group or button around it has (their CSS variables are inherited,
+      // hovered and pressed ones too), as Winamp's
+      this._div.style.backgroundImage = "none";
+      // Spotiamp+: placed in its box as Wasabi does (elements.css)
+      const flex = { left: "flex-start", top: "flex-start", right: "flex-end", bottom: "flex-end" };
+      this._div.style.setProperty("--talign", flex[this._align] ?? "center");
+      this._div.style.setProperty("--tvalign", flex[this._valign] ?? "center");
       if (this._shadowColor) {
-        this._div.style.textShadow = `${this._shadowX}px ${this._shadowY}px ${cssColor(this._shadowColor, "rgb(0, 0, 0)")}`;
+        this._div.style.textShadow = `${this._shadowX}px ${this._shadowY}px ${this._shadowCss()}`;
       }
       if (font instanceof TrueTypeFont) {
         this._textWrapper.setAttribute("font", "TrueType");
@@ -538,6 +829,9 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       } else if (font == null) {
         this._div.style.setProperty("--fontMode", "Null");
         this._div.style.fontFamily = "Arial";
+        this._div.style.fontSize = px(this._fontSize ?? 11);
+        this._div.style.fontWeight = this._bold ? "bold" : "";
+        this._div.style.textTransform = this._forceuppercase ? "uppercase" : "none";
       } else {
         throw new Error("Unexpected font");
       }
@@ -545,8 +839,11 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
   }
 
   _renderText() {
+    this._gdiSchedule();
     //TODO: invalidating text width is only important when srolling?
     if (this._ticker != "off") this._invalidateFullWidth();
+    // (Spotiamp+: a text sized by its own lines follows them)
+    if (!this._hGiven) this._renderHeight();
 
     const font = this._font_obj;
     if (font instanceof BitmapFont) {
@@ -603,17 +900,21 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     this._div.style.setProperty("--full-width", px(this._textFullWidth));
   }
 
+  // Spotiamp+: as Wasabi: the text's own width + 4 and its paddings (32
+  // for no text), not its box's
   getautowidth(): number {
-    this._invalidateFullWidth();
-    let textWidth = this._textFullWidth;
-    if (this._relatw == "1") {
-      textWidth += this._w * -1;
+    // (Windows' measure when its paint is in, as Winamp's)
+    if (this._gdiOn() && this._gdiAuto && this._gdiAuto.text === this._printedText()) {
+      return (this._autoWidthTold = this._gdiAuto.w);
     }
-    return textWidth;
+    if (!this.gettext()) return (this._autoWidthTold = 32);
+    this._invalidateFullWidth();
+    return (this._autoWidthTold = this._textFullWidth + 4 + this._lpadding + this._rpadding);
   }
 
   gettextwidth(): number {
-    return this.getautowidth();
+    this._invalidateFullWidth();
+    return this._textFullWidth + 4;
   }
 
   _getBitmapFontTextWidth(font: BitmapFont): number {
@@ -647,7 +948,8 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       this._fontSize || 11
     }px ${fontFamily}`;
 
-    const metrics = context.measureText(this.gettext());
+    // (Spotiamp+: the text as it shows, upper or lower case)
+    const metrics = context.measureText(txt);
 
     return Math.ceil(metrics.width /*+ self._paddingX * 2*/);
   }
@@ -656,6 +958,7 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     this._drawn = true;
     super.draw();
     this._renderText();
+    this._gdiSchedule();
 
     // this._div.style.removeProperty("line-height");
     this._div.classList.add("webamp--img");
@@ -691,9 +994,13 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     this._scrollLeft = l;
     l = clamp(l, -(wrapperWidth - container.width), 0);
     this._textWrapper.style.left = px(Math.round(l));
+    if (this._gdiCanvas) this._gdiCanvas.style.left = px(Math.round(l));
   }
 
   dispose() {
+    this._disposeThemeSubscription?.();
+    this._gdiResize?.disconnect();
+    this._gdiSeq++;
     if (this._disposeDisplaySubscription != null) {
       this._disposeDisplaySubscription();
     }
@@ -744,3 +1051,23 @@ export class DisplayHandler {
     this._subscription();
   }
 }
+
+// Spotiamp+: the filters text is smoothed with as Wasabi asks Windows to
+// (elements.css): grey antialiasing (an empty filter, which keeps Chromium
+// from ClearType's coloured edges) and none (the edge's alpha cut at half)
+let textSmoothingReady = false;
+function ensureTextSmoothing() {
+  if (textSmoothingReady || typeof document === "undefined" || !document.body) return;
+  textSmoothingReady = true;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", "0");
+  svg.setAttribute("height", "0");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.position = "absolute";
+  svg.innerHTML =
+    '<filter id="wasabi-text-grey"><feComponentTransfer><feFuncA type="identity"/></feComponentTransfer></filter>' +
+    '<filter id="wasabi-text-hard"><feComponentTransfer><feFuncA type="discrete" tableValues="0 0 0 1"/></feComponentTransfer></filter>';
+  document.body.appendChild(svg);
+}
+

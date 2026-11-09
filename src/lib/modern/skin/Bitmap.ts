@@ -194,11 +194,11 @@ export default class Bitmap {
     const gammaGroup = uiRoot._getGammaGroup(groupId);
     // (Spotiamp+: the picture in these colours made once: a skin switching
     // its colours, or switching to the same, doesn't redo all of them)
-    const key = `${gammaGroup._value}|${gammaGroup._boost}|${gammaGroup._gray}|${this.getCSSVar()}`;
+    const key = `${gammaGroup.key()}|${this.getCSSVar()}`;
     if (this._cssCache?.key === key) return this._cssCache.prop;
     let prop: string;
-    if (gammaGroup._value == "0,0,0" && gammaGroup._gray == 0) {
-      // triple zero meaning no gamma should be applied.
+    if (gammaGroup.isIdentity()) {
+      // all zero (boost too): Winamp leaves it as it is
       // return bitmap.getCanvas().toDataURL();
       const url = await this.toDataURL(uiRoot);
       prop = buildCssProp(url);

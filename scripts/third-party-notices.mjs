@@ -61,10 +61,21 @@ function rustCrates() {
       license: p.license || (p.license_file ? `see ${p.license_file}` : "unknown"),
       source: p.repository || "",
       dir,
-      files: p.license_file ? [p.license_file] : licenseFiles(dir),
+      files: [
+        ...(p.license_file ? [p.license_file] : licenseFiles(dir)),
+        // the C libraries a crate builds into the program, under their own licenses
+        ...(BUNDLED_C[p.name] ?? []).filter((f) => existsSync(join(dir, f))),
+      ],
     };
   });
 }
+
+// C code some crates compile into the app, with its own license files:
+// FreeType and libpng (freetype-sys), zlib (libz-sys)
+const BUNDLED_C = {
+  "freetype-sys": ["freetype2/docs/FTL.TXT", "libpng/LICENSE"],
+  "libz-sys": ["src/zlib/LICENSE"],
+};
 
 // The web packages whose code is bundled into the pages: the app's own
 // dependencies, plus Svelte and SvelteKit, whose runtime the pages carry.
@@ -135,6 +146,9 @@ function build() {
     "    original authors.",
     "  - px sans nouveaux, the pixel font, carried over from the original",
     "    Spotiamp by Ted Steen (https://github.com/tedsteen/Spotiamp).",
+    "  - FreeType, libpng and zlib, built in to draw older modern skins' text.",
+    "    Portions of this software are copyright (C) 2023 The FreeType Project",
+    "    (www.freetype.org). All rights reserved. Their license texts are below.",
     "",
     `Web interface (${web.length})`,
     "-".repeat(`Web interface (${web.length})`.length),

@@ -403,6 +403,29 @@ pub fn modern_skin() -> Option<ModernSkin> {
     Settings::current().modern_skin.clone().map(|name| ModernSkin { name })
 }
 
+/// A modern skin's text painted as Winamp 5 painted it (wasabi_text.rs):
+/// [w, h, text width] then its pixels; empty when it can't be.
+#[tauri::command]
+pub async fn wasabi_text_paint(paint: crate::wasabi_text::Paint) -> Result<tauri::ipc::Response, ()> {
+    Ok(tauri::ipc::Response::new(crate::wasabi_text::paint(&paint).map(|p| p.to_bytes()).unwrap_or_default()))
+}
+
+/// A skin's font file (the request's bytes) loaded for its texts; its face,
+/// as Winamp named it ("" when it isn't a font).
+#[tauri::command]
+pub async fn wasabi_text_font(request: tauri::ipc::Request<'_>) -> Result<String, ()> {
+    Ok(match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => crate::wasabi_text::load_font(bytes).unwrap_or_default(),
+        _ => String::new(),
+    })
+}
+
+/// The face Winamp drew a font the skin doesn't have with (Windows' own).
+#[tauri::command]
+pub async fn wasabi_text_face(id: String) -> Result<String, ()> {
+    Ok(crate::wasabi_text::face_of_system_font(&id))
+}
+
 /// The worn skin's file, whole.
 #[tauri::command]
 pub fn modern_skin_file() -> Result<tauri::ipc::Response, String> {

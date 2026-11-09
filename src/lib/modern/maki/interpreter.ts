@@ -115,6 +115,19 @@ class Interpreter {
     this.stack.push(variable);
   }
 
+  /**
+   * Spotiamp+: an object as a variable or a call of the kind `guid` sees it:
+   * itself, or (Wasabi's embed_xui cast) the object embedded in it when that
+   * one is of the kind and it isn't. Anything else stays as it is.
+   */
+  _castTo(value: any, guid?: string): any {
+    const embedded = value?._embeddedXui;
+    if (!embedded || !guid) return value;
+    const klass = this.classResolver(guid);
+    if (typeof klass !== "function" || value instanceof klass) return value;
+    return embedded instanceof klass ? embedded : value;
+  }
+
   async interpret(start: number) {
     for (const v of this.variables) {
       validateVariable(v);
@@ -429,11 +442,14 @@ class Interpreter {
             break;
           }
 
+          // (Spotiamp+: a call of a kind the object isn't goes to its
+          // embedded object, as Wasabi's script_cast)
+          const target = this._castTo(obj.value, guid);
           // let value = obj.value[methodName](...methodArgs);
           let result = null;
           try {
             // result = obj.value[methodName](...methodArgs);
-            let afunction = obj.value[methodName];
+            let afunction = target[methodName];
             if (afunction.constructor.name === "AsyncFunction") {
               console.log(
                 "calling fun type:",
@@ -441,11 +457,11 @@ class Interpreter {
                 `@${klass.name}.${methodName}`
               );
               // result = await afunction(...methodArgs);
-              result = await obj.value[methodName](...methodArgs);
+              result = await target[methodName](...methodArgs);
             } else {
               // afunction = afunction.bind(obj)
               // result = afunction(...methodArgs);
-              result = obj.value[methodName](...methodArgs);
+              result = target[methodName](...methodArgs);
             }
           } catch (err) {
             const args = JSON.stringify(methodArgs)
@@ -538,7 +554,9 @@ class Interpreter {
           }
           if (b != null) {
             //temporary, to see what next problem ?
-            b.value = a.value;
+            // (Spotiamp+: a number put in an int is cut to a whole one, as
+            // Winamp's: Big Bento's 0.85 * 1056 is 897, not 897.6)
+            b.value = b.type === "INT" && typeof a.value === "number" ? Math.trunc(a.value) : this._castTo(a.value, b.guid);
           }
           this.push(a);
           break;

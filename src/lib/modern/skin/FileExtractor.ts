@@ -86,7 +86,17 @@ export class ZipFileExtractor {
     if (exact) return exact;
     // another skin's folder that isn't in the zip: its file, if this has one
     const loose = path.replace(/^(\.\.\/)+[^/]+\//, "");
-    return getCaseInsensitiveFile(this._zip, loose);
+    // else Winamp's own, as Wasabi looked there next (Plugins/freeform: its
+    // xml/winamp/cover pictures for a song with none)
+    const rel = this._resolve("", path);
+    // (and Wasabi's own folder, whose elements name their files from it:
+    // window/background.png is the skin's when it has one, else Wasabi's)
+    return (
+      getCaseInsensitiveFile(this._zip, loose) ??
+      this._winamp?.get(("plugins/freeform/" + rel).toLowerCase()) ??
+      this._winamp?.get(("plugins/freeform/xml/wasabi/" + rel).toLowerCase()) ??
+      null
+    );
   }
 
   /**

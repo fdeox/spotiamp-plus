@@ -103,6 +103,13 @@ export default class ComponentBucket extends Group {
     this.resolveButtonsAction();
     super.init();
     this._uiRoot.vm.dispatch(this, "onstartup", []);
+    // (Spotiamp+: the "componentbucket" text feed: the name of the entry under
+    // the mouse, as Wasabi's)
+    this._div.addEventListener("mouseover", (e) => {
+      const entry = this._children.find((c) => c._div?.contains(e.target as Node));
+      this._uiRoot.trigger("componentbuckettext", entry ? entry._tooltip || entry.getname?.() || "" : "");
+    });
+    this._div.addEventListener("mouseleave", () => this._uiRoot.trigger("componentbuckettext", ""));
   }
   resolveButtonsAction() {
     for (const obj of this.getparent()._children) {

@@ -1,0 +1,5 @@
+[env]
+# freetype-sys builds FreeType (older modern skins' text, src-tauri/src/wasabi_text.rs)
+# with libpng, whose zlib.h it looks for where its Windows build can't see:
+# zlib's headers, as libz-sys builds zlib, for the C compiler (MSVC's INCLUDE)
+INCLUDE = { value = "src-tauri/vendor/zlib", relative = true }

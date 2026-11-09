@@ -40,6 +40,12 @@
     snapRectIntoBounds,
     STICKY_SNAP_DISTANCE,
   } from "$lib/window-docking.svelte.js";
+  import { watchWindowActive } from "$lib/window-active.js";
+  import { getVersion } from "@tauri-apps/api/app";
+
+  // lit while this window is in front, dim otherwise (lib/window-active.js)
+  let windowActive = $state(true);
+  onMount(() => watchWindowActive((active) => (windowActive = active)));
 
   /** @type {{data: import('./$types').PageData}} */
   const { data: playerSettings } = $props();
@@ -207,13 +213,18 @@
     const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     seek(fraction * duration);
   }
+  // nothing loaded: the app and its version, where Winamp put its own
+  let idleTitle = $state("Spotiamp+");
+  getVersion()
+    .then((version) => (idleTitle = `Spotiamp+ ${version}`))
+    .catch(() => {});
   const trackDisplayText = $derived(
     loadedTrack
       ? // a radio station has no length: just its song
         loadedTrack.displayDuration
         ? `${loadedTrack.displayName} (${loadedTrack.displayDuration})`
         : loadedTrack.displayName
-      : "Winamp 2.91",
+      : idleTitle,
   );
   const stoppedOrUnavailable = $derived.by(() =>
     playerState == "stopped" || playerState == "unavailable",
@@ -1650,7 +1661,7 @@
   }
 </script>
 
-<main class:shade={shadeActive} onwheel={onWheelVolume} oncontextmenu={openMainMenu}>
+<main class:shade={shadeActive} class:inactive={!windowActive} onwheel={onWheelVolume} oncontextmenu={openMainMenu}>
   <div class="sprite main-sprite"></div>
 
   <!-- 🦙 easter egg: click the Winamp titlebar logo -->
@@ -1831,16 +1842,13 @@
     ></button>
   {/each}
 
-  <!-- <div
-    class="sprite control-buttons-sprite"
-    style:--button-width="23px"
-    style:--button-x="calc(22px + (var(--button-width) * 5))"
-    style:--button-y="89px"
-    style:--button-idx="5"
-    style:width="21px"
-    style:height="16px"
-    id="main"
-  ></div> -->
+  <!-- Eject, as on Winamp: open files (Shift: a folder), as the O key -->
+  <button
+    class="sprite eject-btn"
+    onclick={(e) => (e.shiftKey ? openLocalFolder() : openLocalFiles())}
+    aria-label="Open files"
+    title="Open files (O)"
+  ></button>
 
   <!--
     Classic Winamp windowshade: the player collapses to a single 275x14 bar.
@@ -1864,9 +1872,7 @@
         y={4}
         chars={9}
       />
-      <div class:hidden={timeDisplayHidden}>
-        <MiniTime minutes={currentTime.m} seconds={currentTime.s} x={127} y={4} />
-      </div>
+      <MiniTime minutes={currentTime.m} seconds={currentTime.s} x={127} y={4} layout="shade" clear={timeDisplayHidden} />
       <!--
         The shade bar sprite has the transport icons drawn into it, spaced ~10px
         apart from x=166 (measured off the skin's own bitmap). These are just the
@@ -2204,7 +2210,9 @@
 
   button.repeat-btn {
     --sprite-url: var(--skin-shufrep);
-    --sprite-x: 211px;
+    /* at x 210 as in Winamp (over shuffle's last column): at 211 the main
+       picture's own repeat art showed a pixel left of it */
+    --sprite-x: 210px;
     --sprite-y: 89px;
     width: 28px;
     height: 15px;
@@ -2231,6 +2239,21 @@
     line-height: 1;
     color: #00e000;
     text-shadow: 0 0 1px #000;
+  }
+
+  /* CBUTTONS.BMP's eject (114,0 22x16; pressed below it), at 136,89 */
+  button.eject-btn {
+    --sprite-url: var(--skin-cbuttons);
+    --sprite-x: 136px;
+    --sprite-y: 89px;
+    width: 22px;
+    height: 16px;
+    border: 0;
+    padding: 0;
+    background-position: -114px 0px;
+  }
+  button.eject-btn:active {
+    background-position: -114px -16px;
   }
 
   .stereo-mono-sprite {
@@ -2296,6 +2319,21 @@
     background-position: -27px 0px;
     cursor: var(--skin-cur-titlebar, url(/src/static/assets/skins/base-2.91/TITLEBAR.CUR)), default;
   }
+  /* another window in front: the bitmap's dim rows, as Winamp's */
+  main.inactive .titlebar-sprite {
+    background-position: -27px -15px;
+  }
+  main.inactive .shade-bar {
+    background-position: -27px -42px;
+  }
+  /* the titlebar's buttons are the row's own; Winamp draws one over it only
+     while it's pressed */
+  button.close-btn:not(:active),
+  button.minimize-btn:not(:active),
+  button.shade-btn:not(:active),
+  button.unshade-btn:not(:active) {
+    background: transparent;
+  }
 
   /* ------ /TITLEBAR ------ */
 
@@ -2338,7 +2376,9 @@
     --sprite-x: 107px;
     --sprite-y: 57px;
     width: 65px;
-    height: 14px;
+    /* 13 of each 15 px frame, as Winamp draws it: the 14th row is the
+       sheet's separator, a magenta line under the bar on many skins */
+    height: 13px;
     background-position: 0px 0px;
   }
 
@@ -2349,16 +2389,18 @@
   }
 
   #volume::-webkit-slider-thumb {
-    background: var(--skin-volume);
+    background: var(--skin-volume) no-repeat;
     appearance: none;
     width: 14px;
     height: 11px;
     margin-bottom: 1px;
-    background-position: -15px 11px;
+    /* at the sheet's own spot (15,422), as Winamp takes it: a sheet too
+       short to have it shows no thumb, not a piece of its last frame */
+    background-position: -15px -422px;
   }
 
   #volume::-webkit-slider-thumb:active {
-    background-position: 0px 11px;
+    background-position: 0px -422px;
   }
 
   /* ------ /VOLUME ------ */
@@ -2369,7 +2411,7 @@
     --sprite-x: 177px;
     --sprite-y: 57px;
     width: 38px;
-    height: 14px;
+    height: 13px;
     /* the trough is x=9..46 in the 68px-wide BMP, as Winamp draws it; from
        x=10 the last column was x=47, past it: the sheet's filler colour, a
        blue line right of the slider on most skins */
@@ -2383,16 +2425,16 @@
   }
 
   #balance::-webkit-slider-thumb {
-    background: var(--skin-balance);
+    background: var(--skin-balance) no-repeat;
     appearance: none;
     width: 14px;
     height: 11px;
     margin-bottom: 1px;
-    background-position: -15px 11px;
+    background-position: -15px -422px;
   }
 
   #balance::-webkit-slider-thumb:active {
-    background-position: 0px 11px;
+    background-position: 0px -422px;
   }
 
   /* ------ /BALANCE ------ */

@@ -49,7 +49,9 @@ const MAX_READS_PER_SECOND = 40;
 
 export class Visualizer {
     bars = $state(Array.from({ length: 19 }, (_, index) => new Bar(index)));
-    clearAfterStop = false;
+    // nothing drawn before the first play: Winamp leaves the skin's own
+    // picture there until something plays
+    clearAfterStop = true;
     lastTick = 0;
     /** Which update loop is the live one. A loop from before a stop/start
      *  whose read was still out (the read waits while a track loads) sees a

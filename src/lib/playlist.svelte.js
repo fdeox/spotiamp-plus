@@ -411,6 +411,10 @@ export class Playlist {
 
     /** Elapsed time of the current track in ms (fed by player events). */
     positionMs = $state(0);
+    /** Whether the player is playing, paused or stopped (its events again):
+     *  the corner's time is blanks while nothing plays, as on Winamp.
+     *  @type {"playing" | "paused" | "stopped"} */
+    playState = $state("stopped");
     /** Total time of all loaded tracks in ms (for the bottom-bar readout). */
     totalDurationMs = $derived(this.rows.reduce((sum, r) => sum + rowMs(r), 0));
     /** ...and of the selected ones (Winamp shows both: selected/total). */
@@ -628,16 +632,21 @@ export class Playlist {
                 this.loadFailed(event.Unavailable.uri);
             } else if (event.Playing) {
                 this.loadFailures = 0;
+                this.playState = "playing";
                 this.positionMs = event.Playing.position_ms;
             } else if (event.PositionChanged) {
+                // (a window opened mid-song learns it from the clock)
+                if (this.playState === "stopped") this.playState = "playing";
                 this.positionMs = event.PositionChanged.position_ms;
             } else if (event.PositionCorrection) {
                 this.positionMs = event.PositionCorrection.position_ms;
             } else if (event.Seeked) {
                 this.positionMs = event.Seeked.position_ms;
             } else if (event.Paused) {
+                this.playState = "paused";
                 this.positionMs = event.Paused.position_ms;
             } else if (event.Stopped) {
+                this.playState = "stopped";
                 this.positionMs = 0;
             }
         });

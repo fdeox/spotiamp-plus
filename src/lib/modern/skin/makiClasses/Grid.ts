@@ -44,6 +44,8 @@ export default class Grid extends GuiObj {
 
   // This shadows `getheight()` on GuiObj
   getheight(): number {
+    const rel = this._relativeSize("h");
+    if (rel != null) return rel;
     if (this._h) {
       return this._h;
     }
@@ -56,6 +58,8 @@ export default class Grid extends GuiObj {
 
   // This shadows `getwidth()` on GuiObj
   getwidth(): number {
+    const rel = this._relativeSize("w");
+    if (rel != null) return rel;
     if (this._w) {
       return this._w;
     }
@@ -83,7 +87,9 @@ export default class Grid extends GuiObj {
   draw() {
     super.draw();
     this._div.style.pointerEvents = "none";
-    this._div.style.removeProperty("display");
+    // Spotiamp+: a hidden one stays hidden (visible="0": Big Bento's tab
+    // hover and active faces lay over the tab's text)
+    this._renderVisibility();
     this._div.classList.add("webamp--img");
     this._renderBackground();
   }
