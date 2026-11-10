@@ -2793,9 +2793,11 @@
     background-position: -153px -21px;
   }
 
+  /* the sides as Winamp drew them: 12 px from PLEDIT.BMP (0, 42) and 20 px
+     from (31, 42), the list between (x 12 to width - 20) */
   .playlist-l-sprite {
     --sprite-url: var(--skin-pledit);
-    width: 10px;
+    width: 12px;
     height: 29px;
     --sprite-y: calc(var(--y) * 29px - 9px);
     background-position: 0px -42px;
@@ -2803,12 +2805,12 @@
 
   .playlist-r-sprite {
     --sprite-url: var(--skin-pledit);
-    width: 19px;
+    width: 20px;
     height: 29px;
     --x: var(--playlist-w);
-    --sprite-x: calc((var(--x) - 1) * 25px + 6px);
+    --sprite-x: calc((var(--x) - 1) * 25px + 5px);
     --sprite-y: calc(var(--y) * 29px - 9px);
-    background-position: -32px -42px;
+    background-position: -31px -42px;
   }
 
   .playlist-bl-sprite {

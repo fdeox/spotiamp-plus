@@ -15,16 +15,17 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, untrack } from "svelte";
   import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED, toFileUrl } from "$lib/common.svelte.js";
-  import { emitWindowEvent } from "$lib/events.svelte.js";
+  import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { watchWindowActive } from "$lib/window-active.js";
-  import { Menu } from "@tauri-apps/api/menu";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
+  import { Menu } from "@tauri-apps/api/menu";
   import { MlView, createLook } from "$lib/winampml/mlview.js";
-  import { classicGenex, BASE_GEN, cssImageUrl, loadImage, modernGenex, toCanvas } from "$lib/winampml/genex.js";
+  import { classicGenex, BASE_GEN, cssImageUrl, loadImage, modernGenex, parseColor, toCanvas } from "$lib/winampml/genex.js";
   import { FRAME, drawGenFrame, scanLetters } from "$lib/winampml/genframe.js";
+  import { SkinnedMenu, menuColors } from "$lib/winampml/menu.js";
 
   const { data } = $props();
 
@@ -140,7 +141,9 @@
   };
   const isLocal = $derived(activeNode === "local");
   /** the rows the search leaves */
-  const searched = $derived(isRadio || !searchWords.length ? tracks : tracks.filter(matches));
+  // (a catalogue search's own words stay in the box, as Winamp's did, and
+  // don't filter the results they found; more words typed after do)
+  const searched = $derived(isRadio || !searchWords.length || (searchMode && search.trim() === searchQuery) ? tracks : tracks.filter(matches));
   /** Local Media's artists: "All", then each with its albums and tracks (names without case, as Winamp's database compared them) */
   const artistRows = $derived.by(() => {
     if (!isLocal || !filtersOn) return [];
@@ -353,6 +356,11 @@
 
   /** a new list in the right pane: what was there goes @param {string | null} node */
   function startList(node) {
+    // a catalogue search's words leave with it (they'd filter the next list)
+    if (searchMode && searchQuery && search.trim() === searchQuery) {
+      search = "";
+      view?.setSearch("");
+    }
     searchMode = false;
     selectedUri = null;
     activeNode = node;
@@ -425,9 +433,6 @@
       const ids = /** @type {string[]} */ (await invoke("search", { query: q }));
       if (token !== loadToken) return;
       trackUris = ids;
-      // the box's words found the results: they don't filter them again
-      search = "";
-      view?.setSearch("");
       await loadTrackMetas(ids.map((uri) => ({ uri, added_ms: null })), token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
@@ -833,9 +838,9 @@
     const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: false }).catch(() => null));
     const folders = lib?.folders ?? [];
     popMenu([
-      { text: "Add a folder…", action: addLocalFolder },
+      { text: "Add media to Library...", action: addLocalFolder },
       {
-        text: "Look for new files",
+        text: "Rescan Watch Folders (in background)",
         enabled: folders.length > 0,
         action: () => (activeNode === "local" ? selectLocal() : invoke("local_library", { rescan: true }).catch(() => {})),
       },
@@ -922,23 +927,31 @@
     await invoke("set_playlist_pinned", { uri, pinned: on }).catch(() => {});
   }
 
-  // --- right-click menus (Windows' own, like the main menu) ---
+  // --- the menus: Winamp's skinned ones, drawn in the window (menu.js) ---
+  /** @type {SkinnedMenu | null} */
+  let skinMenu = null;
+  /** where the mouse last went down or asked for a menu (the window's px) */
+  let lastPoint = { x: 0, y: 0 };
+  /** a button's menu goes by the button (Winamp: above those at the bottom, below the others) */
+  let menuFromButton = false;
   /** @type {Menu | null} */
   let openedMenu = null;
   let menuBusy = false;
-  /** @param {any[]} items */
-  async function popMenu(items) {
-    // One menu at a time, and the old one fully closed before the next is
-    // made: a popup keeps this page's resource table locked until it closes,
-    // and creating or closing a menu needs that lock on the main thread (see
-    // the playlist's showMenu), so overlapping them froze the whole app.
+  /**
+   * Windows' own menu, for one too tall for the window (a skinned menu is
+   * drawn inside it). One at a time, the old one fully closed first: a popup
+   * keeps this page's resource table locked until it closes, and overlapping
+   * them froze the whole app (see the playlist's showMenu).
+   * @param {import("$lib/winampml/menu.js").MenuItem[]} items
+   */
+  async function nativeMenu(items) {
     if (menuBusy) return;
     menuBusy = true;
     try {
       const old = openedMenu;
       openedMenu = null;
       if (old) await old.close().catch(() => {});
-      const menu = await Menu.new({ items });
+      const menu = await Menu.new({ items: /** @type {any} */ (items) });
       openedMenu = menu;
       await menu.popup();
     } catch {
@@ -946,6 +959,21 @@
     } finally {
       menuBusy = false;
     }
+  }
+  /** @param {import("$lib/winampml/menu.js").MenuItem[]} items */
+  function popMenu(items) {
+    if (!skinMenu || !root) return;
+    let { x, y } = lastPoint;
+    const r = menuFromButton ? view?.pressedRect : null;
+    menuFromButton = false;
+    if (r) {
+      x = inner.x + r.x;
+      const below = r.y + r.h / 2 < inner.h / 2;
+      y = inner.y + (below ? r.y + r.h : r.y);
+      skinMenu.show(items, x, y, below ? "down" : "up");
+      return;
+    }
+    skinMenu.show(items, x, y);
   }
   /** @param {MouseEvent} e @param {any} pl */
   function playlistMenu(e, pl) {
@@ -967,8 +995,8 @@
     if (isRadio && path) {
       const yours = activeNode === "radio:yours";
       popMenu([
-        { text: "Play", action: () => loadTrackIntoMain(i) },
-        { text: "Add to the playlist", action: () => sendStations([t], false) },
+        { text: "Play selection\tEnter", action: () => loadTrackIntoMain(i) },
+        { text: "Enqueue selection\tShift+Enter", action: () => sendStations([t], false) },
         { item: "Separator" },
         { text: "Copy the station's link", action: () => navigator.clipboard.writeText(path).catch(() => {}) },
         ...(yours ? [{ text: "Remove from your stations", action: () => invoke("radio_forget", { url: path }).then(selectYourStations).catch(() => {}) }] : []),
@@ -976,11 +1004,19 @@
       return;
     }
     if (path) {
+      // (Winamp's, those Spotiamp+ has: its words and its keys)
+      const artist = t.artist ?? "";
+      const album = t.album ?? "";
       popMenu([
-        { text: "Play", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
-        { text: "Add to the playlist", action: enqueueSelected },
+        { text: "Play selection\tEnter", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
+        { text: "Enqueue selection\tShift+Enter", action: enqueueSelected },
         { item: "Separator" },
-        { text: "Show in folder", action: () => invoke("local_reveal", { path }).catch(() => {}) },
+        { text: "Select all\tCtrl+A", action: () => view?.selectAll() },
+        { item: "Separator" },
+        ...(artist ? [{ text: `All tracks by artist "${artist.replaceAll("&", "&&")}"`, action: () => showArtist(artist) }] : []),
+        ...(album ? [{ text: `All tracks from album "${album.replaceAll("&", "&&")}"`, action: () => showAlbum(album) }] : []),
+        ...(artist || album ? [{ item: "Separator" }] : []),
+        { text: "Explore item folder\tCtrl+F", action: () => invoke("local_reveal", { path }).catch(() => {}) },
       ]);
       return;
     }
@@ -988,8 +1024,10 @@
     const loved = lovedSet.has(uri);
     const lists = /** @type {{name: string}[]} */ (await invoke("get_saved_lists").catch(() => []));
     popMenu([
-      { text: "Play", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
-      { text: "Add to the playlist", action: enqueueSelected },
+      { text: "Play selection\tEnter", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
+      { text: "Enqueue selection\tShift+Enter", action: enqueueSelected },
+      { item: "Separator" },
+      { text: "Select all\tCtrl+A", action: () => view?.selectAll() },
       { item: "Separator" },
       { text: loved ? "Unlove" : "♡ Love", action: () => invoke("set_loved", { uris: pickedUris(), loved: !loved }).catch(() => {}) },
       {
@@ -997,11 +1035,33 @@
         items: [
           ...lists.map((l) => ({ text: l.name.replaceAll("&", "&&"), action: () => addSelectedToList(l.name) })),
           ...(lists.length ? [{ item: "Separator" }] : []),
-          { text: "New list…", action: () => (newListOpen = true) },
+          { text: "New list...", action: () => (newListOpen = true) },
         ],
       },
       { text: "Copy Spotify link", action: () => navigator.clipboard.writeText(trackUrl(uri)).catch(() => {}) },
     ]);
+  }
+  /** Winamp's "All tracks by artist": the artist picked in the filter (searched for without filters) @param {string} name */
+  function showArtist(name) {
+    const k = filtersOn ? artistRows.findIndex((r) => !r.all && r.key === name.toLowerCase()) : -1;
+    if (k > 0) {
+      artistSel = [k];
+      albumSel = [];
+      clearSel();
+    } else search = name;
+  }
+  /** "All tracks from album": all artists, that album picked @param {string} name */
+  function showAlbum(name) {
+    if (filtersOn) {
+      artistSel = [];
+      const k = albumRows.findIndex((r) => !r.all && r.key === name.toLowerCase());
+      if (k > 0) {
+        albumSel = [k];
+        clearSel();
+        return;
+      }
+    }
+    search = name;
   }
   /** @param {MouseEvent} e @param {"recent" | "top"} kind */
   function historyMenu(e, kind) {
@@ -1009,7 +1069,7 @@
     popMenu([
       { text: "Play all", action: () => loadHistoryIntoMain(kind) },
       { item: "Separator" },
-      { text: "Clear listening history…", action: clearHistory },
+      { text: "Clear listening history...", action: clearHistory },
     ]);
   }
 
@@ -1191,7 +1251,7 @@
   /** @param {string} set */
   const columnsOf = (set) =>
     COLUMNS[set]
-      .filter((c) => !(set === "local" && hiddenCols.includes(c.id)))
+      .filter((c) => !hiddenCols.includes(set === "local" ? c.id : `${set}:${c.id}`))
       .map((c) => ({ ...c, w: widths[set]?.[c.id] ?? c.w }));
 
   const kindSet = $derived(isLocal ? "local" : isRadio ? "radio" : activeNode === "top" || activeNode === "recent" ? activeNode : "spotify");
@@ -1306,6 +1366,8 @@
         sortCol: isLocal && localDefault ? "title" : !sortCol && activeNode === "top" ? "plays" : !sortCol && activeNode === "recent" ? "last" : sortCol,
         sortUp: isLocal && localDefault ? true : !sortCol && (activeNode === "top" || activeNode === "recent") ? false : sortDir > 0,
         hint,
+        // the song playing, in the playlist's "current" colour
+        current: nowKey ? rows.findIndex((t) => t.uri === nowKey) : -1,
       },
       buttons: isLocal
         ? [
@@ -1437,6 +1499,7 @@
   }
   /** @param {string} key @param {MouseEvent} e */
   function treeContext(key, e) {
+    if (key === "liked" || key === "loved") return popMenu([{ text: "Play", action: () => treeActivate(key) }]);
     if (key === "recent" || key === "top") return historyMenu(e, key);
     if (key === "local") return localMenu(e);
     if (key.startsWith("folder:")) return folderMenu(e, folderPath(key));
@@ -1447,7 +1510,7 @@
           { text: "Play", action: () => loadListIntoMain(list) },
           { text: "Add to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: list.uris.map(trackUrl) }) },
           { item: "Separator" },
-          { text: "Delete list…", action: () => deleteSavedList(list.name) },
+          { text: "Delete list...", action: () => deleteSavedList(list.name) },
         ]);
       return;
     }
@@ -1468,11 +1531,11 @@
   /** the Library button's menu (Winamp's: its own commands) @param {MouseEvent} e */
   function libraryMenu(e) {
     popMenu([
-      { text: "Add a music folder…", action: addLocalFolder },
-      { text: "Look for new files", enabled: localFolders.length > 0, action: () => (activeNode === "local" ? selectLocal() : invoke("local_library", { rescan: true }).catch(() => {})) },
+      { text: "Add media to Library...", action: addLocalFolder },
+      { text: "Rescan Watch Folders (in background)", enabled: localFolders.length > 0, action: () => (activeNode === "local" ? selectLocal() : invoke("local_library", { rescan: true }).catch(() => {})) },
       { item: "Separator" },
       { text: "Listening stats", action: () => invoke("set_stats_window_visible", { visible: true }) },
-      ...(freeMode ? [] : [{ text: "Reload your playlists", action: loadPlaylists }, { text: "Clear listening history…", action: clearHistory }]),
+      ...(freeMode ? [] : [{ text: "Reload your playlists", action: loadPlaylists }, { text: "Clear listening history...", action: clearHistory }]),
     ]);
   }
 
@@ -1490,6 +1553,10 @@
     } else if (id === "generate") generatePlaylist();
     // (the Play button's menu entries by name, for the smoke tests)
     else if (id === "enqueue") enqueueSelected();
+    else if (id === "explore") {
+      const t = displayTracks[selRows[0] ?? -1];
+      if (t?.path && isLocal) invoke("local_reveal", { path: t.path }).catch(() => {});
+    }
     else if (id === "playall") playAll();
     else if (id === "enqueueall") enqueueAll();
     else if (id === "list") {
@@ -1497,7 +1564,7 @@
       popMenu([
         ...savedLists.map((l) => ({ text: l.name.replaceAll("&", "&&"), action: () => addSelectedToList(l.name) })),
         ...(savedLists.length ? [{ item: "Separator" }] : []),
-        { text: "New list…", action: () => (newListOpen = true) },
+        { text: "New list...", action: () => (newListOpen = true) },
       ]);
     }
   }
@@ -1507,24 +1574,34 @@
     if (id === "art") invoke("set_art_window_visible", { visible: true }).catch(() => {});
     else if (id === "view")
       popMenu([
-        { text: "Artist and album filters", checked: filtersOn, action: () => setFilters(true) },
+        { text: "Artist\\Album", checked: filtersOn, action: () => setFilters(true) },
         { text: "No filters", checked: !filtersOn, action: () => setFilters(false) },
       ]);
-    else if (id === "columns")
-      popMenu(
-        COLUMNS.local
-          .filter((c) => !["artist", "title"].includes(c.id))
-          .map((c) => ({
-            text: c.title,
-            checked: !hiddenCols.includes(c.id),
-            action: () => {
-              hiddenCols = hiddenCols.includes(c.id) ? hiddenCols.filter((h) => h !== c.id) : [...hiddenCols, c.id];
-              try {
-                localStorage.setItem("ml-hidden", JSON.stringify(hiddenCols));
-              } catch {}
-            },
-          })),
-      );
+    else if (id === "columns") {
+      // a menu for each list, as Winamp's (the first column stays)
+      /** @param {string} set @param {string[]} keep */
+      const toggles = (set, keep) =>
+        COLUMNS[set]
+          .filter((c) => !keep.includes(c.id))
+          .map((c) => {
+            const key = set === "local" ? c.id : `${set}:${c.id}`;
+            return {
+              text: c.title,
+              checked: !hiddenCols.includes(key),
+              action: () => {
+                hiddenCols = hiddenCols.includes(key) ? hiddenCols.filter((h) => h !== key) : [...hiddenCols, key];
+                try {
+                  localStorage.setItem("ml-hidden", JSON.stringify(hiddenCols));
+                } catch {}
+              },
+            };
+          });
+      popMenu([
+        { text: "Artist", items: toggles("artists", ["name"]) },
+        { text: "Album", items: toggles("albums", ["name"]) },
+        { text: "Tracks", items: toggles("local", ["artist", "title"]) },
+      ]);
+    }
   }
   /** @param {boolean} on */
   function setFilters(on) {
@@ -1555,6 +1632,10 @@
   let gen = $state(/** @type {{ img: HTMLImageElement | HTMLCanvasElement, letters: number[][] | null } | null} */ (null));
   let title = $state("Winamp Library");
   let lookSeq = 0;
+  /** the song playing: a list's uri for it ("spotify:track:…", "local:…", "radio:…") */
+  let nowKey = $state("");
+  /** @type {import("$lib/winampml/menu.js").MenuColors | null} */
+  let menuCols = null;
 
   /** the skin's font: Winamp's playlist font (Arial, unless the skin's is chosen) */
   function skinFont() {
@@ -1574,15 +1655,23 @@
     const isModern = "modern" in document.body.dataset;
     /** @type {import("$lib/winampml/genex.js").Genex | null} */
     let genex = null;
+    /** @type {Record<string, number[]> | null} */
+    let modernMenu = null;
+    /** the playing song's colour: the playlist's (a modern skin's list.text.current) */
+    let current = parseColor(getComputedStyle(document.body).getPropertyValue("--skin-plcurrent"));
     if (isModern) {
       const look = /** @type {any} */ (await invoke("modern_look").catch(() => null));
       genex = await modernGenex(look);
+      modernMenu = look?.menu ?? null;
+      current = parseColor(look?.colors?.current ?? "") ?? current;
     }
     if (!genex) genex = await classicGenex();
     if (seq !== lookSeq) return;
     const look = await createLook(genex, skinFont(), () => view?.invalidate());
     if (seq !== lookSeq) return;
+    menuCols = menuColors(genex.c, (isModern && modernMenu) || {});
     modern = isModern;
+    if (view) view.tracks.currentColor = current ?? [255, 255, 255];
     view?.setLook(look);
     // the frame: the skin's GEN.BMP, else Winamp's own (the base skin's)
     const style = getComputedStyle(document.body);
@@ -1612,7 +1701,7 @@
         treeToggle,
         treeContext,
         treeDrag,
-        rowActivate: (i) => loadTrackIntoMain(i),
+        rowActivate: (i) => (selRows.length > 1 && selRows.includes(i) ? playSelected() : loadTrackIntoMain(i)),
         cellClick: (i, col, dx, starW) => {
           // (the stars are 12 px apart from 5 px in)
           if (col === "rating" && isLocal) rate(i, Math.max(1, Math.min(5, Math.floor((dx - 5) / 12) + 1)));
@@ -1650,9 +1739,18 @@
           else doSearch();
         },
         clear: clearSearch,
-        button: buttonPressed,
-        library: libraryMenu,
-        toolbar: toolbarPressed,
+        button: (id, part, e) => {
+          menuFromButton = true;
+          buttonPressed(id, part, e);
+        },
+        library: (e) => {
+          menuFromButton = true;
+          libraryMenu(e);
+        },
+        toolbar: (id, e) => {
+          menuFromButton = true;
+          toolbarPressed(id, e);
+        },
         layoutChanged: (s) => {
           try {
             localStorage.setItem("ml-layout", JSON.stringify(s));
@@ -1667,6 +1765,27 @@
       rootH = root.clientHeight;
     });
     if (root) ro.observe(root);
+    // the menus, and where the mouse was when one was asked for
+    skinMenu = root ? new SkinnedMenu(root, () => (view?.look && menuCols ? { font: view.look.font, colors: menuCols } : null), nativeMenu) : null;
+    /** @param {MouseEvent} e */
+    const point = (e) => {
+      if (skinMenu?.open && skinMenu.back.contains(/** @type {Node} */ (e.target))) return;
+      const r = root?.getBoundingClientRect();
+      lastPoint = { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
+      menuFromButton = false;
+    };
+    root?.addEventListener("pointerdown", point, true);
+    root?.addEventListener("contextmenu", point, true);
+    const shut = () => skinMenu?.close();
+    window.addEventListener("blur", shut);
+    // the song playing (the player says so every second): a Spotify song's
+    // uri, a file's or a station's address
+    /** @type {(() => void) | undefined} */
+    let unsubNow;
+    subscribeToWindowEvent("art", (e) => {
+      const key = e.uri ? e.uri : e.path ? (/^https?:\/\//i.test(e.path) ? "radio:" : "local:") + e.path : "";
+      if (key !== nowKey) nowKey = key;
+    }).then((u) => (unsubNow = u));
     // the smoke tests' handle: the Library is one picture, so they ask it
     /** @param {string} what a tree key, or the start of an item's text */
     const findKey = (what) => {
@@ -1724,6 +1843,26 @@
       sortState: () => ({ col: localDefault && isLocal ? "title" : sortCol, dir: sortDir }),
       press: (/** @type {string} */ id, part = "main") => buttonPressed(id, /** @type {any} */ (part), new MouseEvent("click")),
       hide: (/** @type {string | null} */ source) => (hideRe = source ? new RegExp(source, "i") : null),
+      /** the menus: one shown at a point, an item lit, what's open */
+      menu: async (/** @type {any[]} */ items, x = 0, y = 0, probe = false) => {
+        if (!skinMenu) return null;
+        if (!probe) return skinMenu.show(items, x, y);
+        // (probe: whether it would go to Windows' menu, without opening one)
+        const fallback = skinMenu.fallback;
+        let used = false;
+        skinMenu.fallback = () => (used = true);
+        await skinMenu.show(items, x, y);
+        skinMenu.fallback = fallback;
+        return used;
+      },
+      menuHot: (/** @type {number} */ n) => {
+        const l = skinMenu?.levels.at(-1);
+        if (!l || !skinMenu) return false;
+        l.hot = n;
+        return skinMenu.draw(l).then(() => true);
+      },
+      menuOpen: () => skinMenu?.levels.map((l) => ({ x: l.x, y: l.y, w: l.w, h: l.h, items: l.items.map((i) => i.text ?? "-") })) ?? [],
+      menuClose: () => skinMenu?.close(),
       /** the sheet's colours in use, and whether GEN.BMP's frame is drawn */
       colors: () => view?.look?.g.c ?? null,
       frame: () => {
@@ -1744,6 +1883,10 @@
     return () => {
       ro.disconnect();
       window.removeEventListener(SKIN_APPLIED, reskin);
+      window.removeEventListener("blur", shut);
+      unsubNow?.();
+      skinMenu?.destroy();
+      skinMenu = null;
       stopActive();
       view?.destroy();
       view = null;

@@ -33,7 +33,7 @@ const grey = (v: number): Rgb => [v, v, v];
 const BLACK = grey(0);
 const WHITE = grey(255);
 
-export function makeMlGenex(ui): { genex: string; ff: Record<string, string> | null } | null {
+export function makeMlGenex(ui): { genex: string; ff: Record<string, string> | null; menu: Record<string, Rgb> } | null {
   try {
     const version = ui._skinVersion ?? 1;
     const interpolate = version * 10 < 10;
@@ -205,7 +205,19 @@ export function makeMlGenex(ui): { genex: string; ff: Record<string, string> | n
       if (hbg) found.h_bg = hbg;
       if (found["wasabi.scrollbar.vertical.left"] && found["wasabi.scrollbar.vertical.button"]) ff = found;
     }
-    return { genex: canvas.toDataURL(), ff };
+    // the menus' colours, those the skin names (gen_ml asked the skin for them first)
+    const menu: Record<string, Rgb> = {};
+    const menuIds: [string, string][] = [
+      ["bg", "wasabi.popupmenu.background"],
+      ["sel", "wasabi.popupmenu.background.selected"],
+      ["text", "wasabi.popupmenu.text"],
+      ["textSel", "wasabi.popupmenu.text.selected"],
+      ["textOff", "wasabi.popupmenu.text.inactive"],
+      ["frame", "wasabi.popupmenu.frame"],
+      ["separator", "wasabi.popupmenu.separator"],
+    ];
+    for (const [k, id] of menuIds) if (has(id)) menu[k] = sc(id);
+    return { genex: canvas.toDataURL(), ff, menu };
   } catch {
     return null;
   }

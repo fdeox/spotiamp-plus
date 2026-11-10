@@ -67,6 +67,8 @@ export class MlView {
     this.tracks = new ListView();
     /** @type {Button[]} */
     this.buttons = [];
+    /** @type {{ x: number, y: number, w: number, h: number } | null} the last button pressed */
+    this.pressedRect = null;
     this.status = new Static("", { vcenter: true });
     /** @type {Pane | null} */
     this.pane = null;
@@ -171,6 +173,12 @@ export class MlView {
     this.tracks.clickRow(i, false, false);
     this.tracks.show(i);
     this.model.selectionChanged(this.tracks.selection());
+    this.invalidate();
+  }
+  /** every row (the menu's Select all) */
+  selectAll() {
+    for (let i = 0; i < this.tracks.count; i++) this.tracks.selected.add(i);
+    this.listChanged("tracks");
     this.invalidate();
   }
   clearSelection() {
@@ -744,6 +752,9 @@ export class MlView {
       const i = this.dragArm.click;
       this.tracks.clickRow(i, false, false);
       this.listChanged("tracks");
+      // (and a click on its stars rates it, as on any row)
+      const at = this.model.cellClick && this.look ? this.tracks.columnAt(x) : null;
+      if (at && this.look) this.model.cellClick?.(i, at.col.id, at.dx, this.look.textW("★"));
       this.invalidate();
     }
     this.dragArm = null;
@@ -779,6 +790,8 @@ export class MlView {
 
   /** a button pressed @param {Button} b @param {string} part @param {MouseEvent} e */
   press(b, part, e) {
+    // (where a button's menu goes: by the button, as Winamp put it)
+    this.pressedRect = { ...b.rect };
     if (b === this.libBtn) this.model.library(e);
     else if (b === this.clearBtn) {
       this.input.value = "";
@@ -886,8 +899,18 @@ export class MlView {
         to = list.count - 1;
         break;
       case "Enter":
-        if (name === "tracks" && cur >= 0) this.model.rowActivate(cur);
+        // (Shift+Enter: Enqueue selection, as Winamp's menu says)
+        if (name === "tracks" && e.shiftKey) this.model.button("enqueue", "main", new MouseEvent("click"));
+        else if (name === "tracks" && cur >= 0) this.model.rowActivate(cur);
         e.preventDefault();
+        return;
+      case "f":
+      case "F":
+        // Ctrl+F: Explore item folder
+        if (e.ctrlKey && name === "tracks") {
+          this.model.button("explore", "main", new MouseEvent("click"));
+          e.preventDefault();
+        }
         return;
       case "a":
       case "A":

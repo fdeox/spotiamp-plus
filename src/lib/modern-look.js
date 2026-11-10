@@ -15,6 +15,7 @@ import ENGINE_CSS from "./modern/css/webamp.css?inline";
  *   colors: Record<string, string>,
  *   genex?: string,
  *   ff?: Record<string, string> | null,
+ *   menu?: Record<string, number[]>,
  * }} Look
  */
 

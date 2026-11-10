@@ -73,15 +73,16 @@ export async function metrics(font) {
 }
 
 /**
- * Each text's [width, height] on one line, as DrawText measures it.
- * @param {MlFont} font @param {string[]} texts
+ * Each text's [width, height] on one line, as DrawText measures it (or, with
+ * `extent`, GetTextExtentPoint32: a pixel or two apart now and then).
+ * @param {MlFont} font @param {string[]} texts @param {boolean} [extent]
  * @returns {Promise<number[][]>}
  */
-export async function measure(font, texts) {
-  const fk = fontKey(font);
+export async function measure(font, texts, extent = false) {
+  const fk = fontKey(font) + (extent ? "|x" : "");
   const missing = [...new Set(texts.filter((t) => !sizeCache.has(fk + "\u0001" + t)))];
   if (missing.length) {
-    const m = await measureRaw([font], missing.map((t) => [t, 0]));
+    const m = await measureRaw([font], missing.map((t) => [t, 0]), extent);
     missing.forEach((t, i) => {
       const s = m?.sizes?.[i];
       // (outside the app: a guess, so the layout still works)
@@ -92,11 +93,11 @@ export async function measure(font, texts) {
   return texts.map((t) => sizeCache.get(fk + "\u0001" + t) ?? [0, 0]);
 }
 
-/** @param {MlFont[]} fonts @param {[string, number][]} texts */
-async function measureRaw(fonts, texts) {
+/** @param {MlFont[]} fonts @param {[string, number][]} texts @param {boolean} [extent] */
+async function measureRaw(fonts, texts, extent = false) {
   if (!inApp()) return null;
   try {
-    return /** @type {{ metrics: number[][], sizes: number[][] }} */ (await invoke("winamp_ml_measure", { measure: { fonts, texts } }));
+    return /** @type {{ metrics: number[][], sizes: number[][] }} */ (await invoke("winamp_ml_measure", { measure: { fonts, texts, extent } }));
   } catch {
     return null;
   }

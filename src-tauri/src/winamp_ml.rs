@@ -78,6 +78,10 @@ impl MlPainted {
 pub struct MlMeasure {
     pub fonts: Vec<MlFont>,
     pub texts: Vec<(String, usize)>,
+    /// GetTextExtentPoint32's widths instead of DrawText's (gen_ml measured
+    /// its menus' items so; a text can come out a pixel or two apart)
+    #[serde(default)]
+    pub extent: bool,
 }
 
 /// Each font's [height, ascent, average width, external leading] and each
@@ -258,8 +262,9 @@ pub fn measure(m: &MlMeasure) -> MlMeasured {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{
         CreateCompatibleDC, DT_CALCRECT, DT_NOPREFIX, DT_SINGLELINE, DeleteDC, DeleteObject, DrawTextW,
-        GetTextMetricsW, HGDIOBJ, SelectObject, TEXTMETRICW,
+        GetTextExtentPoint32W, GetTextMetricsW, HGDIOBJ, SelectObject, TEXTMETRICW,
     };
+    use windows::Win32::Foundation::SIZE;
 
     if m.fonts.is_empty() || m.fonts.len() > 8 || m.texts.len() > 20000 {
         return MlMeasured::default();
@@ -284,6 +289,12 @@ pub fn measure(m: &MlMeasure) -> MlMeasured {
             let mut r = RECT::default();
             if text.is_empty() {
                 out.sizes.push([0, 0]);
+                continue;
+            }
+            if m.extent {
+                let mut sz = SIZE::default();
+                let _ = GetTextExtentPoint32W(dc, &text, &mut sz);
+                out.sizes.push([sz.cx, sz.cy]);
                 continue;
             }
             DrawTextW(dc, &mut text, &mut r, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
@@ -343,9 +354,20 @@ mod tests {
 
     #[test]
     fn arial_12_measures_as_winamp_laid_it_out() {
-        let m = measure(&MlMeasure { fonts: vec![arial()], texts: vec![("Library".into(), 0)] });
+        let m = measure(&MlMeasure { fonts: vec![arial()], texts: vec![("Library".into(), 0)], extent: false });
         // the playlist font's height (a row of the playlist editor)
         assert_eq!(m.metrics[0][0], 15);
         assert!(m.sizes[0][0] > 20 && m.sizes[0][0] < 60);
+    }
+
+    #[test]
+    fn menu_items_measure_by_text_extent() {
+        // (a menu's items were measured with GetTextExtentPoint32: for some
+        // texts a pixel or two wider than DrawText makes them)
+        let text = "All tracks from album \"A Long Album Title For Measuring\"";
+        let one = |extent| measure(&MlMeasure { fonts: vec![arial()], texts: vec![(text.into(), 0)], extent }).sizes[0];
+        let (drawn, extent) = (one(false), one(true));
+        assert!(extent[0] > 200 && (extent[0] - drawn[0]).abs() <= 3, "{drawn:?} {extent:?}");
+        assert_eq!(extent[1], 15);
     }
 }

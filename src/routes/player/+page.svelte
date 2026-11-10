@@ -1227,6 +1227,8 @@
         playing: playerState == "playing",
         // for the fullscreen visualizer's song-title flash (local files too)
         title: nowTitle,
+        // a local file's or a station's (the Library shows the one playing)
+        path: loadedTrack?.isLocal ? (loadedTrack.path ?? null) : null,
       });
       // Taskbar extras (title, progress, thumbnail buttons); the Rust side
       // ignores this unless they're switched on in the Windows menu.

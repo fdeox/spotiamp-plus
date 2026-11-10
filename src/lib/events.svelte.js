@@ -28,7 +28,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *   lyrics: { event: { uri: string | null, positionMs: number, playing: boolean,
  *     song: { key: string, artist: string, title: string, durationMs: number, live: boolean, timed?: boolean } | null } },
  *   uiScale: { event: { scale: number } },
- *   art: { event: { uri: string | null, appSong: { artist: string, title: string } | null, playing: boolean, title: string } },
+ *   art: { event: { uri: string | null, appSong: { artist: string, title: string } | null, playing: boolean, title: string, path?: string | null } },
  *   lyricsSeek: { event: { uri: string, positionMs: number } },
  *   seekTo: { event: { positionMs: number } },
  *   skinChanged: { event: { skin: string, from?: string, name?: string } },
