@@ -120,6 +120,7 @@
       <p class="wait">
         Now open Spotify on your phone or on this computer (the same network), open the device list and pick <b>{s?.device_name}</b>. Spotiamp+ waits for it.
       </p>
+      <p>If Windows asks whether soloist.exe may use the network, allow it: Spotify can't see it otherwise.</p>
       <div class="row"><button class="so-btn" onclick={cancelPair}>Cancel</button></div>
     {:else}
       {#if s?.paired}
