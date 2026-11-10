@@ -1,4 +1,4 @@
-MilkDrop presets that come with Spotiamp+ (534)
+MilkDrop presets that come with Spotiamp+ (537)
 
 183 by Incubo_ (also known as Se7enSlasher), in the Incubo_ folder, shared with
 Spotiamp+ by him; among them his MilkDrop takes on Spotiamp+'s own visualizer patterns.
@@ -6,6 +6,11 @@ Spotiamp+ by him; among them his MilkDrop takes on Spotiamp+'s own visualizer pa
   (scripts/projectm/SpotiampFft.hpp).
   BeatDrop, his MilkDrop visualizer: https://github.com/OfficialIncubo/BeatDrop-Music-Visualizer
   Support him: https://ko-fi.com/officialincubo_
+
+3 made for Spotiamp+, in the Spotiamp+ folder: endless trips down winding
+underground passages, in the spirit of Ryan Geiss' Winamp visualizer Monkey
+(geisswerks.com/monkey). Written from scratch for projectM; they use the
+worms, lavatex, cells, lichen and clouds textures that come with it.
 
 351 chosen from projectM's "Cream of the Crop" pack (github.com/projectM-visualizer/presets-cream-of-the-crop):
 presets that load cleanly in projectM 4.1 and run light (under 4 ms a frame on a laptop GPU).
@@ -467,6 +472,9 @@ Sparkle/pork blouse qun hog rot rnz spher.milk
 Sparkle/white lace curtains drenched in biohazard of tiger - singre rapspect.milk
 Sparkle/you will like wildstyle presets, you will intend, i get out my radiative nature through md, i'm a good listener.milk
 Sparkle/you will like wildstyle presets, you will intend, no, you must intend your seeds for them, i ate too mu2.milk
+Spotiamp+/fdeox - Spotiamp+ - Crystal Caverns.milk
+Spotiamp+/fdeox - Spotiamp+ - Neon Catacombs.milk
+Spotiamp+/fdeox - Spotiamp+ - Underground Journey.milk
 Supernova/$$$ Royal - Mashup (385) --- Isosceles edit.milk
 Supernova/306 nz+ liquiardia.milk
 Supernova/BlastOffTek - Fluorescence painter.milk
