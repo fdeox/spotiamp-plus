@@ -8,7 +8,7 @@
   import { forwardShortcuts } from "$lib/shortcuts.js";
   import { badgeList } from "$lib/badges.js";
   import { ITEMS, readOutfit, toggleItem, undress, OUTFIT_KEY, STATS_TAB_KEY } from "$lib/wardrobe.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // Listening stats, from Spotiamp+'s own history (history.rs). Everything is
   // worked out on this computer; nothing is sent anywhere.
@@ -525,12 +525,7 @@
 </script>
 
 <div class="st" data-gen-window>
-  <div class="st-titlebar" data-gen="titlebar" use:makeStatsDraggable>
-    <div class="st-tl"></div>
-    <span class="st-title">LISTENING STATS</span>
-    <button class="st-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"></button>
-    <GenTop title="LISTENING STATS" onclose={close} />
-  </div>
+  <GenFrame title="Listening Stats" onclose={close} drag={makeStatsDraggable} resize={makeStatsResizable} />
 
   <div class="st-body">
     <div class="st-tabs">
@@ -804,7 +799,6 @@
     {/if}
   </div>
 
-  <div class="st-resize" data-gen="resize" use:makeStatsResizable></div>
 </div>
 
 <style>
@@ -835,71 +829,22 @@
     --hi: var(--skin-plcurrent, #fff);
     --bg: var(--skin-genexitembg, var(--skin-plbg, #000));
     --sel: var(--skin-genexselbg, var(--skin-plselbg, #0000c6));
-    background: var(--frame);
+    /* GEN.BMP's frame (GenFrame) behind the insides, which keep to its room */
+    background: #000;
     box-sizing: border-box;
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    padding: 20px 8px 14px 11px;
+    isolation: isolate;
     user-select: none;
     font-family: "px sans nouveaux", sans-serif;
     font-size: calc(8px * var(--px-crisp, 1));
     -webkit-font-smoothing: none;
   }
 
-  .st-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .st-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
-  }
-  .st-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    letter-spacing: 1px;
-    white-space: nowrap;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .st-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
 
   .st-body {
     flex: 1;
     min-height: 0;
-    margin: 0 4px 4px;
+    margin: 0;
     padding: 5px 6px 4px;
     background: var(--bg);
     color: var(--fg);
@@ -1156,23 +1101,6 @@
   }
 
   /* bottom-right resize grip */
-  .st-resize {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    z-index: 3;
-    background: linear-gradient(
-      135deg,
-      transparent 0 8px,
-      color-mix(in srgb, var(--fg) 45%, transparent) 8px 9px,
-      transparent 9px 11px,
-      color-mix(in srgb, var(--fg) 45%, transparent) 11px 12px,
-      transparent 12px
-    );
-  }
 
   /* REWIND slides: one big fact, centred, in sizes the pixel font stays crisp at */
   .rw {

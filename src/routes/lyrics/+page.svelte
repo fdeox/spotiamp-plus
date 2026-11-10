@@ -6,7 +6,7 @@
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
@@ -206,13 +206,7 @@
 </script>
 
 <div class="lyr" data-gen-window>
-  <div class="lyr-titlebar" data-gen="titlebar" use:makeLyricsDraggable>
-    <div class="lyr-tl"></div>
-    <span class="lyr-title">LYRICS</span>
-    <button class="lyr-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
-    ></button>
-    <GenTop title="LYRICS" onclose={close} />
-  </div>
+  <GenFrame title="Lyrics" onclose={close} drag={makeLyricsDraggable} resize={makeLyricsResizable} />
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -253,7 +247,6 @@
     {/if}
   </div>
 
-  <div class="lyr-resize" data-gen="resize" use:makeLyricsResizable></div>
 </div>
 
 <style>
@@ -286,81 +279,14 @@
        colour instead of a fixed blue, so on a gold or grey skin the edges no
        longer clash with the titlebar. */
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
-    background: var(--frame);
+    /* GEN.BMP's frame (GenFrame) behind the insides, which keep to its room */
+    background: #000;
     box-sizing: border-box;
-    /* A 2px inner frame in the titlebar's own colour, bevelled with the skin's
-       own divider tone (not raw black/white) so the edges harmonise with the
-       window instead of standing out. */
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    padding: 20px 8px 14px 11px;
+    isolation: isolate;
     user-select: none;
   }
 
-  .lyr-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .lyr-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
-  }
-  .lyr-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    /* Full titlebar height so the plate tile lines up with the bars 1:1. */
-    height: 20px;
-    /* Centre the text, then lift it clear of the titlebar's thin inner-frame
-       line along the bottom — dead centre looks low because that line eats the
-       lower edge. box-sizing keeps the padding inside the 20px (the bug the
-       plain-centre version had). The bottom padding is the knob: increase it to
-       raise the text, decrease it to lower it. */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    letter-spacing: 1px;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    /* The skin's own title plate, located in GEN.BMP by scanning (see
-       wsz.rs::locate_title_plate) and served as --skin-gentitle. A classic
-       striped titlebar sets it to the real plate slice, so the bars stop, the
-       title sits on the plate, and the bars resume — the main-window look. A
-       smooth titlebar sets it to `transparent`, so the actual titlebar shows
-       through behind the title instead of a mismatched box. The shadow keeps
-       the text legible in the transparent case. */
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .lyr-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
 
   .lyr-body {
     flex: 1;
@@ -368,7 +294,7 @@
     min-height: 0;
     /* Inset so the window background shows as a frame on three sides, and
        recessed the way the playlist and library panes are. */
-    margin: 0 4px 4px;
+    margin: 0;
     background: var(--skin-plbg, #000);
     border: 1px solid #0c0d12;
     box-shadow: inset 1px 1px 0 #0e0f16, inset -1px -1px 0 #3a3f52;
@@ -439,21 +365,4 @@
   }
 
   /* bottom-right resize grip */
-  .lyr-resize {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    z-index: 3;
-    background: linear-gradient(
-      135deg,
-      transparent 0 8px,
-      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 8px 9px,
-      transparent 9px 11px,
-      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 11px 12px,
-      transparent 12px
-    );
-  }
 </style>

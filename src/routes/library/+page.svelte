@@ -1,18 +1,33 @@
+<script module>
+  /** focuses an element as soon as it's there @param {HTMLElement} el */
+  export function focusNow(el) {
+    setTimeout(() => el.focus(), 0);
+  }
+</script>
+
 <script>
+  // The Library, as Winamp 5's Media Library: its tree, its views (Local
+  // Media as Winamp's Audio view with the Artist and Album filters, every
+  // other list as its simple view), its buttons and status line, in the
+  // skin's GENEX.BMP colours and pictures and written in the skin's font by
+  // Windows (lib/winampml). In a classic skin it wears GEN.BMP's frame, as
+  // Winamp's did; in a modern one it's laid into the skin.
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount, tick, untrack } from "svelte";
-  import { REACTIVE_WINDOW_SIZE, toFileUrl } from "$lib/common.svelte.js";
+  import { onMount, untrack } from "svelte";
+  import { REACTIVE_WINDOW_SIZE, SKIN_APPLIED, toFileUrl } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
+  import { watchWindowActive } from "$lib/window-active.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
-  import GenTop from "../../GenTop.svelte";
+  import { MlView, createLook } from "$lib/winampml/mlview.js";
+  import { classicGenex, BASE_GEN, cssImageUrl, loadImage, modernGenex, toCanvas } from "$lib/winampml/genex.js";
+  import { FRAME, drawGenFrame, scanLetters } from "$lib/winampml/genframe.js";
 
-  /** @type {{ data: { freeMode: boolean } }} */
   const { data } = $props();
-  // Free Mode (no Spotify session): the Library is just Local Media
+
   const freeMode = untrack(() => data?.freeMode === true);
 
   // Of the main window's keys (lib/shortcuts.js) only Ctrl+D works here:
@@ -35,12 +50,16 @@
 
   /**
    * @typedef {{ name: string, uri: string, track_count: number, image: string | null, folder?: string[] }} UserPlaylist
-   * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null, path?: string }} LibTrack
-   * @typedef {{ path: string, title: string, artist: string, album: string, duration_ms: number, sample_rate: number, kbps: number, date_ms: number }} LocalItem
+   * @typedef {{ uri: string, name: string, artist: string, album: string, albumArt: string | null, duration: number, unavailable: boolean, addedMs: number | null, path?: string,
+   *   trackNo?: string, year?: string, genre?: string, size?: number, plays?: number, lastPlayed?: number }} LibTrack
+   * @typedef {{ path: string, title: string, artist: string, album: string, duration_ms: number, sample_rate: number, kbps: number, date_ms: number, size?: number, track?: string, year?: string, genre?: string }} LocalItem
    * @typedef {{ folders: string[], items: LocalItem[], scanning: boolean }} LocalLibrary
    * @typedef {{ name: string, uris: string[] }} SavedList
    * @typedef {{ uri: string, added_ms: number | null }} TrackRef
+   * @typedef {import("$lib/winampml/widgets.js").Column} Column
+   * @typedef {import("$lib/winampml/widgets.js").TreeItem} TreeItem
    */
+
   let playlists = $state(/** @type {UserPlaylist[]} */ ([]));
   let loading = $state(true);
   let error = $state("");
@@ -56,107 +75,176 @@
   let tracksError = $state("");
   let loadToken = 0;
 
-  // Column sorting (click a header). null = the natural list order.
-  /** @type {"artist" | "album" | "title" | "time" | "date" | null} */
-  let sortCol = $state(null);
+  // which tree item is active: "search" | "liked" | "recent" | "top" | "list:<name>" | a playlist uri
+  let activeNode = $state(/** @type {string | null} */ (null));
+  const isRadio = $derived(typeof activeNode === "string" && activeNode.startsWith("radio:"));
+  // the tree's highlighted item (a parent or the stats item can be highlighted
+  // without its own view)
+  let treeKey = $state(/** @type {string | null} */ (null));
+  // the selected rows, as shown (the Play / Enqueue buttons and the menus act on them)
+  let selRows = $state(/** @type {number[]} */ ([]));
+  /** @type {MlView | null} */
+  let view = null;
+  function clearSel() {
+    selRows = [];
+    view?.clearSelection();
+  }
+
+  // --- sorting: a header click; Local Media starts in Winamp's order -------
+  /** the sorted column (null: the list's own order) */
+  let sortCol = $state(/** @type {string | null} */ (null));
   let sortDir = $state(1); // 1 asc, -1 desc
-  /** @param {"artist" | "album" | "title" | "time" | "date"} col */
+  /** Local Media's first order: artist, album, track, as Winamp listed it (its Title arrow shown) */
+  let localDefault = $state(true);
+  /** @param {string} col */
   function sortBy(col) {
-    if (sortCol === col) {
+    if (activeNode === "local" && localDefault) {
+      localDefault = false;
+      sortCol = col;
+      sortDir = col === "title" ? -1 : 1;
+    } else if (sortCol === col) {
       sortDir = -sortDir;
     } else {
       sortCol = col;
       sortDir = 1;
     }
-    selectedTrack = -1; // indices change under a re-sort
+    clearSel(); // indices change under a re-sort
   }
-  // The rows actually shown: `tracks` in natural order, or sorted by a column.
-  // Every row op below reads through this so clicks map to the right track.
+
+  // Case- and accent-insensitive, so "s" finds "Şebnem" and "beyonce" finds
+  // "Beyoncé". Dotless ı folds to i for the same reason.
+  /** @param {string} s */
+  const fold = (s) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/ı/g, "i");
+  /** how Winamp ordered names: no case, and a leading "The " doesn't count @param {string} s */
+  const sortName = (s) => fold(s).replace(/^the /, "");
+
+  // --- Local Media's filters (Winamp's Artist and Album panes) -------------
+  let filtersOn = $state(true);
+  try {
+    filtersOn = localStorage.getItem("ml-filters") !== "0";
+  } catch {}
+  let artistSel = $state(/** @type {number[]} */ ([]));
+  let albumSel = $state(/** @type {number[]} */ ([]));
+  /** the search box's words, each to be found in a row */
+  const searchWords = $derived(fold(search.trim()).split(/\s+/).filter(Boolean));
+  /** @param {LibTrack} t */
+  const matches = (t) => {
+    if (!searchWords.length) return true;
+    const hay = fold(`${t.name} ${t.artist} ${t.album} ${t.genre ?? ""} ${t.year ?? ""}`);
+    return searchWords.every((w) => hay.includes(w));
+  };
+  const isLocal = $derived(activeNode === "local");
+  /** the rows the search leaves */
+  const searched = $derived(isRadio || !searchWords.length ? tracks : tracks.filter(matches));
+  /** Local Media's artists: "All", then each with its albums and tracks (names without case, as Winamp's database compared them) */
+  const artistRows = $derived.by(() => {
+    if (!isLocal || !filtersOn) return [];
+    /** @type {Map<string, { name: string, albums: Set<string>, tracks: number }>} */
+    const by = new Map();
+    for (const t of searched) {
+      const key = (t.artist || "").toLowerCase();
+      let e = by.get(key);
+      if (!e) by.set(key, (e = { name: t.artist || "", albums: new Set(), tracks: 0 }));
+      if (t.album) e.albums.add(t.album.toLowerCase());
+      e.tracks++;
+    }
+    const list = [...by.values()].sort((a, b) => sortName(a.name).localeCompare(sortName(b.name)));
+    const albums = new Set(searched.filter((t) => t.album).map((t) => t.album.toLowerCase()));
+    return [{ name: `All (${list.length} artists)`, key: "", all: true, albums: albums.size, tracks: searched.length }, ...list.map((e) => ({ name: e.name, key: e.name.toLowerCase(), all: false, albums: e.albums.size, tracks: e.tracks }))];
+  });
+  const pickedArtists = $derived.by(() => {
+    const picked = artistSel.filter((i) => i > 0 && artistRows[i]).map((i) => artistRows[i].key);
+    return picked.length ? new Set(picked) : null;
+  });
+  const byArtist = $derived(pickedArtists ? searched.filter((t) => pickedArtists.has((t.artist || "").toLowerCase())) : searched);
+  const albumRows = $derived.by(() => {
+    if (!isLocal || !filtersOn) return [];
+    /** @type {Map<string, { name: string, year: string, tracks: number }>} */
+    const by = new Map();
+    for (const t of byArtist) {
+      if (!t.album) continue;
+      const key = t.album.toLowerCase();
+      let e = by.get(key);
+      if (!e) by.set(key, (e = { name: t.album || "", year: "", tracks: 0 }));
+      if (t.year && t.year > e.year) e.year = t.year;
+      e.tracks++;
+    }
+    const list = [...by.values()].sort((a, b) => sortName(a.name).localeCompare(sortName(b.name)));
+    return [{ name: `All (${list.length} albums)`, key: "", all: true, year: "", tracks: byArtist.length }, ...list.map((e) => ({ ...e, key: e.name.toLowerCase(), all: false }))];
+  });
+  const pickedAlbums = $derived.by(() => {
+    const picked = albumSel.filter((i) => i > 0 && albumRows[i]).map((i) => albumRows[i].key);
+    return picked.length ? new Set(picked) : null;
+  });
+
+  /** the column's value to sort a row by @param {LibTrack} t @param {string} col */
+  const sortKey = (t, col) => {
+    switch (col) {
+      case "time":
+        return t.duration ?? 0;
+      case "date":
+        return t.addedMs ?? 0;
+      case "track":
+        return parseInt(t.trackNo ?? "", 10) || 0;
+      case "plays":
+        return t.plays ?? 0;
+      case "last":
+        return t.lastPlayed ?? 0;
+      case "size":
+        return t.size ?? 0;
+      case "title":
+        return sortName(t.name);
+      case "artist":
+        return sortName(t.artist);
+      case "album":
+        return sortName(t.album);
+      default:
+        return fold(String(/** @type {any} */ (t)[col] ?? ""));
+    }
+  };
+  // The rows actually shown: searched, filtered, sorted (and, for a test's
+  // pictures, without private names). Every row op below reads through this
+  // so clicks map to the right track.
+  // (how long making them took, for the status line: not state, as it's
+  // written while they're made)
+  let queryMs = 0;
   const displayTracks = $derived.by(() => {
-    const col = sortCol;
-    // in Local Media the search box filters the files as you type
-    const q = activeNode === "local" ? fold(search.trim()) : "";
-    const shown = q ? tracks.filter((t) => fold(`${t.name} ${t.artist} ${t.album}`).includes(q)) : tracks;
-    if (!col) return shown;
-    const field = col === "title" ? "name" : col;
-    /** @param {any} t */
-    const key = (t) =>
-      col === "time"
-        ? (t.duration ?? 0)
-        : col === "date"
-          ? (t.addedMs ?? 0)
-          : (t[field] ?? "");
-    return [...shown].sort((a, b) => {
-      const ka = key(a);
-      const kb = key(b);
-      const c =
-        typeof ka === "number" ? ka - kb : String(ka).localeCompare(String(kb), undefined, { sensitivity: "base" });
-      return sortDir * c;
-    });
+    const t0 = performance.now();
+    let shown = isLocal && filtersOn && pickedAlbums ? byArtist.filter((t) => pickedAlbums.has((t.album || "").toLowerCase())) : isLocal && filtersOn ? byArtist : searched;
+    if (isLocal && localDefault) {
+      shown = [...shown].sort(
+        (a, b) =>
+          sortName(a.artist).localeCompare(sortName(b.artist)) ||
+          sortName(a.album).localeCompare(sortName(b.album)) ||
+          (parseInt(a.trackNo ?? "", 10) || 0) - (parseInt(b.trackNo ?? "", 10) || 0) ||
+          sortName(a.name).localeCompare(sortName(b.name)),
+      );
+    } else if (sortCol) {
+      const col = sortCol;
+      shown = [...shown].sort((a, b) => {
+        const ka = sortKey(a, col);
+        const kb = sortKey(b, col);
+        const c = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb));
+        return sortDir * c;
+      });
+    }
+    queryMs = performance.now() - t0;
+    if (hideRe) {
+      const re = hideRe;
+      shown = shown.filter((t) => !re.test(`${t.name} ${t.artist} ${t.album}`));
+    }
+    return shown;
   });
 
   // tree UI state
   let expandLocal = $state(true);
   let expandPlaylists = $state(true);
-  // which tree item is active: "search" | "liked" | "recent" | "top" | "list:<name>" | a playlist uri
-  // (typed on the value: `$state(null)` alone reads as always-null to the checker)
-  let activeNode = $state(/** @type {string | null} */ (null));
-  // selected row in the track list (for the Play / Enqueue buttons)
-  let selectedTrack = $state(-1);
-  // width of the left tree pane (px), draggable via the splitter
-  let treeWidth = $state(150);
-
-  /** @type {HTMLInputElement | undefined} */
-  let searchInput;
-
-  // Winamp-style scrollbar: the native one is hidden and this input range
-  // (PLEDIT sprite thumb, same as the playlist window) drives scrollTop.
-  let rowsEl = $state();
-  let scrollPos = $state(0);
-  let scrollMax = $state(0);
-  // Only the rows in view are drawn, and some either side; the space of the
-  // rest is kept, so the list scrolls as if all were there. A 10,000-song
-  // Local Media drew 60,000 elements, and scrolling and filtering crawled.
-  const ROW_H = 13; // .ml-row's height
-  const OVERSCAN = 20;
-  let viewH = $state(400);
-  const windowStart = $derived(Math.max(0, Math.floor(scrollPos / ROW_H) - OVERSCAN));
-  const windowEnd = $derived.by(() => Math.min(displayTracks.length, Math.ceil((scrollPos + viewH) / ROW_H) + OVERSCAN));
-  /** Bring row `i` into view (in the middle, if it was out of sight). @param {number} i */
-  function showRow(i) {
-    if (!rowsEl) return;
-    const top = i * ROW_H;
-    if (top < rowsEl.scrollTop || top + ROW_H > rowsEl.scrollTop + rowsEl.clientHeight) {
-      rowsEl.scrollTop = Math.max(0, top - rowsEl.clientHeight / 2);
-    }
-  }
-  function syncScroll() {
-    if (!rowsEl) return;
-    scrollMax = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight);
-    scrollPos = rowsEl.scrollTop;
-  }
-  $effect(() => {
-    tracks.length; // re-measure whenever rows are added
-    tick().then(syncScroll);
-  });
-
-  // Drag the splitter between the tree and the content pane.
-  /** @param {HTMLElement} element */
-  function makeSplitter(element) {
-    element.onpointerdown = (event) => {
-      event.preventDefault();
-      element.setPointerCapture(event.pointerId);
-      const zoom = REACTIVE_WINDOW_SIZE.zoom || 1;
-      document.onpointermove = (e) => {
-        const w = Math.round(e.clientX / zoom) - 4;
-        treeWidth = Math.max(90, Math.min(w, REACTIVE_WINDOW_SIZE.width - 140));
-      };
-      document.onpointerup = () => {
-        document.onpointermove = null;
-        element.releasePointerCapture(event.pointerId);
-      };
-    };
-  }
+  let expandPinned = $state(true);
 
   onMount(async () => {
     REACTIVE_WINDOW_SIZE.setSize(500, 380);
@@ -177,46 +265,6 @@
       if (activeNode === null && !searchMode) selectHistory("recent");
     });
   });
-
-  // Column widths, as a share (%) of the list's width so they keep their
-  // proportions as the window changes: Artist and Album are set by dragging
-  // the line at their edge (Album's is on its left, by Title), and Title, the
-  // one that matters, takes the rest and always keeps some. Kept for next time.
-  const COLS_KEY = "ml-col-widths";
-  let colWidths = $state({ artist: 22, album: 18 });
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLS_KEY) || "null");
-    if (saved?.artist > 0 && saved?.album > 0 && saved.artist + saved.album <= 70) {
-      colWidths = { artist: saved.artist, album: saved.album };
-    }
-  } catch {}
-  /** @param {PointerEvent} e @param {"artist" | "album"} col */
-  function resizeColumn(e, col) {
-    e.preventDefault();
-    e.stopPropagation();
-    const header = /** @type {HTMLElement} */ (e.currentTarget).parentElement;
-    const total = header?.getBoundingClientRect().width || 1;
-    const startX = e.clientX;
-    const start = colWidths[col];
-    const other = col === "artist" ? colWidths.album : colWidths.artist;
-    // Album's line is on its left: dragging it right makes Album narrower
-    const sign = col === "album" ? -1 : 1;
-    /** @param {PointerEvent} ev */
-    const move = (ev) => {
-      const pct = start + (sign * (ev.clientX - startX) * 100) / total;
-      const w = Math.round(Math.max(8, Math.min(70 - other, pct)) * 10) / 10;
-      colWidths = { ...colWidths, [col]: w };
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      try {
-        localStorage.setItem(COLS_KEY, JSON.stringify(colWidths));
-      } catch {}
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
 
   // The Library can reopen with the app before Spotify has finished
   // connecting (a slow start takes a few seconds), and one failed fetch used
@@ -240,105 +288,87 @@
 
   // Type-to-find: typing letters/digits jumps to the first track whose title
   // (then artist) starts with what you've typed; the buffer clears after a short
-  // pause. Classic Winamp / file-explorer behaviour, handy in long lists. What's
-  // been typed shows in the header while it's live, so the jump is visible.
-  let findText = $state("");
-  let findMiss = $state(false);
+  // pause. Classic Winamp / file-explorer behaviour, handy in long lists.
+  let findText = "";
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let findTimer;
-  // Case- and accent-insensitive, so "s" finds "Şebnem" and "beyonce" finds
-  // "Beyoncé". Dotless ı folds to i for the same reason.
-  /** @param {string} s */
-  const fold = (s) =>
-    (s || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/\p{M}/gu, "")
-      .replace(/ı/g, "i");
   /** @param {KeyboardEvent} e */
   function typeToFind(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const el = /** @type {HTMLElement} */ (e.target);
-    if (
-      el &&
-      (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)
-    )
-      return;
-    // One letter or digit in any script (Turkish ş/ğ/ı/ö/ü/ç included), plus
-    // spaces inside a query.
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+    // the tree and the filters have their own keys
+    if (view && view.focus && view.focus !== "tracks") return;
     if (!/^[\p{L}\p{N} ]$/u.test(e.key)) return;
-    if (e.key === " " && !findText) return; // no leading space
+    if (e.key === " " && !findText) return;
     const rows = displayTracks;
     if (!rows.length) return;
     e.preventDefault();
     findText += e.key;
     clearTimeout(findTimer);
-    findTimer = setTimeout(() => {
-      findText = "";
-      findMiss = false;
-    }, 1200);
+    findTimer = setTimeout(() => (findText = ""), 1200);
     const q = fold(findText);
     let idx = rows.findIndex((r) => fold(r.name).startsWith(q));
     if (idx < 0) idx = rows.findIndex((r) => fold(r.artist).startsWith(q));
     if (idx < 0) idx = rows.findIndex((r) => fold(r.name).includes(q));
-    findMiss = idx < 0;
-    if (idx >= 0) {
-      selectedTrack = idx;
-      showRow(idx);
-    }
+    if (idx >= 0) view?.selectRow(idx);
   }
   onMount(() => {
     window.addEventListener("keydown", typeToFind);
     return () => window.removeEventListener("keydown", typeToFind);
   });
 
-  const playlistUrl = (/** @type {string} */ uri) =>
-    `https://open.spotify.com/playlist/${uri.split(":").pop()}`;
-  const trackUrl = (/** @type {string} */ uri) =>
-    `https://open.spotify.com/track/${uri.split(":").pop()}`;
+  const playlistUrl = (/** @type {string} */ uri) => `https://open.spotify.com/playlist/${uri.split(":").pop()}`;
+  const trackUrl = (/** @type {string} */ uri) => `https://open.spotify.com/track/${uri.split(":").pop()}`;
 
   // Resolve names for a list of {uri, added_ms} refs, filling the right pane
   // top-down. `added_ms` is the playlist "date added" (null for liked/search).
   // 50 tracks per request: one request per song ran into Spotify's request
   // limit on long playlists, which then also kept songs from playing.
-  /** @param {{uri: string, added_ms: number|null}[]} refs @param {number} token */
+  /** @param {{uri: string, added_ms: number|null, plays?: number}[]} refs @param {number} token */
   async function loadTrackMetas(refs, token) {
     const BATCH = 50;
     for (let i = 0; i < refs.length; i += BATCH) {
       if (token !== loadToken) return; // switched away, abandon
       const chunk = refs.slice(i, i + BATCH);
-      const ask = () =>
-        /** @type {Promise<any[]>} */ (
-          invoke("get_tracks_metadata", { uris: chunk.map((ref) => ref.uri) })
-        );
+      const askMeta = () => /** @type {Promise<any[]>} */ (invoke("get_tracks_metadata", { uris: chunk.map((ref) => ref.uri) }));
       /** @type {any[]} */
       let metas;
       try {
-        metas = await ask();
+        metas = await askMeta();
       } catch (e) {
         // a busy moment: once more after a breather, then skip these
         await new Promise((r) => setTimeout(r, 1500));
         if (token !== loadToken) return;
-        metas = await ask().catch(() => []);
+        metas = await askMeta().catch(() => []);
       }
       if (token !== loadToken) return;
       // a track Spotify sent nothing for is skipped
       const found = chunk.flatMap((ref, j) =>
-        metas[j] ? [{ ...metas[j], addedMs: ref.added_ms ?? null }] : [],
+        metas[j] ? [{ ...metas[j], addedMs: ref.added_ms ?? null, ...(ref.plays !== undefined ? { plays: ref.plays, lastPlayed: ref.added_ms ?? 0 } : {}) }] : [],
       );
       tracks = [...tracks, ...found];
     }
   }
 
-  /** @param {UserPlaylist} pl */
-  async function selectPlaylist(pl) {
+  /** a new list in the right pane: what was there goes @param {string | null} node */
+  function startList(node) {
     searchMode = false;
-    selectedUri = pl.uri;
-    activeNode = pl.uri;
-    selectedTrack = -1;
+    selectedUri = null;
+    activeNode = node;
+    treeKey = node;
+    clearSel();
     tracks = [];
     trackUris = [];
     tracksError = "";
+    sortCol = null;
+    sortDir = 1;
+  }
+
+  /** @param {UserPlaylist} pl */
+  async function selectPlaylist(pl) {
+    startList(pl.uri);
+    selectedUri = pl.uri;
     tracksLoading = true;
     const token = ++loadToken;
     try {
@@ -355,23 +385,14 @@
 
   // Load the user's Spotify "Liked Songs" into the right pane (newest first).
   async function selectLiked() {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = "liked";
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList("liked");
     tracksLoading = true;
     const token = ++loadToken;
     try {
       const ids = /** @type {string[]} */ (await invoke("get_liked_songs"));
       if (token !== loadToken) return;
       trackUris = ids;
-      await loadTrackMetas(
-        ids.map((uri) => ({ uri, added_ms: null })),
-        token,
-      );
+      await loadTrackMetas(ids.map((uri) => ({ uri, added_ms: null })), token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -384,9 +405,7 @@
   async function loadLikedIntoMain() {
     try {
       const ids = /** @type {string[]} */ (await invoke("get_liked_songs"));
-      if (ids.length) {
-        emitWindowEvent("playerWindow", { UrlsDropped: ids.map(trackUrl) });
-      }
+      if (ids.length) emitWindowEvent("playerWindow", { UrlsDropped: ids.map(trackUrl) });
     } catch {
       /* ignore */
     }
@@ -397,24 +416,19 @@
   async function doSearch() {
     const q = search.trim();
     if (!q) return;
+    startList("search");
     searchMode = true;
-    activeNode = "search";
     searchQuery = q;
-    selectedUri = null;
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
     tracksLoading = true;
     const token = ++loadToken;
     try {
       const ids = /** @type {string[]} */ (await invoke("search", { query: q }));
       if (token !== loadToken) return;
       trackUris = ids;
-      await loadTrackMetas(
-        ids.map((uri) => ({ uri, added_ms: null })),
-        token,
-      );
+      // the box's words found the results: they don't filter them again
+      search = "";
+      view?.setSearch("");
+      await loadTrackMetas(ids.map((uri) => ({ uri, added_ms: null })), token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -422,33 +436,23 @@
     }
   }
 
-  async function focusSearch() {
-    activeNode = "search";
-    searchMode = true;
-    await tick();
+  function focusSearch() {
+    treeKey = "search";
+    if (!searchMode) {
+      startList("search");
+      searchMode = true;
+      searchQuery = "";
+    }
     searchInput?.focus();
-  }
-
-  function clearPane() {
-    activeNode = null;
-    searchMode = false;
-    selectedUri = null;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
-    selectedTrack = -1;
-    ++loadToken;
   }
 
   function clearSearch() {
     search = "";
-    if (searchMode) clearPane();
   }
 
   // Reuse the existing "UrlsDropped" event the main playlist window already
   // listens for (clear + load). Works cross-window via Tauri's global emit.
-  const loadPlaylistIntoMain = (/** @type {UserPlaylist} */ pl) =>
-    emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
+  const loadPlaylistIntoMain = (/** @type {UserPlaylist} */ pl) => emitWindowEvent("playerWindow", { UrlsDropped: [playlistUrl(pl.uri)] });
 
   // Spotify's playlist folders, as in its sidebar: shut until clicked, and
   // the open ones kept for next time. A folder plays, is added or is dragged
@@ -496,10 +500,7 @@
     } catch {}
   }
   /** The links of every playlist in the folder, its folders' too. @param {string[]} path */
-  const folderUrls = (path) =>
-    playlists
-      .filter((pl) => path.every((name, i) => pl.folder?.[i] === name))
-      .map((pl) => playlistUrl(pl.uri));
+  const folderUrls = (path) => playlists.filter((pl) => path.every((name, i) => pl.folder?.[i] === name)).map((pl) => playlistUrl(pl.uri));
   /** @param {MouseEvent} e @param {string[]} path */
   function folderMenu(e, path) {
     e.preventDefault();
@@ -515,7 +516,6 @@
   //  - playlist tracks → play it and queue the rest of that playlist
   /** @param {number} index */
   function loadTrackIntoMain(index) {
-    selectedTrack = index;
     const uri = displayTracks[index]?.uri;
     if (!uri) return;
     if (isRadio) {
@@ -526,38 +526,38 @@
       emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] });
     } else {
       // play from here down the list *as currently sorted*
-      emitWindowEvent("playerWindow", {
-        UrlsDropped: displayTracks.slice(index).map((t) => trackUrl(t.uri)),
-      });
+      emitWindowEvent("playerWindow", { UrlsDropped: displayTracks.slice(index).map((t) => trackUrl(t.uri)) });
     }
   }
 
-  // Bottom-bar buttons operate on the selected row (falling back to the first).
-  function playSelected() {
-    const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
-    if (!t) return;
-    if (isRadio) return sendStations([t], true);
-    if (t.path) return sendLocalTracks([t], true);
-    emitWindowEvent("playerWindow", { UrlsDropped: [trackUrl(t.uri)] });
+  /** the rows the buttons act on: the selection, else all of them */
+  const picked = () => (selRows.length ? selRows.map((i) => displayTracks[i]).filter(Boolean) : displayTracks);
+  /** @param {LibTrack[]} list @param {boolean} play */
+  function sendTracks(list, play) {
+    if (!list.length) return;
+    if (isRadio) return sendStations(list, play);
+    if (list[0].path) return sendLocalTracks(list, play);
+    const urls = list.map((t) => trackUrl(t.uri));
+    if (play) emitWindowEvent("playerWindow", { UrlsDropped: urls });
+    else emitWindowEvent("playerWindow", { UrlsAppended: urls });
   }
-  function enqueueSelected() {
-    const t = displayTracks[selectedTrack >= 0 ? selectedTrack : 0];
-    if (!t) return;
-    if (isRadio) return sendStations([t], false);
-    if (t.path) return sendLocalTracks([t], false);
-    emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(t.uri)] });
-  }
-  function playAll() {
-    if (displayTracks.length === 0) return;
-    if (activeNode === "local") return sendLocalTracks(displayTracks, true);
-    emitWindowEvent("playerWindow", {
-      UrlsDropped: displayTracks.map((t) => trackUrl(t.uri)),
-    });
+  const playSelected = () => sendTracks(picked(), true);
+  const enqueueSelected = () => sendTracks(picked(), false);
+  const playAll = () => sendTracks(displayTracks, true);
+  const enqueueAll = () => sendTracks(displayTracks, false);
+  /** Generate Playlist: the view's songs in a random order */
+  function generatePlaylist() {
+    const list = [...picked()];
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    sendTracks(list, true);
   }
 
   // Add the selected track to an app-local list (kept in Spotiamp+, not Spotify).
   let savedLists = $state(/** @type {SavedList[]} */ ([]));
-  let showListMenu = $state(false);
+  let newListOpen = $state(false);
   let newLibListName = $state("");
   async function loadSavedListsLib() {
     try {
@@ -566,50 +566,31 @@
       savedLists = [];
     }
   }
-  function toggleListMenu() {
-    showListMenu = !showListMenu;
-    if (showListMenu) loadSavedListsLib();
-  }
-  function selectedUriString() {
-    return displayTracks[selectedTrack >= 0 ? selectedTrack : 0]?.uri || null;
-  }
+  /** the selected Spotify songs' uris */
+  const pickedUris = () => picked().map((t) => t.uri).filter((u) => u && u.startsWith("spotify:"));
   /** @param {string} name */
   async function addSelectedToList(name) {
-    const uri = selectedUriString();
-    // the lists hold Spotify songs only
-    if (!uri || uri.startsWith("local:")) return;
-    await invoke("add_to_list", { name, uri }).catch(() => {});
-    showListMenu = false;
+    for (const uri of pickedUris()) await invoke("add_to_list", { name, uri }).catch(() => {});
+    await loadSavedListsLib();
   }
   async function createListWithSelected() {
     const name = newLibListName.trim();
     if (!name) return;
     await addSelectedToList(name);
     newLibListName = "";
-    await loadSavedListsLib();
+    newListOpen = false;
   }
 
   // Show a saved app-local list's tracks in the right pane (its uris are already
   // concrete tracks, so no expansion needed).
   /** @param {SavedList} list */
   async function selectSavedList(list) {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = "list:" + list.name;
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList("list:" + list.name);
     tracksLoading = true;
     const token = ++loadToken;
     try {
       trackUris = list.uris;
-      // loadTrackMetas takes {uri, added_ms} refs (like Liked Songs and search);
-      // passing the bare uri strings made every row fail and the list look empty.
-      await loadTrackMetas(
-        list.uris.map((uri) => ({ uri, added_ms: null })),
-        token,
-      );
+      await loadTrackMetas(list.uris.map((uri) => ({ uri, added_ms: null })), token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -618,30 +599,20 @@
   }
   /** @param {SavedList} list */
   function loadListIntoMain(list) {
-    if (list.uris.length) {
-      emitWindowEvent("playerWindow", { UrlsDropped: list.uris.map(trackUrl) });
-    }
+    if (list.uris.length) emitWindowEvent("playerWindow", { UrlsDropped: list.uris.map(trackUrl) });
   }
   /** @param {string} name */
   async function deleteSavedList(name) {
+    const sure = await ask(`Delete the list "${name}"?`, { title: "Delete list", kind: "warning" }).catch(() => false);
+    if (!sure) return;
     await invoke("delete_list", { name }).catch(() => {});
     await loadSavedListsLib();
-    if (activeNode === "list:" + name) {
-      tracks = [];
-      trackUris = [];
-      activeNode = null;
-    }
+    if (activeNode === "list:" + name) startList(null);
   }
 
   // --- Loved songs (♡, the F key; kept in Spotiamp+, lists.rs) ---
   async function selectLoved() {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = "loved";
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList("loved");
     tracksLoading = true;
     const token = ++loadToken;
     try {
@@ -680,7 +651,6 @@
   /** @typedef {{ url: string, name: string, tags: string, country: string, codec: string, bitrate: number, uuid: string }} Station */
   let expandRadio = $state(true);
   let radioQuery = $state("");
-  const isRadio = $derived(typeof activeNode === "string" && activeNode.startsWith("radio:"));
   // "Popular in …": the country set in Windows (its region, not its language;
   // the language's country until that's known)
   const languageCountry = (() => {
@@ -721,13 +691,7 @@
    * @param {() => Promise<Station[]>} get
    */
   async function showRadio(node, get) {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = node;
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList(node);
     tracksLoading = true;
     const token = ++loadToken;
     try {
@@ -766,6 +730,12 @@
   // how far a reading of the folders has got (null: not reading)
   let localScan = $state(/** @type {{ done: number, total: number } | null} */ (null));
   const localByPath = $derived(new Map(localItems.map((i) => [i.path, i])));
+  /** how often and when each local song was played (Play Count, Played Last) */
+  let localPlays = $state(/** @type {Map<string, { plays: number, at: number }>} */ (new Map()));
+  async function refreshLocalPlays() {
+    const items = /** @type {{ uri: string, at: number, plays: number }[]} */ (await invoke("history_top", { limit: 1000000 }).catch(() => []));
+    localPlays = new Map(items.filter((i) => i.uri.startsWith("local:")).map((i) => [i.uri.slice(6), { plays: i.plays, at: i.at }]));
+  }
   /** @param {string} p */
   const fileName = (p) => p.split(/[\\/]/).pop() ?? p;
   /** @param {LocalItem} i @returns {LibTrack} */
@@ -779,6 +749,12 @@
     duration: i.duration_ms,
     unavailable: false,
     addedMs: i.date_ms || null,
+    trackNo: i.track ?? "",
+    year: i.year ?? "",
+    genre: i.genre ?? "",
+    size: i.size ?? 0,
+    plays: localPlays.get(i.path)?.plays ?? 0,
+    lastPlayed: localPlays.get(i.path)?.at ?? 0,
   });
   /** @param {LocalLibrary} lib */
   function showLocal(lib) {
@@ -788,19 +764,14 @@
     if (activeNode === "local") {
       tracks = lib.items.map(localTrack);
       trackUris = tracks.map((t) => t.uri);
-      selectedTrack = -1;
     }
   }
   async function selectLocal() {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = "local";
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList("local");
+    localDefault = true;
     tracksLoading = false;
     const token = ++loadToken;
+    await refreshLocalPlays();
     // what's known shows at once; the folders are checked for changes meanwhile
     let lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: true }).catch(() => null));
     // The reading's end comes as an event too, but one sent before this page
@@ -848,17 +819,12 @@
   async function addLocalFolder() {
     const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library_add_folder").catch(() => null));
     if (!lib) return;
-    if (activeNode !== "local") {
-      await selectLocal();
-    } else {
-      showLocal(lib);
-    }
+    if (activeNode !== "local") await selectLocal();
+    else showLocal(lib);
   }
   /** @param {string} folder */
   async function removeLocalFolder(folder) {
-    const lib = /** @type {LocalLibrary | null} */ (
-      await invoke("local_library_remove_folder", { folder }).catch(() => null)
-    );
+    const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library_remove_folder", { folder }).catch(() => null));
     if (lib) showLocal(lib);
   }
   /** @param {MouseEvent} e */
@@ -885,9 +851,7 @@
   onMount(() => {
     const offs = [
       listen("localLibraryChanged", async () => {
-        const lib = /** @type {LocalLibrary | null} */ (
-          await invoke("local_library", { rescan: false }).catch(() => null)
-        );
+        const lib = /** @type {LocalLibrary | null} */ (await invoke("local_library", { rescan: false }).catch(() => null));
         if (lib) showLocal(lib);
       }),
       listen("localLibraryScan", (e) => {
@@ -901,13 +865,7 @@
   // --- listening history (history.rs): Recently played / Most played ---
   /** @param {"recent" | "top"} kind */
   async function selectHistory(kind) {
-    searchMode = false;
-    selectedUri = null;
-    activeNode = kind;
-    selectedTrack = -1;
-    tracks = [];
-    trackUris = [];
-    tracksError = "";
+    startList(kind);
     tracksLoading = true;
     const token = ++loadToken;
     try {
@@ -918,7 +876,7 @@
       const spotify = items.filter((i) => i.uri.startsWith("spotify:track:"));
       trackUris = spotify.map((i) => i.uri);
       // the Date column shows when each was last played
-      await loadTrackMetas(spotify.map((i) => ({ uri: i.uri, added_ms: i.at })), token);
+      await loadTrackMetas(spotify.map((i) => ({ uri: i.uri, added_ms: i.at, plays: i.plays })), token);
     } catch (e) {
       if (token === loadToken) tracksError = String(e);
     } finally {
@@ -995,61 +953,52 @@
     const isPinned = pinned.includes(pl.uri);
     popMenu([
       { text: "Play", action: () => loadPlaylistIntoMain(pl) },
-      {
-        text: "Add to the playlist",
-        action: () => emitWindowEvent("playerWindow", { UrlsAppended: [playlistUrl(pl.uri)] }),
-      },
+      { text: "Add to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: [playlistUrl(pl.uri)] }) },
       { item: "Separator" },
       { text: isPinned ? "Unpin" : "Pin to the top", action: () => setPinned(pl.uri, !isPinned) },
     ]);
   }
-  /** Right-click a song: select it, then its commands. @param {MouseEvent} e @param {number} i */
+  /** Right-click a song: its commands (the selection's, when it's in it). @param {MouseEvent} e @param {number} i */
   async function trackMenu(e, i) {
     e.preventDefault();
-    selectedTrack = i;
-    const uri = displayTracks[i]?.uri;
-    if (!uri) return;
-    const path = displayTracks[i].path;
+    const t = displayTracks[i];
+    if (!t?.uri) return;
+    const path = t.path;
     if (isRadio && path) {
       const yours = activeNode === "radio:yours";
       popMenu([
         { text: "Play", action: () => loadTrackIntoMain(i) },
-        { text: "Add to the playlist", action: () => sendStations([displayTracks[i]], false) },
+        { text: "Add to the playlist", action: () => sendStations([t], false) },
         { item: "Separator" },
         { text: "Copy the station's link", action: () => navigator.clipboard.writeText(path).catch(() => {}) },
-        ...(yours
-          ? [{ text: "Remove from your stations", action: () => invoke("radio_forget", { url: path }).then(selectYourStations).catch(() => {}) }]
-          : []),
+        ...(yours ? [{ text: "Remove from your stations", action: () => invoke("radio_forget", { url: path }).then(selectYourStations).catch(() => {}) }] : []),
       ]);
       return;
     }
     if (path) {
       popMenu([
-        { text: "Play", action: () => loadTrackIntoMain(i) },
-        { text: "Add to the playlist", action: () => sendLocalTracks([displayTracks[i]], false) },
+        { text: "Play", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
+        { text: "Add to the playlist", action: enqueueSelected },
         { item: "Separator" },
         { text: "Show in folder", action: () => invoke("local_reveal", { path }).catch(() => {}) },
       ]);
       return;
     }
+    const uri = t.uri;
     const loved = lovedSet.has(uri);
     const lists = /** @type {{name: string}[]} */ (await invoke("get_saved_lists").catch(() => []));
     popMenu([
-      { text: "Play", action: () => loadTrackIntoMain(i) },
-      { text: "Add to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: [trackUrl(uri)] }) },
+      { text: "Play", action: () => (selRows.length > 1 ? playSelected() : loadTrackIntoMain(i)) },
+      { text: "Add to the playlist", action: enqueueSelected },
       { item: "Separator" },
-      {
-        text: loved ? "Unlove" : "♡ Love",
-        action: () => invoke("set_loved", { uris: [uri], loved: !loved }).catch(() => {}),
-      },
+      { text: loved ? "Unlove" : "♡ Love", action: () => invoke("set_loved", { uris: pickedUris(), loved: !loved }).catch(() => {}) },
       {
         text: "Add to list",
-        items: lists.length
-          ? lists.map((l) => ({
-              text: l.name.replaceAll("&", "&&"),
-              action: () => invoke("add_to_list", { name: l.name, uri }).catch(() => {}),
-            }))
-          : [{ text: "No lists yet (the + LIST button below)", enabled: false }],
+        items: [
+          ...lists.map((l) => ({ text: l.name.replaceAll("&", "&&"), action: () => addSelectedToList(l.name) })),
+          ...(lists.length ? [{ item: "Separator" }] : []),
+          { text: "New list…", action: () => (newListOpen = true) },
+        ],
       },
       { text: "Copy Spotify link", action: () => navigator.clipboard.writeText(trackUrl(uri)).catch(() => {}) },
     ]);
@@ -1068,15 +1017,16 @@
   //     same as a drag from the Spotify app) ---
   /** @param {DragEvent} e @param {string[]} urls */
   function dragLinks(e, urls) {
-    if (!e.dataTransfer || !urls.length) return;
+    if (!e.dataTransfer || !urls.length) return false;
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("text/uri-list", urls.join("\r\n"));
     e.dataTransfer.setData("text/plain", urls.join("\n"));
+    return true;
   }
 
-  /** @param {number} ms */
+  /** "m:ss" (whole seconds, as Winamp kept a song's length) @param {number} ms */
   function fmt(ms) {
-    const s = Math.round(ms / 1000);
+    const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
   // "date added" (epoch ms) → compact YYYY-MM-DD for the Date column.
@@ -1087,41 +1037,63 @@
     const p = (/** @type {number} */ n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
+  /** Played Last, as Windows writes a date and time here @param {number} ms */
+  function fmtWhen(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return "";
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  /** a total length the way Winamp's status line wrote it ("1 day+13:02:46") @param {number} seconds */
+  function fmtTotal(seconds) {
+    const s = Math.round(seconds);
+    const days = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const hms = `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    return days ? `${days} day${days > 1 ? "s" : ""}+${hms}` : h ? hms : `${m}:${String(sec).padStart(2, "0")}`;
+  }
+  /** @param {number} bytes */
+  function fmtSize(bytes) {
+    if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+    if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  }
 
   // Only some lists have a date (a playlist's added date, when it was last
   // played); Loved songs, Favorite Songs and search results don't, so there
   // the column goes rather than staying blank.
   const showDate = $derived(displayTracks.some((t) => t.addedMs));
-  const dateLabel = $derived(
-    activeNode === "recent" || activeNode === "top" ? "Played" : activeNode === "local" ? "Date" : "Added",
-  );
+  const dateLabel = $derived(activeNode === "recent" || activeNode === "top" ? "Played" : "Added");
 
+  /** what's in the right pane, by name */
   const headTitle = $derived(
     activeNode === "radio:yours"
       ? "Your stations"
       : activeNode === "radio:popular"
-      ? "Popular stations"
-      : activeNode === "radio:local"
-      ? `Popular in ${myCountryName}`
-      : activeNode === "radio:search"
-      ? `Stations: ${radioQuery}`
-      : activeNode === "local"
-      ? "Local Media"
-      : activeNode === "recent"
-      ? "Recently played"
-      : activeNode === "top"
-      ? "Most played"
-      : activeNode === "liked"
-      ? "Favorite Songs"
-      : activeNode === "loved"
-      ? "Loved songs"
-      : activeNode?.startsWith?.("list:")
-        ? activeNode.slice(5)
-        : searchMode
-          ? `Search: ${searchQuery}`
-          : selectedUri
-            ? playlists.find((p) => p.uri === selectedUri)?.name ?? "Audio"
-            : "Spotiamp+",
+        ? "Popular stations"
+        : activeNode === "radio:local"
+          ? `Popular in ${myCountryName}`
+          : activeNode === "radio:search"
+            ? `Stations: ${radioQuery}`
+            : activeNode === "local"
+              ? "Local Media"
+              : activeNode === "recent"
+                ? "Recently played"
+                : activeNode === "top"
+                  ? "Most played"
+                  : activeNode === "liked"
+                    ? "Favorite Songs"
+                    : activeNode === "loved"
+                      ? "Loved songs"
+                      : activeNode?.startsWith?.("list:")
+                        ? activeNode.slice(5)
+                        : searchMode
+                          ? `Search: ${searchQuery}`
+                          : selectedUri
+                            ? (playlists.find((p) => p.uri === selectedUri)?.name ?? "")
+                            : "Spotiamp+",
   );
 
   const close = () => invoke("set_library_window_visible", { visible: false });
@@ -1132,7 +1104,7 @@
     makeDockedDraggable(element, "library", "libraryWindow");
   }
 
-  // Resize from the bottom-right corner, like the Winamp playlist.
+  // Resize from the bottom-right corner, like Winamp's.
   /** @param {HTMLElement} element */
   function makeLibraryResizable(element) {
     makeSnappingResizer(
@@ -1149,1178 +1121,813 @@
       () => REACTIVE_WINDOW_SIZE.zoom || 1,
     );
   }
+
+  // ------------------------------------------------------------------ the view
+
+  // the columns, Winamp's widths to begin with; widths and the hidden ones kept
+  /** @type {Record<string, Column[]>} */
+  const COLUMNS = {
+    artists: [
+      { id: "name", title: "Artist", w: 155 },
+      { id: "albums", title: "Albums", w: 48 },
+      { id: "tracks", title: "Tracks", w: 45 },
+    ],
+    albums: [
+      { id: "name", title: "Album", w: 155 },
+      { id: "year", title: "Year", w: 47 },
+      { id: "tracks", title: "Tracks", w: 47 },
+    ],
+    local: [
+      { id: "artist", title: "Artist", w: 140 },
+      { id: "album", title: "Album", w: 140 },
+      { id: "track", title: "Track #", w: 55 },
+      { id: "title", title: "Title", w: 140 },
+      { id: "time", title: "Length", w: 55 },
+      { id: "genre", title: "Genre", w: 75 },
+      { id: "rating", title: "Rating", w: 62 },
+      { id: "plays", title: "Play Count", w: 70 },
+      { id: "last", title: "Played Last", w: 115 },
+      { id: "year", title: "Year", w: 55 },
+    ],
+    spotify: [
+      { id: "artist", title: "Artist", w: 140 },
+      { id: "album", title: "Album", w: 140 },
+      { id: "title", title: "Title", w: 180 },
+      { id: "time", title: "Length", w: 55 },
+      { id: "date", title: "Added", w: 80 },
+    ],
+    top: [
+      { id: "plays", title: "Play Count", w: 70 },
+      { id: "artist", title: "Artist", w: 140 },
+      { id: "title", title: "Title", w: 140 },
+      { id: "album", title: "Album", w: 140 },
+      { id: "time", title: "Length", w: 55 },
+      { id: "last", title: "Played Last", w: 115 },
+    ],
+    recent: [
+      { id: "last", title: "Played Last", w: 115 },
+      { id: "artist", title: "Artist", w: 140 },
+      { id: "title", title: "Title", w: 140 },
+      { id: "album", title: "Album", w: 140 },
+      { id: "time", title: "Length", w: 55 },
+      { id: "plays", title: "Play Count", w: 70 },
+    ],
+    radio: [
+      { id: "title", title: "Station", w: 200 },
+      { id: "artist", title: "Genre", w: 160 },
+      { id: "album", title: "Country", w: 100 },
+      { id: "time", title: "Bitrate", w: 55 },
+    ],
+  };
+  /** @type {Record<string, Record<string, number>>} */
+  let widths = $state({});
+  try {
+    widths = JSON.parse(localStorage.getItem("ml-widths") || "{}") ?? {};
+  } catch {}
+  let hiddenCols = $state(/** @type {string[]} */ ([]));
+  try {
+    hiddenCols = JSON.parse(localStorage.getItem("ml-hidden") || "[]") ?? [];
+  } catch {}
+  /** @param {string} set */
+  const columnsOf = (set) =>
+    COLUMNS[set]
+      .filter((c) => !(set === "local" && hiddenCols.includes(c.id)))
+      .map((c) => ({ ...c, w: widths[set]?.[c.id] ?? c.w }));
+
+  const kindSet = $derived(isLocal ? "local" : isRadio ? "radio" : activeNode === "top" || activeNode === "recent" ? activeNode : "spotify");
+
+  // Local Media's ratings (Winamp's Rating column: a click on its stars),
+  // kept on this PC
+  let ratings = $state(/** @type {Record<string, number>} */ ({}));
+  try {
+    ratings = JSON.parse(localStorage.getItem("ml-ratings") || "{}") ?? {};
+  } catch {}
+  /** @param {number} i @param {number} stars */
+  function rate(i, stars) {
+    const t = displayTracks[i];
+    if (!t) return;
+    const key = t.path ?? t.uri;
+    const now = ratings[key] ?? 0;
+    const next = { ...ratings };
+    // the same stars again: no rating
+    if (stars === now) delete next[key];
+    else next[key] = stars;
+    ratings = next;
+    try {
+      localStorage.setItem("ml-ratings", JSON.stringify(ratings));
+    } catch {}
+  }
+
+  /** one row's cells, in the columns' order @param {LibTrack} t @param {Column[]} cols @returns {(string | { t?: string, dim?: boolean, stars?: number })[]} */
+  function cellsOf(t, cols) {
+    return cols.map((c) => {
+      switch (c.id) {
+        case "artist":
+          return t.artist ?? "";
+        case "album":
+          return t.album ?? "";
+        case "title":
+          return (lovedSet.has(t.uri) ? "♡ " : "") + (t.name ?? "");
+        case "time":
+          return isRadio ? (t.duration ? `${t.duration}k` : "") : t.duration ? fmt(t.duration) : "";
+        case "track":
+          return t.trackNo ?? "";
+        case "genre":
+          return t.genre ?? "";
+        case "rating": {
+          return { stars: ratings[t.path ?? t.uri] ?? 0 };
+        }
+        case "plays":
+          return String(t.plays ?? 0);
+        case "last":
+          return fmtWhen(t.lastPlayed ?? 0);
+        case "year":
+          return t.year ?? "";
+        case "date":
+          return t.addedMs ? fmtDate(t.addedMs) : "";
+        default:
+          return "";
+      }
+    });
+  }
+
+  const hint = $derived.by(() => {
+    if (tracksLoading && !tracks.length) return searchMode ? "searching…" : "loading…";
+    if (tracksError && !tracks.length) return tracksError;
+    if (displayTracks.length) return "";
+    if (isRadio)
+      return tracks.length === 0
+        ? activeNode === "radio:yours"
+          ? "The stations you play show up here. Pick one under Popular, or search for a station or a genre above."
+          : "no stations found"
+        : "no match";
+    if (activeNode === "local" && tracks.length === 0)
+      return localFolders.length === 0
+        ? "Add a music folder and its songs show here, ready to play: press Library below, or right-click Local Media."
+        : localScan
+          ? "reading your files…"
+          : "no music files in these folders";
+    if (tracks.length > 0) return "";
+    if (activeNode === "search" && !searchQuery) return "Type an artist or a song in the box above and press Enter.";
+    if (activeNode === null) return "Select a playlist on the left, or search Spotify above.";
+    return searchMode ? "no results" : activeNode === "recent" ? "nothing played yet: pick a playlist on the left, or search Spotify above" : "";
+  });
+
+  const status = $derived.by(() => {
+    const n = displayTracks.length;
+    const items = `${n} item${n === 1 ? "" : "s"}`;
+    if (activeNode === "local") {
+      if (localScan) return localScan.total ? `reading ${localScan.done} of ${localScan.total}…` : "looking for files…";
+      const secs = displayTracks.reduce((s, t) => s + Math.floor((t.duration || 0) / 1000), 0);
+      const bytes = displayTracks.reduce((s, t) => s + (t.size || 0), 0);
+      return `${items} [${fmtTotal(secs)}] [${fmtSize(bytes)}] in ${(queryMs / 1000).toFixed(3)} sec.`;
+    }
+    if (isRadio) return items;
+    if (tracksLoading && tracks.length) return `${items}, loading…`;
+    const secs = displayTracks.reduce((s, t) => s + Math.floor((t.duration || 0) / 1000), 0);
+    return n ? `${items} [${fmtTotal(secs)}]` : items;
+  });
+
+  const pane = $derived.by(() => {
+    const set = kindSet;
+    let cols = columnsOf(set);
+    if (set === "spotify") cols = cols.filter((c) => c.id !== "date" || showDate).map((c) => (c.id === "date" ? { ...c, title: dateLabel } : c));
+    const rows = displayTracks;
+    void lovedSet;
+    void ratings;
+    /** @type {import("$lib/winampml/mlview.js").Pane} */
+    const p = {
+      kind: isLocal ? "audio" : "simple",
+      filters: filtersOn,
+      tracks: {
+        columns: cols,
+        count: rows.length,
+        cells: (i) => cellsOf(rows[i], cols),
+        sortCol: isLocal && localDefault ? "title" : !sortCol && activeNode === "top" ? "plays" : !sortCol && activeNode === "recent" ? "last" : sortCol,
+        sortUp: isLocal && localDefault ? true : !sortCol && (activeNode === "top" || activeNode === "recent") ? false : sortDir > 0,
+        hint,
+      },
+      buttons: isLocal
+        ? [
+            { id: "play", label: "Play", split: true },
+            { id: "generate", label: "Generate Playlist" },
+          ]
+        : isRadio
+          ? [{ id: "play", label: "Play", split: true }]
+          : [
+              { id: "play", label: "Play", split: true },
+              { id: "list", label: "Add to List", dropdown: true, enabled: rows.length > 0 },
+            ],
+      status,
+    };
+    if (isLocal && filtersOn) {
+      const ac = columnsOf("artists");
+      const bc = columnsOf("albums");
+      const ar = artistRows;
+      const br = albumRows;
+      p.artists = { columns: ac, count: ar.length, cells: (i) => [ar[i].name, String(ar[i].albums), String(ar[i].tracks)], selected: artistSel.length ? artistSel : [0], sortCol: "name", sortUp: true };
+      p.albums = { columns: bc, count: br.length, cells: (i) => [br[i].name, br[i].year || "", String(br[i].tracks)], selected: albumSel.length ? albumSel : [0], sortCol: "name", sortUp: true };
+    }
+    return p;
+  });
+
+  /** names kept out of pictures (a smoke test's screenshots): matching tree items and rows go */
+  let hideRe = $state(/** @type {RegExp | null} */ (null));
+
+  // the tree: Spotiamp+'s places, drawn as Winamp's navigation
+  const treeItems = $derived.by(() => {
+    const all = treeAll;
+    return hideRe ? all.filter((i) => !hideRe?.test(i.text)) : all;
+  });
+  const treeAll = $derived.by(() => {
+    /** @type {TreeItem[]} */
+    const items = [];
+    if (!freeMode) {
+      if (pinnedPlaylists.length) {
+        items.push({ key: "pinned", text: "Pinned", level: 0, parent: true, open: expandPinned });
+        if (expandPinned) for (const pl of pinnedPlaylists) items.push({ key: "pin:" + pl.uri, text: pl.name, level: 1, icon: "list" });
+      }
+      items.push({ key: "liked", text: "Favorite Songs", level: 0, icon: "fav" });
+      items.push({ key: "loved", text: "Loved Songs", level: 0, icon: "loved" });
+      items.push({ key: "recent", text: "Recently Played", level: 0, icon: "recent" });
+      items.push({ key: "top", text: "Most Played", level: 0, icon: "top" });
+      items.push({ key: "stats", text: "Listening Stats", level: 0, icon: "stats" });
+    }
+    items.push({ key: "local", text: "Local Media", level: 0, icon: "local" });
+    items.push({ key: "radio", text: "Radio", level: 0, parent: true, open: expandRadio });
+    if (expandRadio) {
+      items.push({ key: "radio:yours", text: "Your stations", level: 1, icon: "radio" });
+      items.push({ key: "radio:popular", text: "Popular", level: 1, icon: "radio" });
+      if (myCountry) items.push({ key: "radio:local", text: `Popular in ${myCountryName}`, level: 1, icon: "radio" });
+    }
+    if (freeMode) {
+      items.push({ key: "premium", text: "Your Spotify library needs Premium", level: 0 });
+      return items;
+    }
+    items.push({ key: "lists", text: "Spotiamp+", level: 0, parent: true, open: expandLocal });
+    if (expandLocal) for (const list of savedLists) items.push({ key: "list:" + list.name, text: `${list.name} (${list.uris.length})`, level: 1, icon: "list" });
+    items.push({ key: "playlists", text: "Playlists", level: 0, parent: true, open: expandPlaylists });
+    if (expandPlaylists) {
+      if (loading) items.push({ key: "pl-loading", text: "loading…", level: 1 });
+      else if (error) items.push({ key: "pl-error", text: "Couldn't load your playlists (double-click to retry)", level: 1 });
+      else
+        for (const row of playlistRows) {
+          if (row.folder) items.push({ key: "folder:" + folderKey(row.folder), text: row.folder[row.folder.length - 1], level: 1 + row.depth, parent: true, open: openFolders.has(folderKey(row.folder)) });
+          else items.push({ key: row.pl.uri, text: row.pl.name, level: 1 + row.depth, icon: "list" });
+        }
+    }
+    items.push({ key: "search", text: "Search", level: 0, icon: "search" });
+    return items;
+  });
+
+  /** the playlist a tree key stands for @param {string} key */
+  const playlistOf = (key) => playlists.find((p) => p.uri === (key.startsWith("pin:") ? key.slice(4) : key));
+  /** @param {string} key */
+  const folderPath = (key) => key.slice(7).split("\u0001");
+
+  /** @param {string} key */
+  function treeSelect(key) {
+    treeKey = key;
+    if (key === "liked") selectLiked();
+    else if (key === "loved") selectLoved();
+    else if (key === "recent" || key === "top") selectHistory(key);
+    else if (key === "stats") invoke("set_stats_window_visible", { visible: true });
+    else if (key === "local") selectLocal();
+    else if (key === "radio:yours") selectYourStations();
+    else if (key === "radio:popular") selectPopular(false);
+    else if (key === "radio:local") selectPopular(true);
+    else if (key === "search") focusSearch();
+    else if (key.startsWith("list:")) {
+      const list = savedLists.find((l) => "list:" + l.name === key);
+      if (list) selectSavedList(list);
+    } else {
+      const pl = playlistOf(key);
+      if (pl) {
+        selectPlaylist(pl);
+        treeKey = key;
+      }
+    }
+  }
+  /** @param {string} key */
+  function treeToggle(key) {
+    if (key === "pinned") expandPinned = !expandPinned;
+    else if (key === "radio") expandRadio = !expandRadio;
+    else if (key === "lists") {
+      expandLocal = !expandLocal;
+      if (expandLocal) loadSavedListsLib();
+    } else if (key === "playlists") expandPlaylists = !expandPlaylists;
+    else if (key.startsWith("folder:")) toggleFolder(folderPath(key));
+  }
+  /** @param {string} key */
+  function treeActivate(key) {
+    const item = treeItems.find((i) => i.key === key);
+    if (item?.parent) return treeToggle(key);
+    if (key === "pl-error") return loadPlaylists();
+    if (key === "liked") loadLikedIntoMain();
+    else if (key === "loved") loadLovedIntoMain();
+    else if (key === "recent" || key === "top") loadHistoryIntoMain(key);
+    else if (key === "local") loadLocalIntoMain();
+    else if (key.startsWith("list:")) {
+      const list = savedLists.find((l) => "list:" + l.name === key);
+      if (list) loadListIntoMain(list);
+    } else {
+      const pl = playlistOf(key);
+      if (pl) loadPlaylistIntoMain(pl);
+    }
+  }
+  /** @param {string} key @param {MouseEvent} e */
+  function treeContext(key, e) {
+    if (key === "recent" || key === "top") return historyMenu(e, key);
+    if (key === "local") return localMenu(e);
+    if (key.startsWith("folder:")) return folderMenu(e, folderPath(key));
+    if (key.startsWith("list:")) {
+      const list = savedLists.find((l) => "list:" + l.name === key);
+      if (list)
+        popMenu([
+          { text: "Play", action: () => loadListIntoMain(list) },
+          { text: "Add to the playlist", action: () => emitWindowEvent("playerWindow", { UrlsAppended: list.uris.map(trackUrl) }) },
+          { item: "Separator" },
+          { text: "Delete list…", action: () => deleteSavedList(list.name) },
+        ]);
+      return;
+    }
+    const pl = playlistOf(key);
+    if (pl) playlistMenu(e, pl);
+  }
+  /** @param {string} key @param {DragEvent} e */
+  function treeDrag(key, e) {
+    if (key.startsWith("folder:")) return dragLinks(e, folderUrls(folderPath(key)));
+    if (key.startsWith("list:")) {
+      const list = savedLists.find((l) => "list:" + l.name === key);
+      return list ? dragLinks(e, list.uris.map(trackUrl)) : false;
+    }
+    const pl = playlistOf(key);
+    return pl ? dragLinks(e, [playlistUrl(pl.uri)]) : false;
+  }
+
+  /** the Library button's menu (Winamp's: its own commands) @param {MouseEvent} e */
+  function libraryMenu(e) {
+    popMenu([
+      { text: "Add a music folder…", action: addLocalFolder },
+      { text: "Look for new files", enabled: localFolders.length > 0, action: () => (activeNode === "local" ? selectLocal() : invoke("local_library", { rescan: true }).catch(() => {})) },
+      { item: "Separator" },
+      { text: "Listening stats", action: () => invoke("set_stats_window_visible", { visible: true }) },
+      ...(freeMode ? [] : [{ text: "Reload your playlists", action: loadPlaylists }, { text: "Clear listening history…", action: clearHistory }]),
+    ]);
+  }
+
+  /** @param {string} id @param {"main" | "split"} part @param {MouseEvent} e */
+  async function buttonPressed(id, part, e) {
+    if (id === "play") {
+      if (part === "main") return playSelected();
+      popMenu([
+        { text: "Play selection", enabled: selRows.length > 0, action: playSelected },
+        { text: "Enqueue selection", enabled: selRows.length > 0, action: enqueueSelected },
+        { item: "Separator" },
+        { text: "Play all", action: playAll },
+        { text: "Enqueue all", action: enqueueAll },
+      ]);
+    } else if (id === "generate") generatePlaylist();
+    // (the Play button's menu entries by name, for the smoke tests)
+    else if (id === "enqueue") enqueueSelected();
+    else if (id === "playall") playAll();
+    else if (id === "enqueueall") enqueueAll();
+    else if (id === "list") {
+      await loadSavedListsLib();
+      popMenu([
+        ...savedLists.map((l) => ({ text: l.name.replaceAll("&", "&&"), action: () => addSelectedToList(l.name) })),
+        ...(savedLists.length ? [{ item: "Separator" }] : []),
+        { text: "New list…", action: () => (newListOpen = true) },
+      ]);
+    }
+  }
+
+  /** the search row's own buttons (Local Media) @param {string} id @param {MouseEvent} e */
+  function toolbarPressed(id, e) {
+    if (id === "art") invoke("set_art_window_visible", { visible: true }).catch(() => {});
+    else if (id === "view")
+      popMenu([
+        { text: "Artist and album filters", checked: filtersOn, action: () => setFilters(true) },
+        { text: "No filters", checked: !filtersOn, action: () => setFilters(false) },
+      ]);
+    else if (id === "columns")
+      popMenu(
+        COLUMNS.local
+          .filter((c) => !["artist", "title"].includes(c.id))
+          .map((c) => ({
+            text: c.title,
+            checked: !hiddenCols.includes(c.id),
+            action: () => {
+              hiddenCols = hiddenCols.includes(c.id) ? hiddenCols.filter((h) => h !== c.id) : [...hiddenCols, c.id];
+              try {
+                localStorage.setItem("ml-hidden", JSON.stringify(hiddenCols));
+              } catch {}
+            },
+          })),
+      );
+  }
+  /** @param {boolean} on */
+  function setFilters(on) {
+    filtersOn = on;
+    artistSel = [];
+    albumSel = [];
+    try {
+      localStorage.setItem("ml-filters", on ? "1" : "0");
+    } catch {}
+  }
+
+  // ------------------------------------------------------------------ the window
+
+  /** @type {HTMLDivElement | undefined} */
+  let root = $state();
+  /** @type {HTMLCanvasElement | undefined} */
+  let content = $state();
+  /** @type {HTMLCanvasElement | undefined} */
+  let frameCanvas = $state();
+  /** @type {HTMLInputElement | undefined} */
+  let searchInput = $state();
+  let modern = $state(false);
+  let active = $state(true);
+  let closePressed = $state(false);
+  let rootW = $state(0);
+  let rootH = $state(0);
+  /** GEN.BMP and its letters, for the frame */
+  let gen = $state(/** @type {{ img: HTMLImageElement | HTMLCanvasElement, letters: number[][] | null } | null} */ (null));
+  let title = $state("Winamp Library");
+  let lookSeq = 0;
+
+  /** the skin's font: Winamp's playlist font (Arial, unless the skin's is chosen) */
+  function skinFont() {
+    let face = "Arial";
+    try {
+      if (localStorage.getItem("skin-font") === "1") {
+        const f = getComputedStyle(document.body).getPropertyValue("--skin-plfont").trim().replace(/^["']|["']$/g, "");
+        if (f) face = f;
+      }
+    } catch {}
+    return { face, size: 12 };
+  }
+
+  /** the skin's look again: the sheet, the frame's pictures */
+  async function reskin() {
+    const seq = ++lookSeq;
+    const isModern = "modern" in document.body.dataset;
+    /** @type {import("$lib/winampml/genex.js").Genex | null} */
+    let genex = null;
+    if (isModern) {
+      const look = /** @type {any} */ (await invoke("modern_look").catch(() => null));
+      genex = await modernGenex(look);
+    }
+    if (!genex) genex = await classicGenex();
+    if (seq !== lookSeq) return;
+    const look = await createLook(genex, skinFont(), () => view?.invalidate());
+    if (seq !== lookSeq) return;
+    modern = isModern;
+    view?.setLook(look);
+    // the frame: the skin's GEN.BMP, else Winamp's own (the base skin's)
+    const style = getComputedStyle(document.body);
+    const named = style.getPropertyValue("--skin-libtitle").trim().replace(/^"(.*)"$/, "$1");
+    title = named || "Winamp Library";
+    const url = cssImageUrl("--skin-gen") ?? BASE_GEN;
+    const img = await loadImage(url);
+    if (seq !== lookSeq) return;
+    if (img) {
+      const sheet = toCanvas(img);
+      gen = { img: sheet, letters: scanLetters(sheet) };
+    }
+  }
+
+  onMount(() => {
+    if (!content || !searchInput) return;
+    let state = {};
+    try {
+      state = JSON.parse(localStorage.getItem("ml-layout") || "{}") ?? {};
+    } catch {}
+    view = new MlView(
+      content,
+      searchInput,
+      {
+        treeSelect,
+        treeActivate,
+        treeToggle,
+        treeContext,
+        treeDrag,
+        rowActivate: (i) => loadTrackIntoMain(i),
+        cellClick: (i, col, dx, starW) => {
+          // (the stars are 12 px apart from 5 px in)
+          if (col === "rating" && isLocal) rate(i, Math.max(1, Math.min(5, Math.floor((dx - 5) / 12) + 1)));
+        },
+        rowContext: (i, e) => trackMenu(e, i),
+        rowsDrag: (rows, e) => {
+          const list = rows.map((i) => displayTracks[i]).filter(Boolean);
+          if (!list.length || isRadio) return false;
+          return dragLinks(e, list.map((t) => (t.path ? toFileUrl(t.path) : trackUrl(t.uri))));
+        },
+        sort: (list, col) => {
+          if (list === "tracks") sortBy(col);
+        },
+        columnsChanged: (list, w) => {
+          const set = list === "tracks" ? kindSet : list;
+          widths = { ...widths, [set]: { ...(widths[set] ?? {}), ...w } };
+          try {
+            localStorage.setItem("ml-widths", JSON.stringify(widths));
+          } catch {}
+        },
+        filterChanged: (a, b) => {
+          // a new artist picked: its albums, all of them
+          if (a.join() !== artistSel.join()) {
+            artistSel = a;
+            albumSel = [];
+          } else albumSel = b;
+          clearSel();
+        },
+        selectionChanged: (rows) => (selRows = rows),
+        search: (text) => (search = text),
+        searchEnter: (text) => {
+          search = text;
+          if (activeNode === "local") return;
+          if (isRadio) searchRadio();
+          else doSearch();
+        },
+        clear: clearSearch,
+        button: buttonPressed,
+        library: libraryMenu,
+        toolbar: toolbarPressed,
+        layoutChanged: (s) => {
+          try {
+            localStorage.setItem("ml-layout", JSON.stringify(s));
+          } catch {}
+        },
+      },
+      state,
+    );
+    const ro = new ResizeObserver(() => {
+      if (!root) return;
+      rootW = root.clientWidth;
+      rootH = root.clientHeight;
+    });
+    if (root) ro.observe(root);
+    // the smoke tests' handle: the Library is one picture, so they ask it
+    /** @param {string} what a tree key, or the start of an item's text */
+    const findKey = (what) => {
+      const lower = what.toLowerCase();
+      return (treeAll.find((i) => i.key === what) ?? treeAll.find((i) => i.text.toLowerCase() === lower) ?? treeAll.find((i) => i.text.toLowerCase().startsWith(lower)))?.key ?? null;
+    };
+    /** @type {any} */ (window).__ml = {
+      view: () => view,
+      select: (/** @type {string} */ what) => {
+        // (a playlist in a shut folder isn't in the tree: by its uri)
+        const key = findKey(what) ?? (playlistOf(what) ? what : null);
+        if (!key) return false;
+        const item = treeAll.find((i) => i.key === key);
+        if (item?.parent) treeToggle(key);
+        else treeSelect(key);
+        return true;
+      },
+      activate: (/** @type {string} */ what) => {
+        const key = findKey(what);
+        if (key) treeActivate(key);
+        return !!key;
+      },
+      tree: () => treeItems.map((i) => i.text),
+      playlists: () => playlists.map((p) => ({ uri: p.uri, name: p.name })),
+      treeItems: () => treeItems.map((i) => ({ key: i.key, text: i.text, level: i.level, parent: !!i.parent })),
+      rows: () => displayTracks.map((t) => cellsOf(t, pane.tracks.columns).map((c) => (typeof c === "string" ? c : (c.t ?? "")))),
+      count: () => displayTracks.length,
+      columns: () => pane.tracks.columns.map((c) => c.title),
+      column: (/** @type {string} */ id) => {
+        const cols = pane.tracks.columns;
+        const k = cols.findIndex((c) => c.id === id || c.title === id);
+        return k < 0 ? null : displayTracks.map((t) => {
+          const c = cellsOf(t, cols)[k];
+          return typeof c === "string" ? c : (c.t ?? "");
+        });
+      },
+      status: () => status,
+      hint: () => hint,
+      head: () => headTitle,
+      loading: () => tracksLoading,
+      title: () => title,
+      search: (/** @type {string} */ text, enter = false) => {
+        search = text;
+        view?.setSearch(text);
+        if (enter) {
+          if (activeNode === "local") return;
+          if (isRadio) searchRadio();
+          else doSearch();
+        }
+      },
+      click: (/** @type {number} */ i) => view?.selectRow(i),
+      dbl: (/** @type {number} */ i) => loadTrackIntoMain(i),
+      selected: () => selRows,
+      sort: (/** @type {string} */ col) => sortBy(col),
+      sortState: () => ({ col: localDefault && isLocal ? "title" : sortCol, dir: sortDir }),
+      press: (/** @type {string} */ id, part = "main") => buttonPressed(id, /** @type {any} */ (part), new MouseEvent("click")),
+      hide: (/** @type {string | null} */ source) => (hideRe = source ? new RegExp(source, "i") : null),
+      /** the sheet's colours in use, and whether GEN.BMP's frame is drawn */
+      colors: () => view?.look?.g.c ?? null,
+      frame: () => {
+        const c = frameCanvas;
+        if (!c || modern || !c.width) return null;
+        const d = c.getContext("2d")?.getImageData(0, 0, c.width, 20).data;
+        let drawn = 0;
+        if (d) for (let i = 3; i < d.length; i += 4) if (d[i]) drawn++;
+        return { title, letters: gen?.letters ? title.replace(/[^a-z]/gi, "").length : 0, drawn };
+      },
+    };
+    reskin();
+    window.addEventListener(SKIN_APPLIED, reskin);
+    const stopActive = watchWindowActive((a) => {
+      active = a;
+      view?.setActive(a);
+    });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener(SKIN_APPLIED, reskin);
+      stopActive();
+      view?.destroy();
+      view = null;
+    };
+  });
+
+  // the insides' size: the frame's room in a classic skin, all of it in a modern one
+  const inner = $derived(modern ? { x: 0, y: 0, w: rootW, h: rootH } : { x: FRAME.left, y: FRAME.top, w: Math.max(0, rootW - FRAME.left - FRAME.right), h: Math.max(0, rootH - FRAME.top - FRAME.bottom) });
+  $effect(() => view?.setSize(inner.w, inner.h));
+  $effect(() => view?.setRoot(inner.x, inner.y));
+  $effect(() => view?.setTree(treeItems, treeKey ?? activeNode));
+  $effect(() => view?.setPane(pane));
+  $effect(() => view?.setSearch(search));
+  // a new list: its filters start at "All"
+  $effect(() => {
+    void activeNode;
+    artistSel = [];
+    albumSel = [];
+  });
+
+  // the frame, redrawn as it's sized, focused or re-skinned
+  $effect(() => {
+    const c = frameCanvas;
+    const g = gen;
+    if (!c || !g || modern || rootW < 1 || rootH < 1) return;
+    c.width = rootW;
+    c.height = rootH;
+    const ctx = c.getContext("2d");
+    if (ctx) drawGenFrame(ctx, g.img, rootW, rootH, title, g.letters, active, closePressed);
+  });
+
+  /** @param {PointerEvent} e */
+  function closeDown(e) {
+    closePressed = true;
+    /** @type {HTMLElement} */ (e.currentTarget).setPointerCapture(e.pointerId);
+  }
+  /** @param {PointerEvent} e */
+  function closeUp(e) {
+    const el = /** @type {HTMLElement} */ (e.currentTarget);
+    const r = el.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom;
+    closePressed = false;
+    if (inside) close();
+  }
 </script>
 
-<div class="ml-window" data-gen-window>
-  <div class="ml-titlebar" data-gen="titlebar" use:makeLibraryDraggable>
-    <div class="ml-tl"></div>
-    <span class="ml-title"></span>
-    <button class="ml-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
-    ></button>
-    <GenTop title="WINAMP LIBRARY" titleVar="libtitle" onclose={close} />
-  </div>
-
-  <div class="ml-body">
-    <!-- left: navigation tree -->
-    <div class="ml-tree" style="flex-basis: {treeWidth}px;">
-      {#if !freeMode}
-      {#if pinnedPlaylists.length}
-        <div class="ml-node ml-root ml-dim-head">
-          <span class="ml-ic ml-ic-pin"></span>Pinned
-        </div>
-        {#each pinnedPlaylists as pl (pl.uri)}
-          <div
-            class="ml-node ml-child"
-            class:active={activeNode === pl.uri}
-            role="button"
-            tabindex="0"
-            draggable="true"
-            title="double-click to load into the player, or drag it onto the playlist"
-            onclick={() => selectPlaylist(pl)}
-            ondblclick={() => loadPlaylistIntoMain(pl)}
-            oncontextmenu={(e) => playlistMenu(e, pl)}
-            ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
-            onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
-          >
-            <span class="ml-ic ml-ic-list"></span>{pl.name}
-          </div>
-        {/each}
-      {/if}
-
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "liked"}
-        role="button"
-        tabindex="0"
-        title="your Spotify Liked Songs: double-click to load them all"
-        onclick={selectLiked}
-        ondblclick={loadLikedIntoMain}
-        onkeydown={(e) => e.key === "Enter" && selectLiked()}
-      >
-        <span class="ml-ic ml-ic-fav"></span>Favorite Songs
-      </div>
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "loved"}
-        role="button"
-        tabindex="0"
-        title="songs you loved in Spotiamp+ (press F on a song), newest first; double-click to load them"
-        onclick={selectLoved}
-        ondblclick={loadLovedIntoMain}
-        onkeydown={(e) => e.key === "Enter" && selectLoved()}
-      >
-        <span class="ml-ic ml-ic-loved"></span>Loved songs
-      </div>
-
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "recent"}
-        role="button"
-        tabindex="0"
-        title="what you've played in Spotiamp+, newest first; double-click to load them"
-        onclick={() => selectHistory("recent")}
-        ondblclick={() => loadHistoryIntoMain("recent")}
-        oncontextmenu={(e) => historyMenu(e, "recent")}
-        onkeydown={(e) => e.key === "Enter" && selectHistory("recent")}
-      >
-        <span class="ml-ic ml-ic-recent"></span>Recently played
-      </div>
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "top"}
-        role="button"
-        tabindex="0"
-        title="what you've played most in Spotiamp+; double-click to load them"
-        onclick={() => selectHistory("top")}
-        ondblclick={() => loadHistoryIntoMain("top")}
-        oncontextmenu={(e) => historyMenu(e, "top")}
-        onkeydown={(e) => e.key === "Enter" && selectHistory("top")}
-      >
-        <span class="ml-ic ml-ic-top"></span>Most played
-      </div>
-      <div
-        class="ml-node ml-root"
-        role="button"
-        tabindex="0"
-        title="your listening stats: time, top songs and artists, when you listen"
-        onclick={() => invoke("set_stats_window_visible", { visible: true })}
-        onkeydown={(e) => e.key === "Enter" && invoke("set_stats_window_visible", { visible: true })}
-      >
-        <span class="ml-ic ml-ic-stats"></span>Listening stats
-      </div>
-      {/if}
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "local"}
-        role="button"
-        tabindex="0"
-        title="the music on this computer: right-click to add a folder; double-click to load it all"
-        onclick={selectLocal}
-        ondblclick={loadLocalIntoMain}
-        oncontextmenu={localMenu}
-        onkeydown={(e) => e.key === "Enter" && selectLocal()}
-      >
-        <span class="ml-ic ml-ic-local"></span>Local Media
-      </div>
-      <div
-        class="ml-node ml-root"
-        role="button"
-        tabindex="0"
-        title="internet radio: your stations, the popular ones, or search above"
-        onclick={() => (expandRadio = !expandRadio)}
-        onkeydown={(e) => e.key === "Enter" && (expandRadio = !expandRadio)}
-      >
-        <span class="ml-tw">{expandRadio ? "▾" : "▸"}</span>
-        <span class="ml-ic ml-ic-radio"></span>Radio
-      </div>
-      {#if expandRadio}
-        {#each [["radio:yours", "Your stations"], ["radio:popular", "Popular"], ...(myCountry ? [["radio:local", `Popular in ${myCountryName}`]] : [])] as [node, label] (node)}
-          <div
-            class="ml-node ml-child"
-            class:active={activeNode === node}
-            role="button"
-            tabindex="0"
-            onclick={() => (node === "radio:yours" ? selectYourStations() : selectPopular(node === "radio:local"))}
-            onkeydown={(e) => e.key === "Enter" && (node === "radio:yours" ? selectYourStations() : selectPopular(node === "radio:local"))}
-          >
-            <span class="ml-ic ml-ic-list"></span>{label}
-          </div>
-        {/each}
-      {/if}
-      {#if freeMode}
-        <div class="ml-node ml-child ml-dim" title="playlists, Liked Songs and search come from Spotify's own streaming, which needs Premium">
-          your Spotify library needs Premium
-        </div>
-      {:else}
-
-      <div
-        class="ml-node ml-root"
-        role="button"
-        tabindex="0"
-        title="your Spotiamp+ lists"
-        onclick={() => {
-          expandLocal = !expandLocal;
-          if (expandLocal) loadSavedListsLib();
-        }}
-        onkeydown={(e) => e.key === "Enter" && (expandLocal = !expandLocal)}
-      >
-        <span class="ml-tw">{expandLocal ? "▾" : "▸"}</span>
-        <span class="ml-ic ml-ic-media"></span>Spotiamp+
-      </div>
-      {#if expandLocal}
-        {#if savedLists.length === 0}
-          <div class="ml-node ml-child ml-dim">no lists yet</div>
-        {:else}
-          {#each savedLists as list}
-            <div
-              class="ml-node ml-child ml-listnode"
-              class:active={activeNode === "list:" + list.name}
-              role="button"
-              tabindex="0"
-              title="double-click to load into the player, or drag it onto the playlist"
-              draggable="true"
-              ondragstart={(e) => dragLinks(e, list.uris.map(trackUrl))}
-              onclick={() => selectSavedList(list)}
-              ondblclick={() => loadListIntoMain(list)}
-              onkeydown={(e) => e.key === "Enter" && selectSavedList(list)}
-            >
-              <span class="ml-ic ml-ic-list"></span>{list.name}
-              <span class="ml-listcount">({list.uris.length})</span>
-              <button
-                class="ml-listdel"
-                title="delete list"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  deleteSavedList(list.name);
-                }}>×</button
-              >
-            </div>
-          {/each}
-        {/if}
-      {/if}
-
-      <div
-        class="ml-node ml-root"
-        role="button"
-        tabindex="0"
-        onclick={() => (expandPlaylists = !expandPlaylists)}
-        onkeydown={(e) =>
-          e.key === "Enter" && (expandPlaylists = !expandPlaylists)}
-      >
-        <span class="ml-tw">{expandPlaylists ? "▾" : "▸"}</span>
-        <span class="ml-ic ml-ic-pl"></span>Playlists
-      </div>
-      {#if expandPlaylists}
-        {#if loading}
-          <div class="ml-node ml-child ml-dim">loading…</div>
-        {:else if error}
-          <div class="ml-node ml-child ml-err" title={error}>
-            Couldn't load your playlists.
-            <button class="ml-retry" onclick={loadPlaylists}>Retry</button>
-          </div>
-        {:else if playlists.length === 0}
-          <div class="ml-node ml-child ml-dim">no playlists</div>
-        {:else}
-          {#each playlistRows as row}
-            {#if row.folder}
-              {@const path = row.folder}
-              <div
-                class="ml-node ml-child"
-                style:padding-left="{18 + row.depth * 10}px"
-                role="button"
-                tabindex="0"
-                title="a folder: click to open it; drag it onto the playlist or right-click it for all its playlists"
-                draggable="true"
-                onclick={() => toggleFolder(path)}
-                oncontextmenu={(e) => folderMenu(e, path)}
-                ondragstart={(e) => dragLinks(e, folderUrls(path))}
-                onkeydown={(e) => e.key === "Enter" && toggleFolder(path)}
-              >
-                <span class="ml-tw">{openFolders.has(folderKey(path)) ? "▾" : "▸"}</span>
-                <span class="ml-ic ml-ic-pl"></span>{path[path.length - 1]}
-              </div>
-            {:else}
-              {@const pl = row.pl}
-              <div
-                class="ml-node ml-child"
-                class:active={activeNode === pl.uri}
-                style:padding-left="{18 + row.depth * 10}px"
-                role="button"
-                tabindex="0"
-                title="double-click to load into the player, or drag it onto the playlist; right-click to pin"
-                draggable="true"
-                onclick={() => selectPlaylist(pl)}
-                ondblclick={() => loadPlaylistIntoMain(pl)}
-                oncontextmenu={(e) => playlistMenu(e, pl)}
-                ondragstart={(e) => dragLinks(e, [playlistUrl(pl.uri)])}
-                onkeydown={(e) => e.key === "Enter" && selectPlaylist(pl)}
-              >
-                <span class="ml-ic ml-ic-list"></span>{pl.name}
-              </div>
-            {/if}
-          {/each}
-        {/if}
-      {/if}
-
-      <div
-        class="ml-node ml-root"
-        class:active={activeNode === "search"}
-        role="button"
-        tabindex="0"
-        onclick={focusSearch}
-        onkeydown={(e) => e.key === "Enter" && focusSearch()}
-      >
-        <span class="ml-ic ml-ic-search"></span>Search
-      </div>
-      {/if}
-    </div>
-
-    <!-- draggable splitter -->
-    <div class="ml-splitter" use:makeSplitter></div>
-
-    <!-- right: search bar + column list -->
+<div class="mlw" class:modern data-gen-window bind:this={root}>
+  {#if !modern}
+    <canvas class="ml-frame" bind:this={frameCanvas}></canvas>
+  {/if}
+  <div class="ml-titlebar" data-gen="titlebar" use:makeLibraryDraggable></div>
+  {#if !modern}
     <div
-      class="ml-content"
-      style:--w-artist={`${colWidths.artist}%`}
-      style:--w-album={`${colWidths.album}%`}
-      style:--f-artist={colWidths.artist / 100}
-      style:--f-album={colWidths.album / 100}
-      style:--w-tail={`${(showDate ? 68 : 0) + 54}px`}
-    >
-      <div class="ml-searchbar">
-        <span class="ml-search-label">Search:</span>
-        <input
-          class="ml-search"
-          bind:this={searchInput}
-          placeholder={activeNode === "local" ? "filter your files…" : isRadio ? "a station or a genre (Enter)" : "artist, song… (Enter)"}
-          bind:value={search}
-          onkeydown={(e) => e.key === "Enter" && activeNode !== "local" && (isRadio ? searchRadio() : doSearch())}
-        />
-        <button class="ml-clear" onclick={clearSearch}>Clear</button>
-      </div>
-
-      <div class="ml-view-head">
-        {headTitle}
-        {#if activeNode === "local" && localScan}
-          <span class="ml-find">{localScan.total ? `reading ${localScan.done} of ${localScan.total}…` : "looking for files…"}</span>
-        {/if}
-        {#if findText}
-          <span class="ml-find" class:miss={findMiss}>find: {findText}</span>
-        {/if}
-      </div>
-
-      <div class="ml-cols">
-        <button class="ml-col ml-c-artist ml-colbtn" onclick={() => sortBy("artist")}>
-          {isRadio ? "Genre" : "Artist"}{sortCol === "artist" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-        </button>
-        <button class="ml-col ml-c-title ml-colbtn" onclick={() => sortBy("title")}>
-          {isRadio ? "Station" : "Title"}{sortCol === "title" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-        </button>
-        <button class="ml-col ml-c-album ml-colbtn" onclick={() => sortBy("album")}>
-          {isRadio ? "Country" : "Album"}{sortCol === "album" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-        </button>
-        {#if showDate}
-          <button class="ml-col ml-c-date ml-colbtn" onclick={() => sortBy("date")}>
-            {dateLabel}{sortCol === "date" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-          </button>
-        {/if}
-        <button class="ml-col ml-c-time ml-colbtn" onclick={() => sortBy("time")}>
-          {isRadio ? "kbps" : "Time"}{sortCol === "time" ? (sortDir > 0 ? " ▲" : " ▼") : ""}
-        </button>
-        <span
-          class="ml-colresize ml-colresize-artist"
-          role="separator"
-          aria-label="Artist column width"
-          onpointerdown={(e) => resizeColumn(e, "artist")}
-        ></span>
-        <span
-          class="ml-colresize ml-colresize-album"
-          role="separator"
-          aria-label="Album column width"
-          onpointerdown={(e) => resizeColumn(e, "album")}
-        ></span>
-      </div>
-
-      <div class="ml-listwrap">
-      <div class="ml-rows" bind:this={rowsEl} bind:clientHeight={viewH} onscroll={syncScroll}>
-        {#if activeNode === "audio" && !searchMode && !selectedUri}
-          <div class="ml-hint">
-            Select a playlist on the left, or search Spotify above.
-          </div>
-        {:else}
-          <div style:height="{windowStart * ROW_H}px"></div>
-          {#each displayTracks.slice(windowStart, windowEnd) as t, j (windowStart + j)}
-            {@const i = windowStart + j}
-            <div
-              class="ml-row"
-              data-row={i}
-              class:sel={selectedTrack === i}
-              class:odd={i % 2 === 1}
-              role="button"
-              tabindex="0"
-              draggable="true"
-              ondragstart={(e) => {
-                selectedTrack = i;
-                dragLinks(e, [t.path ? toFileUrl(t.path) : trackUrl(t.uri)]);
-              }}
-              onclick={() => (selectedTrack = i)}
-              oncontextmenu={(e) => trackMenu(e, i)}
-              ondblclick={() => loadTrackIntoMain(i)}
-              onkeydown={(e) => e.key === "Enter" && loadTrackIntoMain(i)}
-            >
-              <!-- each cell's full text on hover: long ones are cut off with "…" -->
-              <div class="ml-col ml-c-artist" title={t.artist}>{t.artist}</div>
-              <div class="ml-col ml-c-title" title={t.name}>
-                {#if lovedSet.has(t.uri)}<span class="ml-heart" title="loved">♡</span>{/if}{t.name}
-              </div>
-              <div class="ml-col ml-c-album" title={t.album}>{t.album}</div>
-              {#if showDate}
-                <div class="ml-col ml-c-date">{t.addedMs ? fmtDate(t.addedMs) : ""}</div>
-              {/if}
-              <div class="ml-col ml-c-time">{isRadio ? (t.duration ? `${t.duration}k` : "") : fmt(t.duration)}</div>
-            </div>
-          {/each}
-          <div style:height="{(displayTracks.length - windowEnd) * ROW_H}px"></div>
-          {#if tracksLoading}
-            <div class="ml-hint">{searchMode ? "searching…" : "loading…"}</div>
-          {:else if tracksError}
-            <div class="ml-hint ml-err">{tracksError}</div>
-          {:else if isRadio && tracks.length === 0}
-            <div class="ml-hint">
-              {activeNode === "radio:yours"
-                ? "The stations you play show up here. Pick one under Popular, or search for a station or a genre above."
-                : "no stations found"}
-            </div>
-          {:else if activeNode === "local" && tracks.length === 0}
-            <div class="ml-hint">
-              {#if localFolders.length === 0}
-                Add a music folder and its songs show here, ready to play.
-                <button class="ml-retry" onclick={addLocalFolder}>Add a folder…</button>
-              {:else}
-                {localScan ? "reading your files…" : "no music files in these folders"}
-              {/if}
-            </div>
-          {:else if tracks.length > 0 && displayTracks.length === 0}
-            <div class="ml-hint">no match</div>
-          {:else if tracks.length === 0}
-            <div class="ml-hint">
-              {searchMode
-                ? "no results"
-                : activeNode === "recent"
-                  ? "nothing played yet: pick a playlist on the left, or search Spotify above"
-                  : "empty"}
-            </div>
-          {/if}
-        {/if}
-      </div>
+      class="ml-close"
+      data-gen="close"
+      data-no-drag
+      role="button"
+      tabindex="-1"
+      aria-label="Close"
+      onpointerdown={closeDown}
+      onpointerup={closeUp}
+    ></div>
+  {/if}
+  <canvas
+    class="ml-content"
+    tabindex="0"
+    bind:this={content}
+    style:left="{inner.x}px"
+    style:top="{inner.y}px"
+    style:width="{inner.w}px"
+    style:height="{inner.h}px"
+  ></canvas>
+  <input class="ml-edit" bind:this={searchInput} value={search} spellcheck="false" autocomplete="off" aria-label="Search" />
+  {#if newListOpen}
+    <div class="ml-newlist-back" role="presentation" onpointerdown={() => (newListOpen = false)}></div>
+    <div class="ml-newlist">
       <input
-        type="range"
-        class="ml-scroll"
-        min="0"
-        max={scrollMax}
-        step="1"
-        value={scrollPos}
-        oninput={(e) => rowsEl && (rowsEl.scrollTop = +e.currentTarget.value)}
-        aria-label="Scroll tracks"
+        class="ml-newlist-input"
+        bind:value={newLibListName}
+        placeholder="new list…"
+        onkeydown={(e) => {
+          if (e.key === "Enter") createListWithSelected();
+          if (e.key === "Escape") newListOpen = false;
+        }}
+        use:focusNow
       />
-      </div>
     </div>
-  </div>
-
-  <div class="ml-footer">
-    <button class="ml-btn" onclick={playSelected}>Play</button>
-    <button class="ml-btn" onclick={enqueueSelected}>Enqueue</button>
-    <button class="ml-btn" class:hidden={isRadio} onclick={playAll}>Play all</button>
-    <div class="ml-listwrap" class:hidden={activeNode === "local" || isRadio}>
-      <button class="ml-btn" onclick={toggleListMenu} title="add the selected track to a list">
-        + List
-      </button>
-      {#if showListMenu}
-        <div class="ml-listbackdrop" role="presentation" onpointerdown={() => (showListMenu = false)}></div>
-        <div class="ml-listmenu">
-          <div class="ml-listnewrow">
-            <input
-              class="ml-listinput"
-              bind:value={newLibListName}
-              placeholder="new list…"
-              onkeydown={(e) => e.key === "Enter" && createListWithSelected()}
-            />
-            <button class="ml-listadd" onclick={createListWithSelected}>+</button>
-          </div>
-          {#if savedLists.length === 0}
-            <div class="ml-listempty">no lists yet</div>
-          {/if}
-          {#each savedLists as list}
-            <button class="ml-listitem" onclick={() => addSelectedToList(list.name)}>
-              {list.name}
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-    <span class="ml-count">
-      {displayTracks.length}
-      {displayTracks.length === 1 ? "item" : "items"}
-    </span>
-  </div>
-
+  {/if}
   <div class="ml-resize" data-gen="resize" use:makeLibraryResizable></div>
 </div>
 
-<style>
-  @font-face {
-    font-family: px sans nouveaux;
-    font-style: normal;
-    font-weight: 400;
-    src:
-      local("px sans nouveaux"),
-      url(/src/static/assets/px_sans_nouveaux.woff) format("woff");
-  }
 
+<style>
   :global(body) {
     margin: 0;
     overflow: hidden;
     background: #000;
   }
-
-  .ml-window {
+  .mlw {
     position: fixed;
     inset: 0;
-    display: flex;
-    flex-direction: column;
-    /* colours follow real Winamp plugin-window rules: GENEX.BMP palette when
-       a .wsz is loaded (fallback PLEDIT.TXT), classic green-on-black otherwise.
-       Frame follows the skin: the border and bevel derive from the window
-       colour instead of a fixed blue, so on a gold or grey skin the edges no
-       longer clash with the titlebar. */
-    --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
-    background: var(--frame);
-    box-sizing: border-box;
-    /* A 2px inner frame in the titlebar's own colour, bevelled with the skin's
-       own divider tone (not raw black/white) so the edges harmonise with the
-       window instead of standing out. */
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    font-smooth: never;
-    letter-spacing: 0;
-    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 255, 0)));
+    overflow: hidden;
     user-select: none;
   }
-
-  /* ---- titlebar (gen tiles) ---- */
-  .ml-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .ml-tl {
+  .ml-frame {
     position: absolute;
     left: 0;
     top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
   }
-  /* a skin made for Spotiamp+ can give it its own name (SPOTIAMP.TXT) */
-  .ml-title::before {
-    content: var(--skin-libtitle, "WINAMP LIBRARY");
-  }
-  .ml-title {
+  .ml-content {
     position: absolute;
-    left: 50%;
+    outline: none;
+    image-rendering: pixelated;
+  }
+  :global(body[data-fractional-scale]) .ml-content,
+  :global(body[data-fractional-scale]) .ml-frame {
+    image-rendering: auto;
+  }
+  .ml-titlebar {
+    position: absolute;
+    left: 0;
     top: 0;
-    transform: translateX(-50%);
-    /* Full titlebar height so the plate tile lines up with the bars 1:1. */
+    right: 14px;
     height: 20px;
-    /* Centre the text, then lift it clear of the titlebar's thin inner-frame
-       line along the bottom — dead centre looks low because that line eats the
-       lower edge. box-sizing keeps the padding inside the 20px (the bug the
-       plain-centre version had). The bottom padding is the knob: increase it to
-       raise the text, decrease it to lower it. */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    /* match the tiny bitmap lettering of the playlist titlebar */
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    letter-spacing: 1px;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    /* The skin's own title plate, located in GEN.BMP by scanning (see
-       wsz.rs::locate_title_plate) and served as --skin-gentitle. A classic
-       striped titlebar sets it to the real plate slice, so the bars stop, the
-       title sits on the plate, and the bars resume — the main-window look. A
-       smooth titlebar sets it to `transparent`, so the actual titlebar shows
-       through behind the title instead of a mismatched box. The shadow keeps
-       the text legible in the transparent case. */
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
   }
   .ml-close {
     position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
-
-  /* ---- body: tree | content ---- */
-  .ml-body {
-    flex: 1;
-    display: flex;
-    min-height: 0;
-    padding: 3px;
-    gap: 3px;
-  }
-
-  .ml-tree {
-    flex: 0 0 150px;
-    overflow: auto;
-    background: var(--skin-genexitembg, var(--skin-plbg, #000));
-    border: 1px solid var(--skin-genexdivider, #060a12);
-    padding: 2px 0;
-  }
-  .ml-node {
-    display: flex;
-    align-items: center;
-    height: 15px;
-    padding: 0 4px 0 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 230, 0)));
-    cursor: default;
-  }
-  .ml-root {
-    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 255, 0)));
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-  }
-  .ml-child {
-    padding-left: 18px;
-  }
-  .ml-node:hover {
-    background: color-mix(
-      in srgb,
-      var(--skin-genexselbg, var(--skin-plselbg, #0f4a1a)) 45%,
-      transparent
-    );
-  }
-  .ml-node.active {
-    background: var(--skin-genexselbg, var(--skin-plselbg, rgb(0, 0, 198)));
-    color: var(--skin-plcurrent, #fff);
-  }
-  .ml-dim {
-    color: color-mix(
-      in srgb,
-      var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 120, 0))) 55%,
-      transparent
-    );
-    font-style: italic;
-  }
-  .ml-tw {
-    display: inline-block;
+    right: 2px;
+    top: 3px;
     width: 9px;
-    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 200, 0)));
+    height: 9px;
   }
-  .ml-ic {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    margin-right: 4px;
-    flex: 0 0 12px;
-    background-repeat: no-repeat;
-    background-position: center;
-  }
-  /* tiny CSS glyph icons — drawn with currentColor so they follow the
-     skin's list text colour automatically */
-  .ml-ic-media {
-    background: color-mix(in srgb, currentColor 25%, transparent);
-    border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
-    border-radius: 1px;
-    height: 8px;
-    margin-top: 1px;
-  }
-  .ml-ic-fav {
-    background: none;
-    color: #e0455e;
-    font-size: 11px;
-    line-height: 12px;
-    text-align: center;
-  }
-  .ml-ic-fav::before {
-    content: "♥";
-  }
-  .ml-ic-loved {
-    background: none;
-    color: #e0455e;
-    font-size: 11px;
-    line-height: 12px;
-    text-align: center;
-  }
-  .ml-ic-loved::before {
-    content: "♡";
-  }
-  .ml-heart {
-    color: #e0455e;
-    margin-right: 3px;
-  }
-  .ml-ic-stats::before {
-    content: "▤";
-  }
-  .ml-ic-local::before {
-    content: "♫";
-  }
-  .ml-ic-radio::before {
-    content: "📻";
-    font-size: 9px;
-  }
-  .ml-ic-radio,
-  .ml-ic-local,
-  .ml-ic-pin,
-  .ml-ic-recent,
-  .ml-ic-stats,
-  .ml-ic-top {
-    background: none;
-    font-size: 10px;
-    line-height: 12px;
-    text-align: center;
-  }
-  .ml-ic-pin {
-    color: #e8c547;
-  }
-  .ml-ic-pin::before {
-    content: "★";
-  }
-  .ml-ic-recent::before {
-    content: "◷";
-  }
-  .ml-ic-top::before {
-    content: "▲";
-  }
-  .ml-dim-head {
-    opacity: 0.8;
-    cursor: default;
-  }
-  .ml-ic-pl {
-    background: color-mix(in srgb, currentColor 35%, transparent);
-    height: 8px;
-    border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
-    border-radius: 1px;
-    margin-top: 1px;
-  }
-  .ml-ic-list {
-    background: color-mix(in srgb, currentColor 20%, transparent);
-    width: 8px;
-    height: 6px;
-    border-top: 2px solid color-mix(in srgb, currentColor 75%, transparent);
-    border-bottom: 2px solid color-mix(in srgb, currentColor 75%, transparent);
-    margin-left: 2px;
-    margin-right: 6px;
-  }
-  .ml-ic-search {
-    background: transparent;
-    border: 1.5px solid color-mix(in srgb, currentColor 75%, transparent);
-    border-radius: 50%;
-    width: 7px;
-    height: 7px;
-  }
-
-  /* ---- right content ---- */
-  .ml-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-  }
-  .ml-searchbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 0 3px 0;
-  }
-  .ml-search-label {
-    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 210, 0)));
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .ml-search {
-    flex: 1;
-    min-width: 0;
-    background: var(--skin-genexitembg, #05170a);
-    color: var(--skin-genexitemfg, #00ff41);
-    border: 1px solid var(--skin-genexdivider, #1e6b32);
-    font-family: "Consolas", monospace;
-    font-size: 11px;
-    padding: 1px 4px;
-    outline: none;
-  }
-  /* the skin's real GENEX button face (base skin included); a skin without one
-     gets the frame-coloured bevel, like .ml-btn */
-  .ml-clear {
-    background: color-mix(in srgb, var(--frame) 82%, #fff);
-    border: var(--skin-genexbtnw, 4px) solid color-mix(in srgb, var(--frame) 35%, #000);
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #fff),
-      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #000);
-    border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
-    color: var(--skin-genexbtntext, #393942);
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    text-transform: uppercase;
-    padding: 1px 5px;
-    cursor: pointer;
-  }
-  .ml-clear:active {
-    border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #000),
-      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #fff);
-    background: color-mix(in srgb, var(--frame) 72%, #000);
-  }
-
-  .ml-view-head {
-    font-size: calc(8px * var(--px-crisp, 1));
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--skin-genexwndtext, var(--skin-plnormal, rgb(0, 200, 0)));
-    padding: 2px 3px;
-    border-bottom: 1px solid var(--skin-genexdivider, #0a0f0a);
-  }
-  /* live type-to-find query, right-aligned in the header; dims on no match */
-  .ml-find {
-    float: right;
-    text-transform: none;
-    color: var(--skin-genexhdrtext, var(--skin-plcurrent, #fff));
-  }
-  .ml-find.miss {
-    opacity: 0.45;
-  }
-
-  .ml-cols,
-  .ml-row {
-    display: flex;
-    align-items: center;
-  }
-  .ml-cols {
-    height: 15px;
-    background: var(--skin-genexhdrbg, #0a0d12);
-    border-bottom: 1px solid var(--skin-genexdivider, #1e6b32);
-    color: var(--skin-genexhdrtext, rgb(0, 210, 0));
-    font-size: calc(8px * var(--px-crisp, 1));
-    text-transform: uppercase;
-    letter-spacing: 0;
-  }
-  .ml-col {
-    /* the header's cells are buttons (border-box); the rows' must size the
-       same way or their columns drift off the header's */
-    box-sizing: border-box;
-    padding: 0 5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ml-cols .ml-col {
-    border-right: 1px solid var(--skin-genexdivider, #0e2214);
-    height: 15px;
-    line-height: 15px;
-  }
-  /* the header cells are now sort buttons — strip the native button look and
-     inherit the header's font/colour so they read as plain column labels */
-  .ml-colbtn {
-    background: transparent;
-    border: none;
-    border-right: 1px solid var(--skin-genexdivider, #0e2214);
-    color: inherit;
-    font: inherit;
-    text-transform: inherit;
-    letter-spacing: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .ml-colbtn:hover {
-    color: var(--skin-genexitemfg, #7dffa0);
-  }
-  .ml-c-time.ml-colbtn,
-  .ml-c-date.ml-colbtn {
-    text-align: right;
-  }
-  .ml-c-artist {
-    flex: 0 0 var(--w-artist, 26%);
-  }
-  .ml-c-album {
-    flex: 0 0 var(--w-album, 26%);
-  }
-  /* the lines to drag for a column's width: at Artist's right edge, and at
-     Album's left (by Title) */
-  .ml-cols {
-    position: relative;
-    /* the rows below stop at the scroll bar: so does the header, or Time's
-       label sat under it, cut off */
-    padding-right: 10px;
-  }
-  /* (not .ml-resize: that's the window's corner grip, further down) */
-  .ml-colresize {
+  /* the search box takes the typing; Windows draws what's typed */
+  .ml-edit {
     position: absolute;
-    top: 0;
-    width: 6px;
-    height: 15px;
-    cursor: col-resize;
-    z-index: 2;
-  }
-  /* placed against the header's padding box: its width less the 10px by the
-     scroll bar is what the columns share */
-  .ml-colresize-artist {
-    left: calc((100% - 10px) * var(--f-artist) - 3px);
-  }
-  .ml-colresize-album {
-    right: calc((100% - 10px) * var(--f-album) + var(--w-tail) + 10px - 3px);
-  }
-  .ml-c-title {
-    flex: 1;
-    min-width: 0;
-  }
-  .ml-c-date {
-    flex: 0 0 68px;
-    text-align: right;
-  }
-  .ml-c-time {
-    flex: 0 0 54px;
-    text-align: right;
-  }
-
-  .ml-rows {
-    flex: 1;
-    overflow-y: scroll;
-    overflow-x: hidden;
-    background: var(--skin-genexitembg, var(--skin-plbg, #000));
-    border: 1px solid var(--skin-genexdivider, #060a12);
-    min-height: 0;
-  }
-  .ml-row {
-    height: 13px;
-    color: var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 255, 0)));
-    cursor: default;
-  }
-  .ml-row.odd {
-    background: rgba(255, 255, 255, 0.03);
-  }
-  .ml-row:hover {
-    background: color-mix(
-      in srgb,
-      var(--skin-genexselbg, var(--skin-plselbg, #0f4a1a)) 45%,
-      transparent
-    );
-  }
-  .ml-row.sel {
-    background: var(--skin-genexselbg, var(--skin-plselbg, rgb(0, 0, 198)));
-    color: var(--skin-plcurrent, #fff);
-  }
-  .ml-hint {
-    padding: 8px 10px;
-    color: color-mix(
-      in srgb,
-      var(--skin-genexitemfg, var(--skin-plnormal, rgb(0, 130, 0))) 60%,
-      transparent
-    );
-    font-style: italic;
-  }
-  .ml-err {
-    color: #ff6b6b;
-  }
-  .ml-retry {
-    font: inherit;
-    color: inherit;
-    background: none;
-    border: none;
-    padding: 0;
-    text-decoration: underline;
-    cursor: pointer;
-  }
-
-  /* the real scrollbar is the PLEDIT-sprite slider next to the list */
-  .ml-listwrap {
-    flex: 1;
-    display: flex;
-    min-height: 0;
-  }
-  .ml-listwrap .ml-rows {
-    flex: 1;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .ml-rows::-webkit-scrollbar {
     display: none;
-  }
-  .ml-scroll {
-    cursor: var(--skin-cur-eqslid, url(/src/static/assets/skins/base-2.91/EQSLID.CUR)), default;
-    writing-mode: vertical-lr;
-    direction: ltr;
-    appearance: none;
-    width: 10px;
-    flex: 0 0 10px;
-    background: var(--skin-genexwndbg, #050a05);
-    box-shadow: inset 1px 0 0 var(--skin-genexdivider, #0e1a0e);
-  }
-  .ml-scroll::-webkit-slider-thumb {
-    background: var(--skin-pledit);
-    appearance: none;
-    width: 8px;
-    height: 18px;
-    background-position: -52px -53px;
-  }
-  .ml-scroll::-webkit-slider-thumb:active {
-    background-position-x: -61px;
-  }
-  .ml-tree::-webkit-scrollbar {
-    width: 9px;
-  }
-  .ml-tree::-webkit-scrollbar-track {
-    background: var(--skin-genexwndbg, #050a05);
-  }
-  .ml-tree::-webkit-scrollbar-thumb {
-    background: var(--skin-genexhdrbg, #16241a);
-    border: 1px solid var(--skin-genexdivider, #0a0f0a);
-  }
-
-  /* ---- footer ---- */
-  .ml-footer {
-    flex: 0 0 22px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 5px;
-    /* Fall back to the window colour, not a fixed near-black, so the footer
-       matches skins that ship no GENEX.BMP instead of a dark bar clashing
-       under a gold/grey window. */
-    border-top: 1px solid
-      var(--skin-genexdivider, color-mix(in srgb, var(--frame) 45%, #000));
-    background: var(--skin-genexwndbg, var(--frame));
-  }
-  .ml-btn {
-    /* When the skin has a GENEX button face the border-image (with fill) wins
-       and covers this; when it doesn't, this frame-derived bevel is what shows,
-       so the buttons are visible and skin-matched instead of an invisible
-       transparent border on near-black. */
-    background: color-mix(in srgb, var(--frame) 82%, #fff);
-    border: var(--skin-genexbtnw, 4px) solid color-mix(in srgb, var(--frame) 35%, #000);
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #fff),
-      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #000);
-    border-image: var(--skin-genexbtn) 4 fill / 4px stretch;
-    color: var(--skin-genexbtntext, var(--skin-genexwndtext, var(--skin-titletext, #dcdce6)));
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    text-transform: uppercase;
-    letter-spacing: 0;
-    padding: 1px 7px;
-    cursor: pointer;
-  }
-  .ml-btn:active {
-    border-image: var(--skin-genexbtnp) 4 fill / 4px stretch;
-    /* pressed fallback (no sprite): invert the bevel and sink the face */
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 60%, #000),
-      inset -1px -1px 0 color-mix(in srgb, var(--frame) 60%, #fff);
-    background: color-mix(in srgb, var(--frame) 72%, #000);
-  }
-  .ml-count {
-    margin-left: auto;
-    color: var(--skin-genexwndtext, var(--skin-titletext, var(--skin-plnormal, rgb(0, 170, 0))));
-    padding-right: 8px;
-  }
-
-  /* "+ List" popup — add the selected track to an app-local list */
-  .ml-listwrap {
-    position: relative;
-    display: inline-flex;
-  }
-  /* + List: Spotify songs only, so not over Local Media or Radio */
-  .ml-listwrap.hidden,
-  .ml-btn.hidden {
-    visibility: hidden;
-  }
-  .ml-listbackdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-  }
-  .ml-listmenu {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    margin-bottom: 3px;
-    z-index: 41;
-    min-width: 130px;
-    max-height: 180px;
-    overflow-y: auto;
-    background: #1a1c22;
-    border: 1px solid var(--skin-genexdivider, #3a3d4a);
-    padding: 3px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  }
-  .ml-listnewrow {
-    display: flex;
-    gap: 3px;
-    margin-bottom: 3px;
-  }
-  .ml-listinput {
-    flex: 1;
-    min-width: 0;
-    font-size: calc(8px * var(--px-crisp, 1));
-    background: #0c0d12;
-    color: #d8d8e8;
-    border: 1px solid #3a3d4a;
-    padding: 1px 3px;
-  }
-  .ml-listadd {
-    width: 18px;
-    border: 1px solid #3a3d4a;
-    background: #2a2d3a;
-    color: #d8d8e8;
-    cursor: pointer;
-  }
-  .ml-listitem {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: none;
-    border: none;
-    color: var(--skin-plnormal, #c8c8d4);
-    font-size: calc(8px * var(--px-crisp, 1));
-    padding: 2px 5px;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ml-listitem:hover {
-    background: var(--skin-genexselbg, #2b6fd6);
-    color: #fff;
-  }
-  .ml-listempty {
-    color: #808080;
-    font-size: calc(8px * var(--px-crisp, 1));
-    padding: 2px 5px;
-    font-style: italic;
-  }
-
-  /* saved-list rows in the Spotiamp+ tree node */
-  .ml-listnode {
-    display: flex;
-    align-items: center;
-  }
-  .ml-listcount {
-    margin-left: 4px;
-    font-size: calc(8px * var(--px-crisp, 1));
-    color: color-mix(in srgb, currentColor 50%, transparent);
-  }
-  .ml-listdel {
-    margin-left: auto;
-    width: 14px;
-    border: none;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 3px;
+    border: 0;
+    outline: none;
     background: transparent;
-    color: #c0504a;
-    cursor: pointer;
+    color: transparent;
+    caret-color: transparent;
+    font: 12px Arial, sans-serif;
     opacity: 0;
   }
-  .ml-listnode:hover .ml-listdel {
-    opacity: 1;
-  }
-  .ml-listdel:hover {
-    color: #ff6b60;
-  }
-
-  /* ---- splitter between tree and content ---- */
-  .ml-splitter {
-    flex: 0 0 4px;
-    cursor: ew-resize;
-    background: transparent;
-    box-shadow: inset 1px 0 0 var(--skin-genexdivider, #1e6b32);
-  }
-  .ml-splitter:hover {
-    background: color-mix(
-      in srgb,
-      var(--skin-genexdivider, #123a1a) 40%,
-      transparent
-    );
-  }
-
   .ml-resize {
     position: absolute;
     right: 0;
     bottom: 0;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     cursor: nwse-resize;
-    background: linear-gradient(
-      135deg,
-      transparent 0 8px,
-      var(--skin-genexdivider, #1e6b32) 8px 9px,
-      transparent 9px 11px,
-      var(--skin-genexdivider, #1e6b32) 11px 12px,
-      transparent 12px
-    );
+  }
+  .modern .ml-resize {
+    width: 10px;
+    height: 10px;
+  }
+  .ml-newlist-back {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+  }
+  .ml-newlist {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    padding: 6px;
+    background: var(--skin-genexwndbg, #383757);
+    border: 1px solid var(--skin-genexdivider, #75748b);
+  }
+  .ml-newlist-input {
+    width: 180px;
+    font: 12px Arial, sans-serif;
+    color: var(--skin-genexitemfg, #0f0);
+    background: var(--skin-genexitembg, #000);
+    border: 1px solid var(--skin-genexdivider, #75748b);
+    outline: none;
+    padding: 2px 4px;
   }
 </style>

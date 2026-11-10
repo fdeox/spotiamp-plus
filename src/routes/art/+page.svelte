@@ -5,7 +5,7 @@
   import { subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { makeDockedDraggable, makeSnappingResizer } from "$lib/window-docking.svelte.js";
   import { forwardShortcuts } from "$lib/shortcuts.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   onMount(() => forwardShortcuts());
@@ -70,11 +70,16 @@
   }
 
   onMount(() => {
-    REACTIVE_WINDOW_SIZE.setSize(275, 275);
-    // Reopen at the size it was last left (falls back to the default above).
+    // a 256 px cover in GEN.BMP's frame
+    REACTIVE_WINDOW_SIZE.setSize(275, 290);
+    // Reopen at the size it was last left (falls back to the default above),
+    // its box kept square (a size saved with the old, thinner frame too)
     invoke("get_window_inner_size", { label: "art" })
       .then((s) => {
-        if (s) REACTIVE_WINDOW_SIZE.setSize(s.width, s.height);
+        if (!s) return;
+        const frame = frameSize();
+        const side = Math.max(110, Math.round(s.width) - frame.w);
+        REACTIVE_WINDOW_SIZE.setSize(side + frame.w, side + frame.h);
       })
       .catch(() => {});
 
@@ -104,10 +109,11 @@
   // (1 px border inside it): this much wider and taller than the box. In a
   // modern skin's frame, less what that frame takes (--mf-*, global.css).
   const frameSize = () => {
-    if (!("modern" in document.body.dataset)) return { w: 10, h: 26 };
+    // (GEN.BMP's frame: 11 px left, 8 right, 20 above, 14 below)
+    if (!("modern" in document.body.dataset)) return { w: 19, h: 34 };
     const style = getComputedStyle(document.body);
     const mf = (/** @type {string} */ side) => parseFloat(style.getPropertyValue(`--mf-${side}`)) || 0;
-    return { w: mf("left") + mf("right") + 10, h: mf("top") + mf("bottom") + 6 };
+    return { w: mf("left") + mf("right"), h: mf("top") + mf("bottom") };
   };
 
   // Resize from the bottom-right corner, like the lyrics / library / visualizer,
@@ -130,13 +136,7 @@
 </script>
 
 <div class="art" data-gen-window>
-  <div class="art-titlebar" data-gen="titlebar" use:makeArtDraggable>
-    <div class="art-tl"></div>
-    <span class="art-title">ALBUM ART</span>
-    <button class="art-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
-    ></button>
-    <GenTop title="ALBUM ART" onclose={close} />
-  </div>
+  <GenFrame title="Album Art" onclose={close} drag={makeArtDraggable} resize={makeArtResizable} />
 
   <div class="art-body">
     {#if status === "idle"}
@@ -155,7 +155,6 @@
     {/if}
   </div>
 
-  <div class="art-resize" data-gen="resize" use:makeArtResizable></div>
 </div>
 
 <style>
@@ -178,77 +177,16 @@
   .art {
     position: absolute;
     inset: 0;
-    display: flex;
-    flex-direction: column;
-    /* Same skin-following plugin frame as the lyrics / library windows. */
-    --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
-    background: var(--frame);
-    box-sizing: border-box;
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    background: #000;
+    isolation: isolate;
     user-select: none;
   }
 
-  .art-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .art-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
-  }
-  .art-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    letter-spacing: 1px;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .art-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
-
+  /* the room GEN.BMP's frame leaves, as Winamp's embedded windows had it */
   .art-body {
-    flex: 1;
-    min-height: 0;
-    margin: 0 4px 4px;
-    background: var(--skin-plbg, #000);
-    border: 1px solid #0c0d12;
-    box-shadow: inset 1px 1px 0 #0e0f16, inset -1px -1px 0 #3a3f52;
+    position: absolute;
+    inset: 20px 8px 14px 11px;
+    background: #000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -275,22 +213,7 @@
     color: color-mix(in srgb, var(--skin-plnormal, #00ff41) 55%, transparent);
   }
 
-  /* bottom-right resize grip */
-  .art-resize {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    z-index: 3;
-    background: linear-gradient(
-      135deg,
-      transparent 0 8px,
-      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 8px 9px,
-      transparent 9px 11px,
-      color-mix(in srgb, var(--skin-plnormal, #00ff41) 45%, transparent) 11px 12px,
-      transparent 12px
-    );
+  :global(body[data-modern]) .art-body {
+    inset: 0;
   }
 </style>

@@ -440,6 +440,19 @@ pub async fn winamp_line_paint(paint: crate::winamp_pe::LinePaint) -> Result<tau
     Ok(tauri::ipc::Response::new(crate::winamp_pe::paint_line(&paint).map(|p| p.to_bytes()).unwrap_or_default()))
 }
 
+/// Part of the Media Library painted as Winamp 5's controls painted it
+/// (winamp_ml.rs): [w, h] then the pixels; empty when not.
+#[tauri::command]
+pub async fn winamp_ml_paint(paint: crate::winamp_ml::MlPaint) -> Result<tauri::ipc::Response, ()> {
+    Ok(tauri::ipc::Response::new(crate::winamp_ml::paint(&paint).map(|p| p.to_bytes()).unwrap_or_default()))
+}
+
+/// Fonts' metrics and texts' sizes as the Media Library's controls measured them.
+#[tauri::command]
+pub async fn winamp_ml_measure(measure: crate::winamp_ml::MlMeasure) -> Result<crate::winamp_ml::MlMeasured, ()> {
+    Ok(crate::winamp_ml::measure(&measure))
+}
+
 /// The worn skin's file, whole.
 #[tauri::command]
 pub fn modern_skin_file() -> Result<tauri::ipc::Response, String> {

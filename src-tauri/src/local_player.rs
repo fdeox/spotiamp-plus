@@ -863,6 +863,11 @@ pub struct LocalMeta {
     pub sample_rate: u32,
     /// the average, for the kbps readout (0 if unknown)
     pub kbps: u32,
+    /// Winamp's Track # column: "10" or "10/12"
+    pub track: String,
+    /// the year of the date tag
+    pub year: String,
+    pub genre: String,
 }
 
 /// Probe a single file for its tags + duration. Separate from the playback
@@ -880,6 +885,7 @@ fn tag_text(value: &symphonia::core::meta::Value) -> String {
 
 fn apply_tags(rev: &symphonia::core::meta::MetadataRevision, meta: &mut LocalMeta) {
     use symphonia::core::meta::StandardTagKey;
+    let mut total = String::new();
     for tag in rev.tags() {
         match tag.std_key {
             Some(StandardTagKey::TrackTitle) if meta.title.is_empty() => {
@@ -894,8 +900,54 @@ fn apply_tags(rev: &symphonia::core::meta::MetadataRevision, meta: &mut LocalMet
             Some(StandardTagKey::Album) if meta.album.is_empty() => {
                 meta.album = tag_text(&tag.value);
             }
+            Some(StandardTagKey::TrackNumber) if meta.track.is_empty() => {
+                meta.track = tag_text(&tag.value);
+            }
+            Some(StandardTagKey::TrackTotal) => total = tag_text(&tag.value),
+            Some(StandardTagKey::Date | StandardTagKey::ReleaseDate | StandardTagKey::OriginalDate)
+                if meta.year.is_empty() =>
+            {
+                meta.year = year_of(&tag_text(&tag.value));
+            }
+            Some(StandardTagKey::Genre) if meta.genre.is_empty() => {
+                meta.genre = genre_name(&tag_text(&tag.value));
+            }
             _ => {}
         }
+    }
+    // a total of its own (Vorbis comments): "number/total" as ID3 writes it
+    if !total.is_empty() && !meta.track.is_empty() && !meta.track.contains('/') {
+        meta.track = format!("{}/{}", meta.track, total);
+    }
+}
+
+/// The year of a date tag ("2003", "2003-05-12", "2003-05-12T10:00").
+fn year_of(date: &str) -> String {
+    let digits: String = date.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.len() >= 4 { digits[..4].to_string() } else { String::new() }
+}
+
+/// A genre as text: ID3v1's numbered ones ("(17)", "17") by their names.
+fn genre_name(genre: &str) -> String {
+    const ID3V1: [&str; 80] = [
+        "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
+        "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
+        "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal",
+        "Jazz+Funk", "Fusion", "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip",
+        "Gospel", "Noise", "AlternRock", "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop",
+        "Instrumental Rock", "Ethnic", "Gothic", "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk",
+        "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta", "Top 40", "Christian Rap",
+        "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave", "Psychadelic", "Rave", "Showtunes",
+        "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll",
+        "Hard Rock",
+    ];
+    let inner = genre.trim().trim_start_matches('(').split(')').next().unwrap_or("");
+    match inner.parse::<usize>() {
+        Ok(n) if inner.len() <= 3 && n < ID3V1.len() && (genre.trim() == inner || genre.trim().starts_with('(')) => {
+            let rest = genre.trim().split_once(')').map(|(_, r)| r.trim()).unwrap_or("");
+            if rest.is_empty() { ID3V1[n].to_string() } else { rest.to_string() }
+        }
+        _ => genre.trim().to_string(),
     }
 }
 
@@ -926,6 +978,7 @@ fn shell_meta(path: &std::path::Path) -> Option<LocalMeta> {
             duration_ms: tags.duration_ms,
             sample_rate: tags.sample_rate,
             kbps,
+            ..Default::default()
         })
     }
     #[cfg(not(target_os = "windows"))]
@@ -993,6 +1046,18 @@ mod format_tests {
         assert_eq!(tag_text(&Value::from("Tagged Artist\0")), "Tagged Artist");
         assert_eq!(tag_text(&Value::from("  Song \0\0")), "Song");
         assert_eq!(tag_text(&Value::from("Şebnem Ferah")), "Şebnem Ferah");
+    }
+
+    #[test]
+    fn years_and_genres_as_winamp_shows_them() {
+        assert_eq!(year_of("2003-05-12"), "2003");
+        assert_eq!(year_of("1980"), "1980");
+        assert_eq!(year_of("80"), "");
+        assert_eq!(genre_name("(17)"), "Rock");
+        assert_eq!(genre_name("13"), "Pop");
+        assert_eq!(genre_name("(17)Indie Rock"), "Indie Rock");
+        assert_eq!(genre_name("Alternative Metal"), "Alternative Metal");
+        assert_eq!(genre_name("2Pac"), "2Pac");
     }
 
     #[test]

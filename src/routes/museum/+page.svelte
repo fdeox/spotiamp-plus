@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(600, 620);
@@ -136,13 +136,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="mu" data-gen-window>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="mu-titlebar" data-gen="titlebar" onmousedown={drag}>
-    <div class="mu-tl"></div>
-    <span class="mu-title">SKIN MUSEUM</span>
-    <button class="mu-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"></button>
-    <GenTop title="SKIN MUSEUM" onclose={close} />
-  </div>
+  <GenFrame title="Skin Museum" onclose={close} drag={(el) => el.addEventListener("mousedown", drag)} />
 
   <div class="mu-bar">
     <input
@@ -241,65 +235,16 @@
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
     --fg: var(--skin-plnormal, #00ff41);
     --hi: var(--skin-plcurrent, #fff);
-    background: var(--frame);
+    /* GEN.BMP's frame (GenFrame) behind the insides, which keep to its room */
+    background: #000;
     box-sizing: border-box;
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    padding: 20px 8px 14px 11px;
+    isolation: isolate;
     user-select: none;
     font-family: "px sans nouveaux", sans-serif;
     -webkit-font-smoothing: none;
   }
 
-  .mu-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .mu-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
-  }
-  .mu-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    height: 20px;
-    display: flex;
-    align-items: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    font-size: calc(8px * var(--px-crisp, 1));
-    letter-spacing: 1px;
-    white-space: nowrap;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .mu-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
 
   .mu-bar {
     display: flex;

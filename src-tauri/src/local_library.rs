@@ -28,7 +28,20 @@ pub struct LocalItem {
     pub date_ms: i64,
     /// Size when it was read: with the date, how a changed file is noticed.
     pub size: u64,
+    /// Winamp's Track #, Year and Genre columns (0.7.10)
+    #[serde(default)]
+    pub track: String,
+    #[serde(default)]
+    pub year: String,
+    #[serde(default)]
+    pub genre: String,
+    /// which reading of the tags this is: an older one is read again
+    #[serde(default)]
+    pub tags: u8,
 }
+
+/// The tags read now (2: with track, year and genre).
+const TAGS: u8 = 2;
 
 /// What the Library shows: the folders, their files, and whether they're
 /// being read right now.
@@ -118,6 +131,10 @@ fn read_item(path: &str, size: u64, date_ms: i64) -> LocalItem {
         kbps: meta.kbps,
         date_ms,
         size,
+        track: meta.track,
+        year: meta.year,
+        genre: meta.genre,
+        tags: TAGS,
     }
 }
 
@@ -142,7 +159,7 @@ fn scan(folders: &[String], known: Vec<LocalItem>, progress: &(dyn Fn(usize, usi
             continue;
         };
         match known.remove(path) {
-            Some(item) if item.size == size && item.date_ms == date_ms => out.push(Some(item)),
+            Some(item) if item.size == size && item.date_ms == date_ms && item.tags >= TAGS => out.push(Some(item)),
             _ => {
                 to_read.push((out.len(), path.clone(), size, date_ms));
                 out.push(None);

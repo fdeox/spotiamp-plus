@@ -5,6 +5,7 @@
 // handed over as HTML with the bitmaps and fonts it uses; modern-look.js
 // paints it in the other windows. A skin without a frame of its own (Winamp
 // lent one from its built-in skin) gets a plain one in its colours.
+import { makeMlGenex } from "./skin/mlgenex";
 
 /** What Winamp's frames say on their title bars, for each kind of window. */
 export const LOOK_FRAMES = {
@@ -274,5 +275,7 @@ export async function buildLook(uiRoot, engine, skin) {
     vars: vars.join("\n"),
     fonts: fonts.join("\n"),
     colors: paletteOf(uiRoot, await averageColor(urls)),
+    // the Media Library's sheet, as gen_ff made it (lib/winampml)
+    ...(makeMlGenex(uiRoot) ?? {}),
   };
 }

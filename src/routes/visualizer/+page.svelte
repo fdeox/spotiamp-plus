@@ -10,7 +10,7 @@
   import { FRAG_B, MODE_NAMES_B, FEEDBACK_B } from "./shaders-b.js";
   import { patternSources } from "./shader-split.js";
   import { forwardShortcuts, MAIN_WINDOW_KEYS } from "$lib/shortcuts.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // The main window's keys work here too (lib/shortcuts.js).
   // L is MilkDrop's preset list here while it's on (the Library otherwise:
@@ -1564,13 +1564,9 @@
 <svelte:window onkeydown={onKey} onmousemove={onPageMove} onmouseout={onPageOut} />
 
 <div class="viz-window" class:fs={fullscreen} class:idle={fullscreen && idle} class:rest data-gen-window={fullscreen ? undefined : ""}>
-  <div class="viz-titlebar" data-gen="titlebar" use:makeVizDraggable>
-    <div class="viz-tl"></div>
-    <span class="viz-title">VISUALIZER</span>
-    <button class="viz-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"
-    ></button>
-    <GenTop title="VISUALIZER" onclose={close} />
-  </div>
+  {#if !fullscreen}
+    <GenFrame title="Visualizer" onclose={close} drag={makeVizDraggable} resize={makeVizResizable} />
+  {/if}
 
   <div class="viz-stage" class:milk>
     <canvas
@@ -1669,7 +1665,6 @@
     {/if}
   </div>
 
-  <div class="viz-resize" data-gen="resize" use:makeVizResizable></div>
 </div>
 
 <style>
@@ -1692,84 +1687,14 @@
        colour instead of a fixed blue, so on a gold or grey skin the edges no
        longer clash with the titlebar. */
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
-    background: var(--frame);
+    /* GEN.BMP's frame (GenFrame) behind the insides, which keep to its room */
+    background: #000;
     box-sizing: border-box;
-    /* A 2px inner frame in the titlebar's own colour, bevelled with the skin's
-       own divider tone (not raw black/white) so the edges harmonise with the
-       window instead of standing out. */
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    padding: 20px 8px 14px 11px;
+    isolation: isolate;
     user-select: none;
   }
 
-  .viz-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill)
-      repeat-x;
-    cursor: default;
-  }
-  .viz-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl)
-      no-repeat;
-  }
-  .viz-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    /* Full titlebar height so the plate tile lines up with the bars 1:1. */
-    height: 20px;
-    /* Centre the text, then lift it clear of the titlebar's thin inner-frame
-       line along the bottom dead centre looks low because that line eats the
-       lower edge. box-sizing keeps the padding inside the 20px (the bug the
-       plain-centre version had). The bottom padding is the knob: increase it to
-       raise the text, decrease it to lower it. */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    font-family: "Segoe UI", Tahoma, sans-serif;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    /* The skin's own title plate, located in GEN.BMP by scanning (see
-       wsz.rs::locate_title_plate) and served as --skin-gentitle. A classic
-       striped titlebar sets it to the real plate slice, so the bars stop, the
-       title sits on the plate, and the bars resume — the main-window look. A
-       smooth titlebar sets it to `transparent`, so the actual titlebar shows
-       through behind the title instead of a mismatched box. The shadow keeps
-       the text legible in the transparent case. */
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .viz-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr)
-      no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
 
   .viz-stage {
     position: relative;
@@ -1778,9 +1703,7 @@
     /* Inset the canvas so the window background reads as a frame on three
        sides, the way the playlist and library windows do, and bevel it inward
        so the display looks recessed rather than pasted on. */
-    margin: 0 4px 4px;
-    border: 1px solid #0c0d12;
-    box-shadow: inset 1px 1px 0 #0e0f16, inset -1px -1px 0 #3a3f52;
+    margin: 0;
   }
   .viz-canvas {
     width: 100%;
@@ -1996,15 +1919,6 @@
     opacity: 0.95;
   }
 
-  .viz-resize {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    z-index: 20;
-  }
 
   /* Fullscreen: just the picture, edge to edge. */
   .viz-window.fs {
@@ -2012,10 +1926,6 @@
     border: none;
     box-shadow: none;
     background: #000;
-  }
-  .fs .viz-titlebar,
-  .fs .viz-resize {
-    display: none;
   }
   .fs .viz-stage {
     margin: 0;

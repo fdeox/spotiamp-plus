@@ -9,6 +9,7 @@
   import { onDestroy, onMount } from "svelte";
   import { SKIN_APPLIED } from "$lib/common.svelte.js";
   import { paintLine } from "$lib/modern/skin/winampPe";
+  import { cssImageUrl } from "$lib/winampml/genex.js";
 
   /**
    * @typedef {Object} Props
@@ -47,14 +48,9 @@
 
   /** TEXT.BMP's background and letter colours (draw_reinit_plfont) */
   async function readColors() {
-    // (the picture's address as the page resolves it: the variable's own
-    // text is relative to the stylesheet that set it, not to this page)
-    const probe = document.createElement("div");
-    probe.style.cssText = "position:absolute;width:0;height:0;background-image:var(--skin-text)";
-    document.body.appendChild(probe);
-    const value = getComputedStyle(probe).backgroundImage;
-    probe.remove();
-    const url = value.match(/url\((["']?)(.*?)\1\)/)?.[2];
+    // (the picture's address resolved against the stylesheet that set it,
+    // not this page: a build writes Spotiamp+'s own relative to its CSS)
+    const url = cssImageUrl("--skin-text");
     if (!url) return null;
     const img = new Image();
     try {

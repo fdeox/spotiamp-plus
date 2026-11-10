@@ -528,6 +528,18 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         && let Ok(genex) = image::load_from_memory(&genex_bytes)
     {
         use image::GenericImageView;
+        // the whole sheet, for the Library drawn as Winamp's Media Library
+        // (lib/winampml): all its colours, its button and scrollbar parts
+        {
+            let mut png = Vec::new();
+            if genex
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .is_ok()
+            {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+                sprites.insert("genex".to_string(), format!("data:image/png;base64,{b64}"));
+            }
+        }
         // documented colour pixels at (x, 0)
         for (var, x) in [
             ("genexitembg", 48u32),  // list/edit background

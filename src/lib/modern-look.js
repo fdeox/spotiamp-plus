@@ -13,6 +13,8 @@ import ENGINE_CSS from "./modern/css/webamp.css?inline";
  *   vars: string,
  *   fonts: string,
  *   colors: Record<string, string>,
+ *   genex?: string,
+ *   ff?: Record<string, string> | null,
  * }} Look
  */
 

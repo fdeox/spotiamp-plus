@@ -4,7 +4,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
-  import GenTop from "../../GenTop.svelte";
+  import GenFrame from "../../GenFrame.svelte";
 
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(320, 380);
@@ -231,13 +231,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="wn" data-gen-window>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="wn-titlebar" data-gen="titlebar" onmousedown={drag}>
-    <div class="wn-tl"></div>
-    <span class="wn-title">{keysOnly ? "KEYBOARD SHORTCUTS" : "WHAT'S NEW"}</span>
-    <button class="wn-close" data-gen="close" data-no-drag onclick={close} aria-label="Close"></button>
-    <GenTop title={keysOnly ? "KEYBOARD SHORTCUTS" : "WHAT'S NEW"} onclose={close} />
-  </div>
+  <GenFrame title={keysOnly ? "Keyboard Shortcuts" : "What's New"} onclose={close} drag={(el) => el.addEventListener("mousedown", drag)} />
 
   <div class="wn-body">
     {#if keysOnly}
@@ -320,72 +314,20 @@
     flex-direction: column;
     /* The same skin-following frame as the other plugin windows. */
     --frame: var(--skin-titlebarcolor, var(--skin-genexwndbg, var(--skin-plbg, #1a1a2a)));
-    background: var(--frame);
+    /* GEN.BMP's frame (GenFrame) behind the insides, which keep to its room */
+    background: #000;
     box-sizing: border-box;
-    padding: 0 2px 2px;
-    border: 1px solid var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset 2px 0 0 color-mix(in srgb, var(--frame) 72%, #fff),
-      inset -2px -2px 0 var(--skin-genexdivider, color-mix(in srgb, var(--frame) 50%, #000));
+    padding: 20px 8px 14px 11px;
+    isolation: isolate;
     user-select: none;
   }
 
-  .wn-titlebar {
-    position: relative;
-    flex: 0 0 20px;
-    height: 20px;
-    background: var(--skin-genfill) repeat-x;
-    cursor: default;
-  }
-  .wn-tl {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 25px;
-    height: 20px;
-    background: var(--skin-gentl) no-repeat;
-  }
-  .wn-title {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    line-height: 1;
-    padding: 0 10px 5px;
-    font-family: "px sans nouveaux", sans-serif;
-    font-size: calc(8px * var(--px-crisp, 1));
-    -webkit-font-smoothing: none;
-    letter-spacing: 1px;
-    white-space: nowrap;
-    color: var(--skin-titletext, var(--skin-genexhdrtext, #cdd6ea));
-    background: var(--skin-gentitle, transparent) repeat-x;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-    z-index: 1;
-  }
-  .wn-close {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 15px;
-    height: 20px;
-    background: var(--skin-gentr) no-repeat;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    z-index: 2;
-  }
 
   .wn-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    margin: 0 4px;
+    margin: 0;
     padding: 6px 9px 8px;
     background: var(--skin-plbg, #000);
     border: 1px solid #0c0d12;
