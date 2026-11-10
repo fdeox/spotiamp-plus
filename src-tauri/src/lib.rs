@@ -53,6 +53,7 @@ mod radio_guide;
 mod settings;
 mod smtc;
 mod smtc_publish;
+mod soloist;
 mod visualizer_window;
 mod sink;
 pub mod spotify;
@@ -173,6 +174,7 @@ fn open_external(target: String) -> Result<(), String> {
         "license" => "https://github.com/fdeox/spotiamp-plus/blob/main/LICENSE",
         "releases" => "https://github.com/fdeox/spotiamp-plus/releases/latest",
         "museum" => "https://skins.webamp.org/",
+        "soloist-key" => soloist::KEY_PAGE,
         other => return Err(format!("unknown link target: {other}")),
     };
     open_in_browser(url);
@@ -573,6 +575,7 @@ pub(crate) fn quit() -> ! {
     // windows moved in the last moment: their spots aren't saved yet
     app_window::save_positions(true);
     settings::Settings::current_mut().pending_connect = false;
+    soloist::shutdown();
     std::process::exit(0);
 }
 
@@ -729,6 +732,14 @@ pub fn run() {
             enter_controller_mode,
             log_out,
             loopback::start_loopback,
+            soloist::soloist_status,
+            soloist::soloist_install,
+            soloist::soloist_set_key,
+            soloist::soloist_pair,
+            soloist::soloist_cancel_pair,
+            soloist::soloist_set_mode,
+            soloist::show_soloist_setup,
+            soloist::close_soloist_setup,
             loopback::loopback_spectrum,
             loopback::loopback_waveform,
             smtc_publish::smtc_set_track,
@@ -926,6 +937,8 @@ pub fn run() {
             discord::clear_discord_activity,
         ])
         .setup(|app| {
+            // Soloist's background player, if Soloist mode was left on
+            soloist::init(app.handle());
             let app_handle = app.handle().clone();
             app_handle.listen("playerWindow", move |event| {
                 match serde_json::from_str::<PlayerWindowEvent>(event.payload()) {

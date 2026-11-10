@@ -1680,7 +1680,7 @@ pub fn milkdrop_start(app: AppHandle, window: WebviewWindow, rect: Rect) -> Resu
     }
     textures.extend(user_presets_dir());
 
-    let source = if crate::settings::Settings::current().controller_mode { Source::Loopback } else { Source::Player };
+    let source = if crate::settings::Settings::current().controller_mode || crate::soloist::active() { Source::Loopback } else { Source::Player };
     if let Ok(mut feed) = FEED.lock() {
         feed.clear();
     }

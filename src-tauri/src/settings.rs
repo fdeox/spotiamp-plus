@@ -393,6 +393,10 @@ pub struct Settings {
     /// so a free account isn't sent through OAuth again on every launch.
     #[serde(default)]
     pub controller_mode: bool,
+    /// Spotify songs play through Spotify Soloist (soloist.rs) instead of
+    /// librespot, for accounts Spotify refuses librespot the song keys of.
+    #[serde(default)]
+    pub soloist_mode: bool,
     /// Crash backstop: set just before a librespot connect and cleared a
     /// little after it survives. librespot kills the whole process (exit(1),
     /// no dialog) when it learns mid-session that an account can't stream,

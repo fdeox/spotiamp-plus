@@ -489,6 +489,17 @@
   /** @type {Menu | null} */
   let openedMenu = null;
   let menuBusy = false;
+  // Spotify Soloist in the menu only for those it's for: Spotify refused this
+  // account's songs once (the player noted it), or it's set up already
+  let soloistShown = $state(false);
+  async function loadSoloistShown() {
+    let refused = false;
+    try {
+      refused = localStorage.getItem("soloist-relevant") === "1";
+    } catch {}
+    const s = /** @type {any} */ (await invoke("soloist_status").catch(() => null));
+    soloistShown = refused || !!s?.installed || !!s?.on;
+  }
   /**
    * @param {string | null} windowLabel where to show it (null = here)
    * @param {() => any[]} [items] what's in it (the whole right-click menu by default)
@@ -497,7 +508,7 @@
     if (menuBusy) return;
     menuBusy = true;
     try {
-      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm(), loadModernSkin(), loadVisualizerOn()]);
+      await Promise.all([loadAudioDevices(), loadAlwaysOnTop(), loadMenuLists(), loadLastfm(), loadModernSkin(), loadVisualizerOn(), loadSoloistShown()]);
       // Order matters here. Tauri's popup holds this page's resource table
       // locked on a worker until the menu closes, while it waits for the main
       // thread to show it; closing or creating a menu runs ON the main thread
@@ -871,6 +882,7 @@
         ? [{ text: "Premium sign-in…", action: switchToPremium }]
         : [
             { text: "Free Mode: play through the Spotify app…", action: switchToFree },
+            ...(soloistShown ? [{ text: "Spotify Soloist: Spotify's own player…", action: () => invoke("show_soloist_setup").catch(() => {}) }] : []),
             { text: "Log out of Spotify…", action: logOut },
           ]),
       { text: "&Help", items: helpItems },

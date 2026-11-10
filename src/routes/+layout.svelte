@@ -149,6 +149,7 @@
     stats: "Listening Stats",
     museum: "Skin Museum",
     whatsnew: "What's New",
+    soloist: "Spotify Soloist",
   };
   const CUR_VARS = CUSTOM_SKIN_VARS.filter((name) => name.startsWith("cur-"));
   let lookOff = () => {};

@@ -5238,6 +5238,7 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "url",
  "webview2-com",
  "windows 0.61.3",

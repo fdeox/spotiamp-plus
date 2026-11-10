@@ -22,7 +22,7 @@ pub fn ui_scale() -> f64 {
 }
 
 /// Spotiamp+'s own windows that a modern skin's frame goes round.
-const FRAMED: [&str; 7] = ["library", "lyrics", "visualizer", "art", "stats", "museum", "whatsnew"];
+const FRAMED: [&str; 8] = ["library", "lyrics", "visualizer", "art", "stats", "museum", "whatsnew", "soloist"];
 
 pub fn build_frameless_window(
     app: &AppHandle,
@@ -706,7 +706,7 @@ pub fn reown_windows(app: &AppHandle) {
                 update_owners(&mut dock);
             }
             let owner = owner_window(&app2).and_then(|w| w.hwnd().ok());
-            for label in ["whatsnew", "museum", "mascot"] {
+            for label in ["whatsnew", "museum", "mascot", "soloist"] {
                 if let (Some(owner), Some(window)) = (owner, app2.get_webview_window(label))
                     && window.is_visible().unwrap_or(false)
                     && let Ok(own) = window.hwnd()

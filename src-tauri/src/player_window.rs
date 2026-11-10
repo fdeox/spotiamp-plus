@@ -75,6 +75,9 @@ pub async fn set_balance(balance: f32, player: State<'_, SharedPlayer>) -> Resul
 
 #[tauri::command]
 pub async fn set_volume(volume: u16, player: State<'_, SharedPlayer>) -> Result<(), ()> {
+    if crate::soloist::active() {
+        crate::soloist::set_volume(volume);
+    }
     player.lock().await.set_volume(volume);
     Settings::current_mut().player.volume = volume;
     Ok(())
@@ -177,6 +180,11 @@ pub fn set_always_on_top(active: bool, app_handle: AppHandle) {
 
 #[tauri::command]
 pub async fn take_latest_spectrum(player: State<'_, SharedPlayer>) -> Result<Vec<(f32, f32)>, ()> {
+    // (Soloist's sound doesn't pass through us: the system's output, as in Free Mode)
+    if crate::soloist::active() {
+        crate::loopback::start_loopback();
+        return Ok(crate::loopback::loopback_spectrum());
+    }
     Ok(player.lock().await.take_latest_spectrum())
 }
 
@@ -184,6 +192,10 @@ pub async fn take_latest_spectrum(player: State<'_, SharedPlayer>) -> Result<Vec
 /// page, no JSON: it's asked for every frame). Spotify and local files alike.
 #[tauri::command]
 pub async fn take_latest_waveform(player: State<'_, SharedPlayer>) -> Result<tauri::ipc::Response, ()> {
+    if crate::soloist::active() {
+        crate::loopback::start_loopback();
+        return Ok(crate::loopback::loopback_waveform());
+    }
     Ok(tauri::ipc::Response::new(player.lock().await.waveform_bytes()))
 }
 
@@ -197,6 +209,11 @@ pub async fn load_track(
     play: Option<bool>,
     player: State<'_, SharedPlayer>,
 ) -> Result<(), String> {
+    // (Soloist mode: Spotify's own player plays it)
+    if crate::soloist::active() {
+        crate::soloist::load(uri, position_ms.unwrap_or(0), play.unwrap_or(true));
+        return Ok(());
+    }
     player
         .lock()
         .await
@@ -207,6 +224,10 @@ pub async fn load_track(
 
 #[tauri::command]
 pub async fn play(player: State<'_, SharedPlayer>) -> Result<(), String> {
+    if crate::soloist::active() {
+        crate::soloist::play();
+        return Ok(());
+    }
     player.lock().await.play();
 
     Ok(())
@@ -214,6 +235,10 @@ pub async fn play(player: State<'_, SharedPlayer>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn pause(player: State<'_, SharedPlayer>) -> Result<(), String> {
+    if crate::soloist::active() {
+        crate::soloist::pause();
+        return Ok(());
+    }
     player
         .lock()
         .await
@@ -226,6 +251,10 @@ pub async fn pause(player: State<'_, SharedPlayer>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn stop(player: State<'_, SharedPlayer>) -> Result<(), String> {
+    if crate::soloist::active() {
+        crate::soloist::stop();
+        return Ok(());
+    }
     player
         .lock()
         .await
@@ -380,6 +409,10 @@ pub async fn get_lyrics(
 
 #[tauri::command]
 pub async fn seek(position_ms: u32, player: State<'_, SharedPlayer>) -> Result<(), String> {
+    if crate::soloist::active() {
+        crate::soloist::seek(position_ms);
+        return Ok(());
+    }
     player.lock().await.seek(position_ms);
     Ok(())
 }

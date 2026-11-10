@@ -601,9 +601,20 @@
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let refusedTimer;
   let freeModeOffered = false;
-  /** @param {boolean} played whether a song played before, this run */
+  /** Spotify refused songs this run: once Soloist is on, the song is asked of it */
+  let refusedThisRun = false;
+  /**
+   * Spotify keeps refusing: Spotify Soloist offered, which plays the songs in
+   * Spotiamp+ itself (set up once, or just turned on when it is); Free Mode
+   * named as the other way. Only those it happens to ever see this.
+   * @param {boolean} played whether a song played before, this run
+   */
   async function offerFreeMode(played) {
     freeModeOffered = true;
+    // (from now on the right-click menu has Spotify Soloist too)
+    try {
+      localStorage.setItem("soloist-relevant", "1");
+    } catch {}
     const why = played
       ? "Songs played fine a moment ago, so this is Spotify holding back for a while after many " +
         "requests. It usually passes in a few minutes."
@@ -611,16 +622,31 @@
         "every app built on librespot, the engine Spotiamp+ plays with. With an older account it's " +
         "usually Spotify holding back after many requests: closing Spotiamp+ for 10 to 15 minutes " +
         "often clears it. It isn't your internet, your settings or your Premium.";
-    const free = await ask(
+    const s = /** @type {any} */ (await invoke("soloist_status").catch(() => null));
+    const ready = !!(s?.installed && s?.has_key && s?.paired);
+    const yes = await ask(
       "Spotify keeps refusing to send this account's songs to Spotiamp+.\n\n" +
         why +
-        "\n\nFree Mode plays everything: Spotiamp+ drives the Spotify app and stays its Winamp face. " +
-        "Switch to Free Mode now? (Premium sign-in in the right-click menu brings you back.)",
-      { title: "Spotiamp+", kind: "warning", okLabel: "Free Mode", cancelLabel: "Not now" },
+        (ready
+          ? "\n\nSpotify Soloist is set up: play the songs through it now?"
+          : "\n\nSpotify Soloist, Spotify's own player, plays them right here in Spotiamp+. It needs Premium " +
+            "and a key you make on Spotify's developer site; setting it up takes a couple of minutes. Set it up now?") +
+        "\n\n(Or Free Mode, in the right-click menu: Spotiamp+ drives the Spotify app and stays its Winamp face.)",
+      { title: "Spotiamp+", kind: "warning", okLabel: ready ? "Play through Soloist" : "Set up Soloist", cancelLabel: "Not now" },
     ).catch(() => false);
-    if (!free) return;
-    await invoke("enter_controller_mode").catch(() => {});
-    await relaunch().catch(() => {});
+    if (!yes) return;
+    if (ready) {
+      await invoke("soloist_set_mode", { on: true }).catch(() => {});
+      retryThroughSoloist();
+    } else {
+      invoke("show_soloist_setup").catch(() => {});
+    }
+  }
+  /** The refused song again, now that Soloist plays them. */
+  function retryThroughSoloist() {
+    clearTimeout(refusedTimer);
+    const uri = loadedTrack && !loadedTrack.isLocal ? loadedTrack.uri?.asString : null;
+    if (uri) invoke("load_track", { uri, positionMs: 0, play: true }).catch(() => {});
   }
 
   /** The Spotify song last picked up again on a rebuilt player, and how. */
@@ -1511,9 +1537,28 @@
     // rate limit, so no skipping on: wait 3, 5, then 10 s and ask for the same
     // song again. Still refused after that: say what's going on, and offer
     // Free Mode, which plays through the Spotify app.
+    // Soloist just came on (set up in its window, or turned on): the song
+    // Spotify refused, through it now
+    const soloistReadySubscription = listen("soloistReady", () => {
+      if (refusedThisRun) retryThroughSoloist();
+    });
+    // Soloist lost its Spotify session: pair it again (once a run)
+    let pairingAsked = false;
+    const soloistPairingSubscription = listen("soloistNeedsPairing", async () => {
+      if (pairingAsked) return;
+      pairingAsked = true;
+      const again = await ask("Spotify Soloist isn't signed in to your Spotify any more, so it can't play. Pair it again? (It takes a moment, in the Spotify app.)", {
+        title: "Spotiamp+",
+        kind: "warning",
+        okLabel: "Pair again",
+        cancelLabel: "Not now",
+      }).catch(() => false);
+      if (again) invoke("show_soloist_setup").catch(() => {});
+    });
     const refusedSubscription = listen("songRefused", (e) => {
       const { uri, streak, played } = /** @type {{ uri: string, streak: number, played: boolean }} */ (e.payload);
       if (loadedTrack?.uri?.asString !== uri) return;
+      refusedThisRun = true;
       clearTimeout(refusedTimer);
       const wait = REFUSED_WAITS[streak - 1];
       if (wait) {
@@ -1584,6 +1629,8 @@
       audioDeviceSubscription.then((unlisten) => unlisten());
       reloadSubscription.then((unlisten) => unlisten());
       refusedSubscription.then((unlisten) => unlisten());
+      soloistReadySubscription.then((unlisten) => unlisten());
+      soloistPairingSubscription.then((unlisten) => unlisten());
       clearTimeout(refusedTimer);
       droppedSubscription.then((unlisten) => unlisten());
       seekToSubscription.then((unlisten) => unlisten());
