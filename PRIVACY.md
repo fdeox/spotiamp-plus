@@ -34,6 +34,11 @@ operating it, except for the following:
   one of your own songs, a radio song or a song in Free Mode plays: its artist
   and title, to find its lyrics. Spotify songs Spotiamp+ plays itself get
   Spotify's own lyrics.
+- **Spotify Soloist**, only if you set it up (Spotiamp+ offers it when Spotify
+  refuses an account's songs): it's downloaded from Spotify
+  (soloist-builds.spotifycdn.com) and plays through your Spotify account, as
+  Spotify's own player. The Soloist key you make on Spotify's developer site
+  stays on your computer, in the folder below.
 
 ## What stays on your computer
 
