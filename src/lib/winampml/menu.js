@@ -23,6 +23,8 @@ const BORDER = 3;
 const GUTTER = 25;
 /** Windows' own menu line (SM_CYMENU): no item came out lower */
 const MENU_LINE = 20;
+/** the scroll arrows' strips of a menu taller than the window */
+const ARROW_STRIP = 12;
 
 // Windows' HLS (shlwapi's ColorRGBToHLS and back: 0..240, whole numbers),
 // so a colour made darker comes out as it did in Winamp
@@ -109,6 +111,18 @@ class Level {
     this.seq = 0;
     /** the widest shortcut (" Ctrl+A"), right-aligned in each item */
     this.shortcutCX = 0;
+    /** what's on the screen: the menu, or (taller than the window) a part of it between two arrows */
+    this.box = document.createElement("div");
+    /** scrolled this far down (px), between the arrows' strips this high */
+    this.scroll = 0;
+    this.arrowH = 0;
+    this.maxScroll = 0;
+    /** @type {ReturnType<typeof setInterval> | undefined} */
+    this.scrolling = undefined;
+  }
+  /** where the menu's own pixel row y is in the window @param {number} y */
+  top(y) {
+    return this.y + this.arrowH - this.scroll + y;
   }
 }
 
@@ -116,13 +130,10 @@ export class SkinnedMenu {
   /**
    * @param {HTMLElement} host the window's element the menus go in (covering it)
    * @param {() => { font: import("./native.js").MlFont, colors: MenuColors } | null} look
-   * @param {(items: MenuItem[]) => void} [fallback] a menu taller than the window (Windows' own
-   *   would go past it; one drawn in it can't): shown by this instead
    */
-  constructor(host, look, fallback) {
+  constructor(host, look) {
     this.host = host;
     this.look = look;
-    this.fallback = fallback;
     /** @type {Level[]} */
     this.levels = [];
     this.back = document.createElement("div");
@@ -162,10 +173,6 @@ export class SkinnedMenu {
     if (seq !== this.seq) return;
     // GetLineHeight: the bold skin font's height, and 4
     this.lineH = Math.max(MENU_LINE, boldH + 4);
-    if (this.fallback && this.tallest(items) > this.host.clientHeight) {
-      this.fallback(items);
-      return;
-    }
     this.back.style.display = "block";
     window.addEventListener("keydown", this.onKey, true);
     await this.push(items, x, y, null, dir);
@@ -213,7 +220,17 @@ export class SkinnedMenu {
     level.y = Math.max(0, Math.min(ly, H - level.h));
     canvas.width = level.w;
     canvas.height = level.h;
-    Object.assign(canvas.style, { left: `${level.x}px`, top: `${level.y}px`, width: `${level.w}px`, height: `${level.h}px` });
+    // taller than the window: the window's height of it, scrolled by arrows at
+    // its top and bottom, as Windows does with a menu taller than the screen
+    const boxH = Math.min(level.h, H);
+    if (level.h > H) {
+      level.arrowH = ARROW_STRIP;
+      level.maxScroll = level.h - (H - 2 * ARROW_STRIP);
+    }
+    level.box.style.cssText = `position:absolute;overflow:hidden;z-index:21;left:${level.x}px;top:${level.y}px;width:${level.w}px;height:${boxH}px`;
+    canvas.style.cssText = `position:absolute;left:0;top:${level.arrowH}px;width:${level.w}px;height:${level.h}px;image-rendering:pixelated`;
+    level.box.appendChild(canvas);
+    if (level.arrowH) this.arrows(level, look.colors);
     canvas.addEventListener("pointermove", (e) => this.hover(level, e));
     // the mouse gone off the menu: nothing lit there (unless its sub-menu is open)
     canvas.addEventListener("pointerleave", () => {
@@ -225,20 +242,59 @@ export class SkinnedMenu {
     canvas.addEventListener("pointerdown", (e) => e.preventDefault());
     canvas.addEventListener("pointerup", (e) => this.pick(level, e));
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    this.back.appendChild(canvas);
+    this.back.appendChild(level.box);
     this.levels.push(level);
     await this.draw(level);
   }
 
-  /** the highest the menu or any of its sub-menus is @param {MenuItem[]} items @returns {number} */
-  tallest(items) {
-    let h = BORDER * 2;
-    let sub = 0;
-    for (const it of items) {
-      h += it.item === "Separator" ? 7 : this.lineH;
-      if (it.items?.length) sub = Math.max(sub, this.tallest(it.items));
-    }
-    return Math.max(h, sub);
+  /** the two strips of a menu taller than the window, an arrow in each @param {Level} level @param {MenuColors} c */
+  arrows(level, c) {
+    const rgb = (/** @type {number[]} */ v) => `rgb(${v.join(",")})`;
+    const strip = (/** @type {boolean} */ up) => {
+      const el = document.createElement("div");
+      const edge = up ? "border-top" : "border-bottom";
+      el.style.cssText = `position:absolute;left:0;width:${level.w}px;height:${level.arrowH}px;${up ? "top:0" : "bottom:0"};box-sizing:border-box;background:${rgb(c.bg)};border-left:1px solid ${rgb(c.frame)};border-right:1px solid ${rgb(c.frame)};${edge}:1px solid ${rgb(c.frame)};display:flex;align-items:center;justify-content:center`;
+      const tri = document.createElement("div");
+      tri.style.cssText = `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;${up ? "border-bottom" : "border-top"}:4px solid ${rgb(c.text)}`;
+      el.appendChild(tri);
+      // the pointer on it scrolls, as long as it stays
+      el.addEventListener("pointerenter", () => {
+        clearInterval(level.scrolling);
+        level.scrolling = setInterval(() => {
+          if (!level.box.isConnected) return clearInterval(level.scrolling);
+          this.scrollBy(level, up ? -this.lineH / 2 : this.lineH / 2);
+        }, 60);
+      });
+      el.addEventListener("pointerleave", () => clearInterval(level.scrolling));
+      el.addEventListener("pointerdown", (e) => e.preventDefault());
+      level.box.appendChild(el);
+    };
+    strip(true);
+    strip(false);
+    level.box.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this.scrollBy(level, Math.sign(e.deltaY) * this.lineH * 3);
+    });
+  }
+
+  /** @param {Level} level @param {number} dy */
+  scrollBy(level, dy) {
+    const to = Math.max(0, Math.min(level.maxScroll, level.scroll + dy));
+    if (to === level.scroll) return;
+    level.scroll = to;
+    level.canvas.style.top = `${level.arrowH - to}px`;
+    // a deeper menu was beside an item that has moved
+    const depth = this.levels.indexOf(level);
+    while (this.levels.length > depth + 1) this.levels.pop()?.box.remove();
+  }
+
+  /** the lit item in view (keys) @param {Level} level */
+  reveal(level) {
+    const r = level.rows[level.hot];
+    if (!r || !level.arrowH) return;
+    const view = level.box.clientHeight - 2 * level.arrowH;
+    if (r.y < level.scroll) this.scrollBy(level, r.y - level.scroll);
+    else if (r.y + r.h > level.scroll + view) this.scrollBy(level, r.y + r.h - (level.scroll + view));
   }
 
   /** @param {Level} level */
@@ -301,7 +357,7 @@ export class SkinnedMenu {
     level.hot = at;
     // a deeper menu shut when another item is pointed at
     const depth = this.levels.indexOf(level);
-    while (this.levels.length > depth + 1) this.levels.pop()?.canvas.remove();
+    while (this.levels.length > depth + 1) this.levels.pop()?.box.remove();
     this.draw(level);
     const it = level.items[at];
     if (it?.items && it.enabled !== false) {
@@ -323,7 +379,7 @@ export class SkinnedMenu {
     if (!it?.items || this.levels.at(-1) !== level || this.opening) return;
     this.opening = true;
     try {
-      await this.push(it.items, level.x + level.w - 3, level.y + level.rows[at].y - BORDER, level);
+      await this.push(it.items, level.x + level.w - 3, level.top(level.rows[at].y) - BORDER, level);
     } finally {
       this.opening = false;
     }
@@ -372,14 +428,15 @@ export class SkinnedMenu {
         if (live(i)) break;
       }
       level.hot = i;
+      this.reveal(level);
       this.draw(level);
     };
     if (e.key === "Escape") {
-      this.levels.pop()?.canvas.remove();
+      this.levels.pop()?.box.remove();
       if (!this.levels.length) this.close();
     } else if (e.key === "ArrowDown") step(1);
     else if (e.key === "ArrowUp") step(-1);
-    else if (e.key === "ArrowLeft" && this.levels.length > 1) this.levels.pop()?.canvas.remove();
+    else if (e.key === "ArrowLeft" && this.levels.length > 1) this.levels.pop()?.box.remove();
     else if ((e.key === "ArrowRight" || e.key === "Enter") && live(level.hot)) {
       const it = items[level.hot];
       if (it.items) this.openSub(level, level.hot, true);
@@ -393,7 +450,7 @@ export class SkinnedMenu {
   close() {
     this.seq++;
     clearTimeout(this.subTimer);
-    for (const l of this.levels) l.canvas.remove();
+    for (const l of this.levels) l.box.remove();
     this.levels = [];
     this.back.style.display = "none";
     window.removeEventListener("keydown", this.onKey, true);

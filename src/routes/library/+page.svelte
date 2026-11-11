@@ -21,7 +21,6 @@
   import { watchWindowActive } from "$lib/window-active.js";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { listen } from "@tauri-apps/api/event";
-  import { Menu } from "@tauri-apps/api/menu";
   import { MlView, createLook } from "$lib/winampml/mlview.js";
   import { classicGenex, BASE_GEN, cssImageUrl, loadImage, modernGenex, parseColor, toCanvas } from "$lib/winampml/genex.js";
   import { FRAME, drawGenFrame, scanLetters } from "$lib/winampml/genframe.js";
@@ -934,32 +933,6 @@
   let lastPoint = { x: 0, y: 0 };
   /** a button's menu goes by the button (Winamp: above those at the bottom, below the others) */
   let menuFromButton = false;
-  /** @type {Menu | null} */
-  let openedMenu = null;
-  let menuBusy = false;
-  /**
-   * Windows' own menu, for one too tall for the window (a skinned menu is
-   * drawn inside it). One at a time, the old one fully closed first: a popup
-   * keeps this page's resource table locked until it closes, and overlapping
-   * them froze the whole app (see the playlist's showMenu).
-   * @param {import("$lib/winampml/menu.js").MenuItem[]} items
-   */
-  async function nativeMenu(items) {
-    if (menuBusy) return;
-    menuBusy = true;
-    try {
-      const old = openedMenu;
-      openedMenu = null;
-      if (old) await old.close().catch(() => {});
-      const menu = await Menu.new({ items: /** @type {any} */ (items) });
-      openedMenu = menu;
-      await menu.popup();
-    } catch {
-      /* no menu then */
-    } finally {
-      menuBusy = false;
-    }
-  }
   /** @param {import("$lib/winampml/menu.js").MenuItem[]} items */
   function popMenu(items) {
     if (!skinMenu || !root) return;
@@ -1766,7 +1739,7 @@
     });
     if (root) ro.observe(root);
     // the menus, and where the mouse was when one was asked for
-    skinMenu = root ? new SkinnedMenu(root, () => (view?.look && menuCols ? { font: view.look.font, colors: menuCols } : null), nativeMenu) : null;
+    skinMenu = root ? new SkinnedMenu(root, () => (view?.look && menuCols ? { font: view.look.font, colors: menuCols } : null)) : null;
     /** @param {MouseEvent} e */
     const point = (e) => {
       if (skinMenu?.open && skinMenu.back.contains(/** @type {Node} */ (e.target))) return;
@@ -1844,17 +1817,8 @@
       press: (/** @type {string} */ id, part = "main") => buttonPressed(id, /** @type {any} */ (part), new MouseEvent("click")),
       hide: (/** @type {string | null} */ source) => (hideRe = source ? new RegExp(source, "i") : null),
       /** the menus: one shown at a point, an item lit, what's open */
-      menu: async (/** @type {any[]} */ items, x = 0, y = 0, probe = false) => {
-        if (!skinMenu) return null;
-        if (!probe) return skinMenu.show(items, x, y);
-        // (probe: whether it would go to Windows' menu, without opening one)
-        const fallback = skinMenu.fallback;
-        let used = false;
-        skinMenu.fallback = () => (used = true);
-        await skinMenu.show(items, x, y);
-        skinMenu.fallback = fallback;
-        return used;
-      },
+      menu: (/** @type {any[]} */ items, x = 0, y = 0) => skinMenu?.show(items, x, y),
+      menuScroll: () => skinMenu?.levels.map((l) => ({ scroll: l.scroll, max: l.maxScroll, box: l.box.clientHeight })) ?? [],
       menuHot: (/** @type {number} */ n) => {
         const l = skinMenu?.levels.at(-1);
         if (!l || !skinMenu) return false;

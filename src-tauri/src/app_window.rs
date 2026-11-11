@@ -204,6 +204,62 @@ pub fn apply_always_on_top(app: &AppHandle, active: bool) {
     }
 }
 
+/// A note window (What's new, Soloist's setup) put beside Spotiamp+'s own
+/// windows instead of over them: centred on the screen it covered the player
+/// and the playlist, and went under them at the next click on one (they're
+/// all the player's, so the one clicked last is on top). To the right of
+/// them, else the left, else below or above; where nothing's free, centred.
+/// Getters block off the main thread: for an async command or a task.
+pub fn place_beside_windows(app: &AppHandle, window: &WebviewWindow) {
+    let (Ok(size), Ok(Some(monitor))) = (window.outer_size(), window.current_monitor()) else {
+        return;
+    };
+    let (w, h) = (size.width as i32, size.height as i32);
+    let rect = |win: &WebviewWindow| -> Option<(i32, i32, i32, i32)> {
+        if !win.is_visible().unwrap_or(false) || win.is_minimized().unwrap_or(false) {
+            return None;
+        }
+        let (p, s) = (win.outer_position().ok()?, win.outer_size().ok()?);
+        Some((p.x, p.y, p.x + s.width as i32, p.y + s.height as i32))
+    };
+    let mut ours: Vec<(i32, i32, i32, i32)> = Vec::new();
+    for (label, win) in app.webview_windows() {
+        if label == window.label() || ["osd", "mascot"].contains(&label.as_str()) {
+            continue;
+        }
+        if let Some(r) = rect(&win) {
+            ours.push(r);
+        }
+    }
+    if ours.is_empty() {
+        return;
+    }
+    let area = monitor.work_area();
+    let (ax, ay) = (area.position.x, area.position.y);
+    let (ax2, ay2) = (ax + area.size.width as i32, ay + area.size.height as i32);
+    // the group: what's on this screen
+    let on_screen: Vec<_> = ours.iter().filter(|r| r.0 < ax2 && r.2 > ax && r.1 < ay2 && r.3 > ay).copied().collect();
+    if on_screen.is_empty() {
+        return;
+    }
+    let left = on_screen.iter().map(|r| r.0).min().unwrap_or(ax);
+    let top = on_screen.iter().map(|r| r.1).min().unwrap_or(ay);
+    let right = on_screen.iter().map(|r| r.2).max().unwrap_or(ax2);
+    let bottom = on_screen.iter().map(|r| r.3).max().unwrap_or(ay2);
+    let gap = 8;
+    let clamp_y = |y: i32| y.clamp(ay, (ay2 - h).max(ay));
+    let clamp_x = |x: i32| x.clamp(ax, (ax2 - w).max(ax));
+    let spots = [
+        (right + gap <= ax2 - w).then(|| (right + gap, clamp_y(top))),
+        (left - gap - w >= ax).then(|| (left - gap - w, clamp_y(top))),
+        (bottom + gap <= ay2 - h).then(|| (clamp_x(left), bottom + gap)),
+        (top - gap - h >= ay).then(|| (clamp_x(left), top - gap - h)),
+    ];
+    if let Some((x, y)) = spots.into_iter().flatten().next() {
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
 /// Whether a window's title bar (where you'd grab it) is on some screen.
 pub fn title_on_screen(window: &WebviewWindow) -> bool {
     let (Ok(pos), Ok(size), Ok(monitors)) = (window.outer_position(), window.outer_size(), window.available_monitors())

@@ -804,6 +804,7 @@ pub async fn show_soloist_setup(app_handle: AppHandle) -> Result<(), ()> {
         None => {
             let window = crate::app_window::build_frameless_window(&app_handle, "soloist", "Spotify Soloist - Spotiamp+", "soloist", SETUP_SIZE).map_err(|_| ())?;
             let _ = window.center();
+            crate::app_window::place_beside_windows(&app_handle, &window);
             crate::app_window::own_by_player(&app_handle, &window);
             window
         }

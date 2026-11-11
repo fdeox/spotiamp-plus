@@ -2,11 +2,12 @@ use tauri::{AppHandle, LogicalPosition, Manager, WebviewWindow};
 
 use crate::{app_window, settings::InnerWindowSize};
 
-/// The library window is wider than the player/playlist windows so it can hold
-/// the two panes (playlists on the left, tracks on the right).
+/// The library window's first size: room for Winamp's Media Library, the tree
+/// and Local Media's artist and album filters over the songs (500 x 380 left
+/// them cramped). Once resized, its own size is kept.
 const LIBRARY_SIZE: InnerWindowSize = InnerWindowSize {
-    width: 500,
-    height: 380,
+    width: 640,
+    height: 480,
 };
 
 pub fn build_window(
