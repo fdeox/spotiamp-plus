@@ -98,11 +98,20 @@
   let uiScale = 1;
 
   /** Each skin window at its screen's scale (125 %: a quarter bigger), as the
-   *  classic windows are, times Spotiamp+'s Scale. */
+   *  classic windows are, times Spotiamp+'s Scale; one that wouldn't fit on
+   *  its screen so (a big skin at 2x) is drawn as big as fits, so all of it,
+   *  its buttons too, can be reached. */
   function fitToScreens() {
     for (const c of containers()) {
       const s = screenAt(c._x + 8, c._y + 8);
-      const scale = (s?.scale ?? 1) * uiScale;
+      let scale = (s?.scale ?? 1) * uiScale;
+      const layout = c._activeLayout?.getDiv();
+      const w = layout?.offsetWidth ?? 0;
+      const h = layout?.offsetHeight ?? 0;
+      if (s && w > 0 && h > 0) {
+        const room = Math.min((s.work_width ?? s.width) / w, (s.work_height ?? s.height) / h);
+        if (room < scale) scale = Math.max(0.5, Math.floor(room * 100) / 100);
+      }
       const div = c.getDiv();
       const want = scale === 1 ? "" : `scale(${scale})`;
       if (div.style.transform !== want) {
@@ -160,23 +169,83 @@
     fitToScreens();
     placeNewcomers();
     rescueOffscreen();
+    keepOnScreens();
   }
 
   // The skin's windows that have their spot: left where they were, or put
   // where the skin says. One the skin gives no spot (Winamp Modern's album
   // art, say, shown by its script after loading) goes under the others the
   // first time it shows, as Winamp puts it, not over the player.
+  // A window that shows up right over the main one (Winamp Modern's
+  // visualizer, whose spot is the player's own: all of a skin's windows are
+  // moved as one to where the classic player was) goes under them too, so
+  // the player isn't hidden.
   const settled = new Set();
+  /** the skin's windows shown when last looked at */
+  const shownNow = new Set();
+  /** Does a window lie mostly where the main one is (not a little part of it)? @param {any} c @param {any} main */
+  function liesOnMain(c, main) {
+    if (!main || c === main) return false;
+    const a = rectOf(c);
+    const b = rectOf(main);
+    if (!a || !b) return false;
+    const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    if (w <= 0 || h <= 0) return false;
+    return w * h >= 0.5 * a.width * a.height && w * h >= 0.5 * b.width * b.height;
+  }
   function placeNewcomers() {
+    const main = containers().find((o) => o.getId() === "main" && o.getVisible() && rectOf(o));
     for (const c of containers()) {
       const id = c.getId();
-      if (!id || settled.has(id) || !c.getVisible() || !rectOf(c)) continue;
+      if (!id) continue;
+      if (!c.getVisible() || !rectOf(c)) {
+        shownNow.delete(id);
+        continue;
+      }
+      const appeared = !shownNow.has(id);
+      shownNow.add(id);
+      const onMain = appeared && liesOnMain(c, main);
+      if (settled.has(id) && !onMain) continue;
       settled.add(id);
-      if (c._placedBySkin || id === "main") continue;
+      if (id === "main" || (c._placedBySkin && !onMain)) continue;
       const others = containers().filter((o) => o !== c && o.getVisible() && settled.has(o.getId()));
       const anchor = others.find((o) => o.getId() === "main") ?? others[0];
       const bottom = Math.max(...others.map((o) => rectOf(o)?.bottom ?? -Infinity));
-      if (anchor && Number.isFinite(bottom)) c.setLocation(anchor._x, Math.round(bottom));
+      if (anchor && Number.isFinite(bottom)) {
+        c.setLocation(anchor._x, Math.round(bottom));
+        keepOnScreens([c], true);
+      }
+    }
+  }
+
+  /** Skin windows reaching past the screens (Big Bento opened where the
+   *  classic player was, near a screen's edge, or a spot left on a PC with
+   *  more screens): each moved onto the screen it's mostly on, as far as it
+   *  fits there, its title bar and buttons first. A window's left where it
+   *  is when all its corners are on a screen, unless `clear` (one put there
+   *  by Spotiamp+: kept clear of the taskbar too). @param {any[]} [list] @param {boolean} [clear] */
+  function keepOnScreens(list = containers(), clear = false) {
+    if (!screens.length) return;
+    const onSome = (/** @type {number} */ x, /** @type {number} */ y) =>
+      screens.some((s) => x >= s.x && y >= s.y && x < s.x + s.width && y < s.y + s.height);
+    for (const c of list) {
+      const r = rectOf(c);
+      if (!r) continue;
+      if (!clear && onSome(r.left, r.top) && onSome(r.right - 1, r.top) && onSome(r.left, r.bottom - 1) && onSome(r.right - 1, r.bottom - 1)) continue;
+      const s = screenAt(r.left + Math.min(r.width / 2, 120), r.top + Math.min(r.height / 2, 12));
+      if (!s) continue;
+      const wx = s.work_x ?? s.x;
+      const wy = s.work_y ?? s.y;
+      const ww = s.work_width ?? s.width;
+      const wh = s.work_height ?? s.height;
+      let dx = 0;
+      let dy = 0;
+      if (r.right > wx + ww) dx = wx + ww - r.right;
+      if (r.left + dx < wx) dx = wx - r.left;
+      if (r.bottom > wy + wh) dy = wy + wh - r.bottom;
+      if (r.top + dy < wy) dy = wy - r.top;
+      if (dx || dy) c.setLocation(Math.round(c._x + dx), Math.round(c._y + dy));
     }
   }
 
@@ -857,12 +926,16 @@
       // a screen added, taken away or rescaled
       const moved = getCurrentWindow().onScaleChanged(async () => {
         setScreens(await invoke("modern_screens").catch(() => screens));
+        fitToScreens();
         rescueOffscreen();
+        keepOnScreens();
         updateRegion();
       });
       // Spotiamp+'s Scale changed (the menu, Ctrl+D)
       const scaled = listen("uiScale", (e) => {
         uiScale = Number(/** @type {any} */ (e.payload)?.scale) || 1;
+        fitToScreens();
+        keepOnScreens();
         updateRegion();
       });
       cleanups.push(() => skinChanged.then((u) => u()), () => moved.then((u) => u()), () => scaled.then((u) => u()));

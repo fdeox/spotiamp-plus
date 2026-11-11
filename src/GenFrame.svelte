@@ -104,6 +104,9 @@
     onpointerdown={closeDown}
     onpointerup={closeUp}
   ></div>
+{:else}
+  <!-- the skin's frame draws the close button; it clicks this one (+layout.svelte) -->
+  <button data-gen="close" hidden aria-label="Close" onclick={() => onclose()}></button>
 {/if}
 {#if resize}
   <div class="gf-resize" data-gen="resize" use:resize></div>

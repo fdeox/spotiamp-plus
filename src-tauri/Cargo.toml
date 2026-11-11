@@ -1,6 +1,6 @@
 [package]
 name = "spotiamp"
-version = "0.7.10"
+version = "0.7.11"
 description = "Spotiamp+ — a Winamp-style Spotify desktop player"
 authors = ["Ted Steen", "fdeox"]
 edition = "2024"
@@ -67,6 +67,8 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+# a modern skin's picture, read out of its file in the Skin Museum (museum.rs)
+flate2 = "1.1"
 base64 = "0.22"
 # Last.fm signs its calls with MD5 (lastfm.rs)
 md-5 = "0.10"

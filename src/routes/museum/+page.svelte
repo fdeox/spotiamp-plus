@@ -1,10 +1,11 @@
 <script>
-  import { invoke } from "@tauri-apps/api/core";
+  import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount } from "svelte";
   import { REACTIVE_WINDOW_SIZE } from "$lib/common.svelte.js";
   import { emitWindowEvent } from "$lib/events.svelte.js";
   import GenFrame from "../../GenFrame.svelte";
+  import { FEATURED } from "$lib/museum/featured.js";
 
   // Set before the first paint so the window opens at this size.
   REACTIVE_WINDOW_SIZE.setSize(600, 620);
@@ -26,6 +27,46 @@
   let applying = $state("");
   let applied = $state("");
   let status = $state("");
+  /** how many of the cards at the top are the well-known modern skins */
+  let featuredCount = $state(0);
+  /** md5s of skins whose picture didn't load @type {Set<string>} */
+  let broken = $state(new Set());
+
+  // Well-known modern skins, first in the Modern tab, with pictures of
+  // their own (the museum has none of most of them).
+  const featuredShot = new Map(FEATURED.map((f) => [f.md5, f.shot]));
+  /** @type {MuseumSkin[]} */
+  const featuredSkins = FEATURED.map((f) => ({
+    name: f.name,
+    md5: f.md5,
+    screenshot: "",
+    download: `https://r2.webampskins.org/skins/${f.md5}.wal`,
+    page: null,
+    modern: true,
+  }));
+
+  // The museum's pictures of modern skins are files in the skins, which its
+  // worker reads out; Spotiamp+ reads them itself (museum.rs), as that worker
+  // goes down at times.
+  const WORKER = "https://zip-worker.jordan1320.workers.dev/zip/";
+  /** @param {MuseumSkin} skin */
+  function shotOf(skin) {
+    const own = featuredShot.get(skin.md5);
+    if (own) return own;
+    if (skin.screenshot.startsWith(WORKER)) {
+      try {
+        const name = decodeURIComponent(skin.screenshot.slice(WORKER.length).replace(/^[0-9a-f]{32}\.wal\//i, ""));
+        return convertFileSrc(`${skin.md5}/${name}`, "museumshot");
+      } catch {
+        return "";
+      }
+    }
+    return skin.screenshot;
+  }
+  /** @param {string} md5 */
+  function pictureFailed(md5) {
+    broken = new Set(broken).add(md5);
+  }
 
   // Favorites (★), kept in the settings (kaool's idea).
   /** md5s of the starred skins @type {Set<string>} */
@@ -61,6 +102,7 @@
     if (nextKind === "favorites") {
       kind = "favorites";
       error = "";
+      featuredCount = 0;
       skins = await loadFavs();
       if (listEl) listEl.scrollTop = 0;
       if (!skins.length) error = "No favorites yet. Click the ☆ on a skin to keep it here.";
@@ -70,13 +112,20 @@
     offset = more ? offset + 24 : 0;
     loading = true;
     error = "";
+    if (!more) {
+      // the well-known modern skins show at once, whatever the museum says
+      featuredCount = kind === "modern" ? featuredSkins.length : 0;
+      skins = kind === "modern" ? featuredSkins : [];
+      if (listEl) listEl.scrollTop = 0;
+    }
     try {
       const list = /** @type {MuseumSkin[]} */ (
         await invoke("museum_skins", { kind, query: query.trim(), offset })
       );
-      skins = more ? [...skins, ...list] : list;
-      if (!more && listEl) listEl.scrollTop = 0;
-      if (!list.length && !more)
+      // a skin on two pages (or among the well-known ones) shows once
+      const shown = new Set(skins.map((s) => s.md5));
+      skins = [...skins, ...list.filter((s) => !shown.has(s.md5) && shown.add(s.md5))];
+      if (!list.length && !more && !featuredCount)
         error = kind.endsWith("search") ? `Nothing found for "${query.trim()}".` : "Nothing came back. Try again.";
     } catch (e) {
       error = String(e);
@@ -162,20 +211,27 @@
       <div class="mu-msg">{error}</div>
     {/if}
     <div class="mu-grid">
-      {#each skins as skin (skin.md5)}
+      {#each skins as skin, i (skin.md5)}
+        {#if featuredCount && i === 0}
+          <div class="mu-head">Well-known modern skins</div>
+        {:else if featuredCount && i === featuredCount}
+          <div class="mu-head">More from the museum</div>
+        {/if}
+        {@const shot = shotOf(skin)}
         <div class="mu-cell">
           <button
             class="mu-skin"
             class:applied={applied === skin.md5}
             class:busy={applying === skin.md5}
+            class:modern={skin.modern}
             title="Put on {skin.name}"
             onclick={() => wear(skin)}
           >
-            {#if skin.screenshot}
-              <img src={skin.screenshot} alt={skin.name} loading="lazy" draggable="false" />
+            {#if shot && !broken.has(skin.md5)}
+              <img src={shot} alt={skin.name} loading="lazy" draggable="false" onerror={() => pictureFailed(skin.md5)} />
             {:else}
-              <!-- a modern skin the museum has no picture of -->
-              <span class="mu-noshot">{skin.name}<br /><small>modern skin, no picture</small></span>
+              <!-- a skin the museum has no picture of, or one that didn't load -->
+              <span class="mu-noshot">{skin.name}<br /><small>{skin.modern ? "modern skin, " : ""}no picture</small></span>
             {/if}
             <span class="mu-name">{skin.modern ? "◆ " : ""}{skin.name}</span>
           </button>
@@ -377,6 +433,18 @@
   }
   .mu-noshot small {
     opacity: 0.6;
+  }
+  /* a modern skin's picture is mostly wider than tall */
+  .mu-skin.modern img,
+  .mu-skin.modern .mu-noshot {
+    aspect-ratio: 276 / 200;
+  }
+  /* "Well-known modern skins" / "More from the museum", across the grid */
+  .mu-head {
+    grid-column: 1 / -1;
+    padding: 4px 2px 0;
+    font-size: calc(8px * var(--px-crisp, 1));
+    color: color-mix(in srgb, var(--fg) 70%, transparent);
   }
   .mu-skin img {
     width: 100%;

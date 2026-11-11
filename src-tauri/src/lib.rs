@@ -722,6 +722,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // modern skins' pictures in the Skin Museum, read out of their files
+        .register_asynchronous_uri_scheme_protocol("museumshot", museum::shot_protocol)
         .invoke_handler(tauri::generate_handler![
             get_auth_url,
             open_external,

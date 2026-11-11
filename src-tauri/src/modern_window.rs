@@ -557,6 +557,13 @@ pub fn modern_ready(window: WebviewWindow) {
     DRAWN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let _ = window.show();
     let _ = window.set_focus();
+    // put on from the Skin Museum: it stays in front, not behind the skin
+    // (a big one, Bento, would cover it, and it couldn't be closed)
+    if let Some(museum) = window.app_handle().get_webview_window("museum")
+        && museum.is_visible().unwrap_or(false)
+    {
+        let _ = museum.set_focus();
+    }
 }
 
 /// How many times a skin's page has said it's drawn (modern_ready).

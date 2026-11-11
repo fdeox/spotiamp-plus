@@ -86,6 +86,19 @@ export default class Text extends GuiObj {
   // Windows' measure differs from the browser's
   _gdiAuto: { text: string; w: number } | null = null;
   _autoWidthTold: number | null = null;
+  // the printed text a script last heard of (onTextChanged)
+  _lastTxt: string = "";
+
+  // Spotiamp+: as Wasabi (Text::onTextChanged): a script hears of each change
+  // of the printed text, case aside, from setText, the text param and the
+  // alternate text as well (Big Bento's info lines move their text past the
+  // label's width when the label's changes)
+  _textChanged() {
+    const txt = this.gettext() ?? "";
+    if (txt.toLowerCase() === this._lastTxt.toLowerCase()) return;
+    this._lastTxt = txt;
+    this._uiRoot.vm.dispatch(this, "ontextchanged", [{ type: "STRING", value: txt }]);
+  }
 
   _printedText(): string {
     const text = this.gettext() ?? "";
@@ -301,6 +314,7 @@ export default class Text extends GuiObj {
         // }
         this._text = value;
         this._renderText();
+        this._textChanged();
         break;
       case "bold":
         // (str) A static string to be displayed.
@@ -681,6 +695,7 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
     if (newValue !== this._displayValue) {
       this._displayValue = newValue;
       this._renderText();
+      this._lastTxt = this.gettext() ?? "";
       this._uiRoot.vm.dispatch(this, "ontextchanged", [
         { type: "STRING", value: this.gettext() },
       ]);
@@ -770,11 +785,13 @@ offsety - (int) Extra pixels to be added to or subtracted from the calculated x 
       this._text = txt;
       this._renderText();
     }
+    this._textChanged();
   }
   // overrides the display/text parameter with a custom string, set "" to cancel
   setalternatetext(txt: string) {
     this._alternateText = txt;
     this._renderText();
+    this._textChanged();
   }
 
   //to speedup animation like text-scrolling, we spit rendering processes.
