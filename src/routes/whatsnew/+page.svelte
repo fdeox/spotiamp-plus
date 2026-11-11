@@ -13,6 +13,9 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.12": [
+      "<b>Modern skins' windows can be dragged</b> 🖱️ by their title bars and wherever the skin lets them, as in Winamp, and sized from their corners, on screens set to 125 % too.",
+    ],
     "0.7.11": [
       "<b>The Skin Museum's Modern tab, fixed</b> 🎨 The best-known modern skins come first: Winamp Modern, Big Bento, Bento, Victhor's Winamp Classic Modern, MMD3, CornerAmp Redux and more, each with its picture, all tried in Spotiamp+. The museum's other modern skins show their pictures again: Spotiamp+ now reads them out of the skins itself, as the museum's picture server was down. A skin without a picture says so.",
       "<b>In a modern skin, Spotiamp+'s own windows close again</b> with the close button of the skin's frame: the Library, lyrics, album art, visualizer, Listening Stats, the Skin Museum and What's New.",
