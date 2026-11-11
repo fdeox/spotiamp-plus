@@ -330,7 +330,10 @@ export default class Group extends Movable {
       this._div.style.pointerEvents = "none";
     }
     //TODO: allow move/resize if has ._image
-    this._div.style.pointerEvents = "none";
+    // (Spotiamp+: as Wasabi, a group with move="1" takes the press that moves
+    // its window, where nothing in it takes the press itself; a layout too,
+    // Layout.ts)
+    this._div.style.pointerEvents = this._movable && !this._isLayout ? "auto" : "none";
     this._renderBackground();
     this.appendChildrenDiv();
     if (this._autowidthsource) {

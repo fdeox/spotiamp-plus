@@ -39,7 +39,8 @@ export default abstract class Movable extends GuiObj {
 
   _renderCssCursor() {
     // only one of this possible: movable or resizable. not both
-    if (this._movable) {
+    // (Spotiamp+: a resizer isn't a mover, as in Wasabi, Layer::onInit)
+    if (this._movable && !this._resize) {
       this._unregisterResizingEvents();
       // winamp cursor for movable area is default/arrow.
       this._div.style.removeProperty("cursor");
@@ -142,6 +143,9 @@ export default abstract class Movable extends GuiObj {
       const newMouseY = upEvent.pageY;
       const deltaY = newMouseY - startY;
       const deltaX = newMouseX - startX;
+      // (Spotiamp+: where the mouse was let go, not the last move the
+      // throttle let through)
+      layout.setResizing("move", deltaX, deltaY);
       layout.setResizing("final", deltaX, deltaY);
     };
     document.addEventListener("mousemove", trottledMove);
@@ -167,6 +171,8 @@ export default abstract class Movable extends GuiObj {
     downEvent.stopPropagation();
     if (downEvent.button != 0) return; // only care LeftButton
     const layout = this.getparentlayout() as Layout;
+    // (Spotiamp+: as Wasabi, a layout with move="0" isn't moved by its movers)
+    if (!layout || layout._moveOff) return;
     layout.setMoving("start", 0, 0);
     const startX = downEvent.pageX;
     const startY = downEvent.pageY;
@@ -191,6 +197,8 @@ export default abstract class Movable extends GuiObj {
       const newMouseY = upEvent.pageY;
       const deltaY = newMouseY - startY;
       const deltaX = newMouseX - startX;
+      // (Spotiamp+: where the mouse was let go, as above)
+      layout.setMoving("move", deltaX, deltaY);
       layout.setMoving("final", deltaX, deltaY);
     };
     document.addEventListener("mousemove", trottledMove);

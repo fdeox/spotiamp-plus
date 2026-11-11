@@ -14,6 +14,16 @@ export default class Layer extends Movable {
   }
 
   static GUID = "5ab9fa1545579a7d5765c8aba97cc6a6";
+
+  // Spotiamp+: as Wasabi (Layer::Layer: setMover(1)), a layer moves its
+  // window when it's dragged, unless it says move="0" or sizes the window
+  // (resize="...", Movable): MMD3's, CornerAmp's and GC's bodies are layers
+  constructor(uiRoot: any) {
+    super(uiRoot);
+    this._movable = true;
+    this._renderCssCursor();
+  }
+
   _image: string;
   _inactiveImage: string;
   _tile: boolean = false;

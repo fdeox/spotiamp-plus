@@ -17,6 +17,15 @@ import { findAction } from "./menuWa5actions";
 // > skin.
 //
 // -- http://wiki.winamp.com/wiki/Modern_Skin:_Container
+// Parts of a window that take a press themselves: pressing one doesn't move
+// the window (tags are the engine's class names, GuiObj.getElTag; "pl" is the
+// playlist editor's box, PlayListGui).
+const DRAG_CONTROLS = new Set([
+  "button", "togglebutton", "nstatebutton", "wasabibutton", "slider", "edit", "input", "textarea", "select",
+  "guilist", "guitree", "dropdownlist", "checkbox", "browser", "querylist", "vis", "avs", "eqvis",
+  "windowholder", "componentbucket", "wrapper", "menu", "ul", "li",
+]);
+
 export default class Layout extends Group {
   static GUID = "60906d4e482e537e94cc04b072568861";
   _resizingDiv: HTMLDivElement = null;
@@ -37,7 +46,38 @@ export default class Layout extends Group {
     this._isLayout = true;
   }
 
+  // Spotiamp+: as Wasabi (GuiObjectI::guiobject_onLeftButtonDown, and a
+  // layout is a mover unless it says move="0"): a window is moved by dragging
+  // it anywhere but on one of its controls. Its groups, layers without a
+  // press of their own, grids and gui objects (Bento's mouse traps and title
+  // bars) let the press through to it here.
+  _moveOff: boolean = false;
+  _dragWired: boolean = false;
+  // (the layout's own handler below, not Movable's, which would move it from
+  // a button too)
+  _registerMovingEvents() {}
+  _unregisterMovingEvents() {}
+
+  draw() {
+    super.draw();
+    this._div.style.pointerEvents = "auto";
+    if (!this._dragWired) {
+      this._dragWired = true;
+      this._div.addEventListener("mousedown", this._dragAnywhere);
+    }
+  }
+
+  _dragAnywhere = (e: MouseEvent) => {
+    // (one with move="1" is moved by GuiObj's own press, as any mover)
+    if (e.button !== 0 || this._moveOff || this._mover || e.defaultPrevented) return;
+    for (let el = e.target as Element | null; el && el !== this._div; el = el.parentElement) {
+      if (DRAG_CONTROLS.has(el.tagName.toLowerCase()) || el.classList?.contains("pl")) return;
+    }
+    this._handleMoving(e);
+  };
+
   setXmlAttr(key: string, value: string): boolean {
+    if (key.toLowerCase() === "move") this._moveOff = !Utils.toBool(value);
     if (super.setXmlAttr(key, value)) {
       return true;
     }
@@ -181,14 +221,18 @@ export default class Layout extends Group {
   }
 
   setResizing(cmd: string, dx: number, dy: number) {
+    // (Spotiamp+: the outline is in screen pixels, the window drawn at k times
+    // its own: the skin's limits are scaled to it, and the size it ends up
+    // with scaled back, Ctrl+D or a screen at 125 %)
+    const k = this._resizeScale || 1;
     const clampW = (w): number => {
-      w = this._maximumWidth ? Math.min(w, this._maximumWidth) : w;
-      w = this._minimumWidth ? Math.max(w, this._minimumWidth) : w;
+      w = this._maximumWidth ? Math.min(w, this._maximumWidth * k) : w;
+      w = this._minimumWidth ? Math.max(w, this._minimumWidth * k) : w;
       return w;
     };
     const clampH = (h): number => {
-      h = this._maximumHeight ? Math.min(h, this._maximumHeight) : h;
-      h = this._minimumHeight ? Math.max(h, this._minimumHeight) : h;
+      h = this._maximumHeight ? Math.min(h, this._maximumHeight * k) : h;
+      h = this._minimumHeight ? Math.max(h, this._minimumHeight * k) : h;
       return h;
     };
     // const container = this._parent;
@@ -200,6 +244,7 @@ export default class Layout extends Group {
       // r.x = container.getleft()
       // r.y = container.gettop()
       this._resizing_start = r;
+      this._resizeScale = this._div.offsetWidth > 0 ? r.width / this._div.offsetWidth : 1;
       // this._resizing_o = r;
       this._resizing = true;
       this._resizingDiv = document.createElement("div");
@@ -216,6 +261,9 @@ export default class Layout extends Group {
         left: ${px(left)};
         top: ${px(top)};
         `;
+      // (Spotiamp+: the outline as reckoned; its box has a border, so its
+      // offsetWidth is a few pixels more)
+      this._resizingRect = { left, top, width, height };
       // this._div.appendChild(this._resizingDiv);
       document.body.appendChild(this._resizingDiv);
     } else if (dx == CURSOR && dy == CURSOR) {
@@ -235,7 +283,7 @@ export default class Layout extends Group {
         if (l + width <= right) {
           left = l;
         } else {
-          left = right - this._minimumWidth;
+          left = right - this._minimumWidth * k;
         }
       }
       if (this._canResize & TOP) {
@@ -244,7 +292,7 @@ export default class Layout extends Group {
         if (t + height <= bottom) {
           top = t;
         } else {
-          top = bottom - this._minimumHeight;
+          top = bottom - this._minimumHeight * k;
         }
       }
       this._resizingDiv.style.cssText = `
@@ -253,24 +301,18 @@ export default class Layout extends Group {
         left: ${px(left)};
         top: ${px(top)};
       `;
+      this._resizingRect = { left, top, width, height };
     } else if (cmd == "final") {
       if (!this._resizing) {
         return;
       }
       this._resizing = false;
-      this.setXmlAttr("w", this._resizingDiv.offsetWidth.toString());
-      this.setXmlAttr("h", this._resizingDiv.offsetHeight.toString());
+      const rr = this._resizingRect;
+      this.setXmlAttr("w", Math.round(rr.width / k).toString());
+      this.setXmlAttr("h", Math.round(rr.height / k).toString());
       const container = this._parent;
-      container.setXmlAttr(
-        "x",
-        this._resizingDiv /* container._x + */.offsetLeft
-          .toString()
-      );
-      container.setXmlAttr(
-        "y",
-        this._resizingDiv /* container._y + */.offsetTop
-          .toString()
-      );
+      container.setXmlAttr("x", Math.round(rr.left).toString());
+      container.setXmlAttr("y", Math.round(rr.top).toString());
       this._resizingDiv.remove();
       this._resizingDiv = null;
       this._invalidateSize();

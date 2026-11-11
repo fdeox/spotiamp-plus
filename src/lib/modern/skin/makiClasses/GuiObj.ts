@@ -108,6 +108,9 @@ export default class GuiObj extends XmlObj {
 
   setXmlAttr(_key: string, value: string): boolean {
     const key = _key.toLowerCase();
+    // Spotiamp+: a mover (Wasabi's move="1"): pressing it moves its window.
+    // (Not taken as handled: layers and groups do their own with it, Movable.)
+    if (key === "move") this._mover = value === "1" || value.toLowerCase() === "true";
     switch (key) {
       case "id":
         this._originalId = value;
@@ -302,16 +305,17 @@ export default class GuiObj extends XmlObj {
     this._div.addEventListener("mousedown", (e) => {
       e.stopPropagation();
       // e.preventDefault();
-      console.log("mouse-down!");
       this.onLeftButtonDown(
         e.offsetX + this.getleft(),
         e.offsetY + this.gettop()
       );
+      // Spotiamp+: as Wasabi, a mover moves its window (layers and groups
+      // have Movable's own moving for it)
+      if (this._mover && e.button === 0 && !this._movingEventsRegistered) this._moveWindow(e);
 
       const mouseUpHandler = (e: MouseEvent) => {
         // e.stopPropagation();
         // e.preventDefault();
-        console.log("mouse-up!");
         this.onLeftButtonUp(
           e.offsetX + this.getleft(),
           e.offsetY + this.gettop()
@@ -330,6 +334,29 @@ export default class GuiObj extends XmlObj {
   }
 
   dispose() {}
+
+  /** move="1" @type {boolean} */
+  _mover: boolean = false;
+
+  // Spotiamp+: the window follows the mouse till it's let go (as Movable's
+  // _handleMoving, for the objects that aren't Movable)
+  _moveWindow(downEvent: MouseEvent) {
+    const layout = this.getparentlayout();
+    if (!layout || layout._moveOff) return;
+    layout.setMoving("start", 0, 0);
+    const startX = downEvent.pageX;
+    const startY = downEvent.pageY;
+    const move = (e: MouseEvent) => layout.setMoving("move", e.pageX - startX, e.pageY - startY);
+    const up = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      layout.setMoving("move", e.pageX - startX, e.pageY - startY);
+      layout.setMoving("final", e.pageX - startX, e.pageY - startY);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
 
   getDiv(): HTMLElement {
     return this._div;

@@ -86,7 +86,8 @@ export default class Grid extends GuiObj {
 
   draw() {
     super.draw();
-    this._div.style.pointerEvents = "none";
+    // (Spotiamp+: a mover takes the press that moves its window)
+    this._div.style.pointerEvents = this._mover ? "auto" : "none";
     // Spotiamp+: a hidden one stays hidden (visible="0": Big Bento's tab
     // hover and active faces lay over the tab's text)
     this._renderVisibility();

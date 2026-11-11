@@ -307,8 +307,18 @@ fn build_window(app: &AppHandle) -> Result<WebviewWindow, tauri::Error> {
 }
 
 /// Over all the screens (again after a screen is added or taken away).
+/// (SPOTIAMP_TEST_MODERN_SCREEN=<n>, for the smoke tests: over that screen
+/// only, so the window is on a screen of its scale alone, as on a PC with
+/// one screen at 125 %.)
 fn cover_screens(window: &WebviewWindow) {
-    let (x, y, w, h) = virtual_screen(window.app_handle());
+    let only = std::env::var("SPOTIAMP_TEST_MODERN_SCREEN")
+        .ok()
+        .and_then(|n| n.parse::<usize>().ok())
+        .and_then(|n| window.available_monitors().ok()?.into_iter().nth(n));
+    let (x, y, w, h) = match only {
+        Some(m) => (m.position().x, m.position().y, m.size().width, m.size().height),
+        None => virtual_screen(window.app_handle()),
+    };
     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
     let _ = window.set_size(tauri::PhysicalSize::new(w, h));
 }
