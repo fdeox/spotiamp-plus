@@ -565,8 +565,14 @@ export class UIRoot {
     // (Spotiamp+: a bitmap known by a second name, an older one's newer
     // name, is that name's picture too)
     const seen = new Set();
+    // (Spotiamp+: the pictures a border-image cuts by their pixels (button.css)
+    // keep their own size, see Bitmap's getGammaTransformedUrl)
+    const cutByPixels = new Set(["studio.button", "studio.button.pressed", "wasabi.button.hover"]);
+    const ownSize = new Set<Bitmap>();
     for (const [name, bitmap] of Object.entries(this._bitmaps)) {
       if (name !== bitmap.getId().toLowerCase()) cssRules.push(`${genCssVar(name)}: var(${bitmap.getCSSVar()});`);
+      const id = bitmap.getId().toLowerCase();
+      if ([name, id, ...(bitmapAliases[id] ?? [])].some((n) => cutByPixels.has(n.toLowerCase()))) ownSize.add(bitmap);
     }
     for (const bitmap of [...Object.values(this._bitmaps), ...bitmapFonts]) {
       if (seen.has(bitmap)) continue;
@@ -583,7 +589,7 @@ export class UIRoot {
       // const url = await gammaGroup.transformBitmap(bitmap);
       // cssRules.push(`  ${bitmap.getCSSVar()}: url(${url});`);
       // cssRules.push(await bitmap.getGammaTransformedUrl());
-      cssRules.push(await bitmap.getGammaTransformedUrl(this));
+      cssRules.push(await bitmap.getGammaTransformedUrl(this, !ownSize.has(bitmap as Bitmap)));
       //support multiple names
       maybeBitmapAliases(bitmap);
     }

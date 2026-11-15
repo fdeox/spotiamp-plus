@@ -6,7 +6,7 @@
 // the status line under them. One canvas, painted in one go by Windows'
 // text (native.js); the page gives the data and hears what's pressed.
 // Read for Winamp's behaviour; none of its code is used.
-import { DT, inApp, measure, metrics, paint } from "./native.js";
+import { DT, inApp, measure, metrics, paint, screenScale } from "./native.js";
 import { Button, Edit, ListView, Look, ScrollBar, Static, Tree, fill, inside, text } from "./widgets.js";
 import { canvasOf } from "./genex.js";
 
@@ -50,6 +50,9 @@ export class MlView {
     this.look = null;
     this.w = 0;
     this.h = 0;
+    // the size last shown (the mouse is read by it)
+    this.shownW = 0;
+    this.shownH = 0;
     // the dividers: the tree's width, and the filters' height and split (in 1/100000)
     this.ldiv = state.ldiv ?? 135;
     this.mediaPos = state.media ?? 50000;
@@ -332,11 +335,18 @@ export class MlView {
       const ops = this.ops(look);
       const w = this.w;
       const h = this.h;
-      const image = inApp() ? await paint(w, h, [look.font], ops) : null;
-      if (this.canvas.width !== w || this.canvas.height !== h) {
-        this.canvas.width = w;
-        this.canvas.height = h;
+      // (at the screen's pixels: sharp on a screen at 125 %)
+      const image = inApp() ? await paint(w, h, [look.font], ops, screenScale()) : null;
+      const cw = image?.width ?? w;
+      const ch = image?.height ?? h;
+      if (this.canvas.width !== cw || this.canvas.height !== ch) {
+        this.canvas.width = cw;
+        this.canvas.height = ch;
       }
+      this.canvas.style.width = `${w}px`;
+      this.canvas.style.height = `${h}px`;
+      this.shownW = w;
+      this.shownH = h;
       const ctx = this.canvas.getContext("2d");
       if (ctx && image) ctx.putImageData(image, 0, 0);
       else if (ctx) drawFallback(ctx, ops, look);
@@ -413,8 +423,10 @@ export class MlView {
   /** the page's pixels of an event @param {MouseEvent} e */
   at(e) {
     const r = this.canvas.getBoundingClientRect();
-    const sx = r.width ? this.canvas.width / r.width : 1;
-    const sy = r.height ? this.canvas.height / r.height : 1;
+    // (by the size it was laid out at, not the canvas's: that's the screen's
+    // pixels, and at 125 % a click would land a quarter further down)
+    const sx = r.width ? (this.shownW || this.canvas.width) / r.width : 1;
+    const sy = r.height ? (this.shownH || this.canvas.height) / r.height : 1;
     return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
   }
 

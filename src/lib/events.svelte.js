@@ -39,9 +39,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  *     play?: boolean, pause?: boolean, stop?: boolean, next?: boolean, previous?: boolean } },
  *   skinPlaylist: { event: { rows: { title: string, durationMs: number }[], current: number } },
  *   skinPlaylistCommand: { event: { play?: number, remove?: number, move?: [number, number], ask?: boolean,
- *     openUrl?: string, saveList?: string, loadNames?: boolean, select?: number[] } },
+ *     openUrl?: string, saveList?: string, loadNames?: boolean, select?: number[], update?: boolean } },
  *   modernMenu: { event: { name: string } },
  *   modernDialog: { event: { kind: "jump" | "time" | "url" | "savelist" | "toast" | "card", text?: string } },
+ *   modernUpdate: { event: { version: string } },
  *   modernFace: { event: boolean },
  *   modernLook: { event: null },
  * }} WindowEventTypes

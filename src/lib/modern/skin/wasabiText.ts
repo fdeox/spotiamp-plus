@@ -29,6 +29,9 @@ export type TextPaint = {
   ft_font: string;
   /** the skin font's file name without its extension, as that renderer knew it */
   ft_name: string;
+  /** screen pixels per pixel of the text (its window drawn 1.25 times on a
+   *  screen at 125 %): the pixels come back that many times the size */
+  scale?: number;
 };
 
 export type PaintedText = { w: number; h: number; textW: number; suggested: number; data: Uint8ClampedArray };

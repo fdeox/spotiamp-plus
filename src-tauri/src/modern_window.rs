@@ -185,11 +185,17 @@ pub async fn modern_set_slots(window: WebviewWindow, slots_now: Slots) {
                 set_embedded(label, true);
                 let shown = app.get_webview_window(label).is_some_and(|w| w.is_visible().unwrap_or(false));
                 if !shown {
+                    // (a skin put on from the Skin Museum: the museum keeps
+                    // the focus, not the window shown into the skin)
+                    let museum = app.get_webview_window("museum").filter(|m| m.is_focused().unwrap_or(false));
                     let _ = if label == "library" {
                         crate::library_window::set_library_window_visible(true, app.clone()).await
                     } else {
                         crate::visualizer_window::set_visualizer_window_visible(true, app.clone()).await
                     };
+                    if let Some(m) = museum {
+                        let _ = m.set_focus();
+                    }
                 }
                 let Some(target) = app.get_webview_window(label) else { continue };
                 let at = tauri::PhysicalPosition::new(x + origin.x, y + origin.y);
@@ -672,6 +678,55 @@ pub fn modern_window_rects() -> Vec<[i32; 4]> {
         return Vec::new();
     }
     geometry().lock().map(|g| g.windows.clone()).unwrap_or_default()
+}
+
+/// Spotiamp+'s windows that dock with a modern skin's (the classic player,
+/// playlist and equalizer are hidden under one).
+const OWN_WINDOWS: [&str; 5] = ["library", "visualizer", "lyrics", "art", "stats"];
+
+/// Spotiamp+'s own windows out on the screens (shown, not laid into the
+/// skin), in the page's pixels (from the modern window's top left): a skin
+/// window docks to them, and they come along with the skin's main window
+/// when docked to it, as Winamp 5 moved its Media Library with the player
+/// (src/lib/modern/docking.js).
+#[tauri::command]
+pub fn modern_app_windows(window: WebviewWindow) -> Vec<(String, [i32; 4])> {
+    let origin = window.outer_position().unwrap_or_default();
+    let app = window.app_handle();
+    OWN_WINDOWS
+        .iter()
+        .filter(|label| !embedded(label))
+        .filter_map(|label| {
+            let w = app.get_webview_window(label)?;
+            if !w.is_visible().unwrap_or(false) || w.is_minimized().unwrap_or(false) {
+                return None;
+            }
+            let p = w.outer_position().ok()?;
+            let s = w.outer_size().ok()?;
+            Some((label.to_string(), [p.x - origin.x, p.y - origin.y, s.width as i32, s.height as i32]))
+        })
+        .collect()
+}
+
+/// ...moved to these spots (page pixels), all at once.
+#[tauri::command]
+pub fn modern_move_app_windows(window: WebviewWindow, moves: Vec<(String, i32, i32)>) {
+    let origin = window.outer_position().unwrap_or_default();
+    let app = window.app_handle();
+    let list: Vec<(WebviewWindow, tauri::PhysicalPosition<i32>)> = moves
+        .into_iter()
+        .filter(|(label, _, _)| OWN_WINDOWS.contains(&label.as_str()) && !embedded(label))
+        .filter_map(|(label, x, y)| {
+            Some((app.get_webview_window(&label)?, tauri::PhysicalPosition::new(x + origin.x, y + origin.y)))
+        })
+        .collect();
+    #[cfg(target_os = "windows")]
+    if crate::app_window::move_windows_together(&list) {
+        return;
+    }
+    for (w, p) in list {
+        let _ = w.set_position(p);
+    }
 }
 
 /// The skin's page made its look for the other windows: kept, and they're told.

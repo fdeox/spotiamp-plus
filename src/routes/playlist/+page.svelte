@@ -10,6 +10,7 @@
     SKIN_APPLIED,
   } from "$lib/common.svelte.js";
   import { paintPe, rowName, winampPeAvailable } from "$lib/modern/skin/winampPe";
+  import { screenScale } from "$lib/winampml/native.js";
   import { emitWindowEvent, subscribeToWindowEvent } from "$lib/events.svelte.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { emit } from "@tauri-apps/api/event";
@@ -278,10 +279,9 @@
     skinRowsTimer = setTimeout(sendSkinRows, 150);
   });
   // A modern skin worn: this window is hidden, so what it shows over itself
-  // (the jump box, the link box, a note...) shows in the skin's window.
+  // (the jump box, the link box, a note, the update button...) shows in the
+  // skin's window.
   let modernOn = false;
-  // what the skin's window is told once it's up (an update came first)
-  let modernNote = "";
   invoke("modern_skin")
     .then((s) => (modernOn = !!s))
     .catch(() => {});
@@ -310,11 +310,11 @@
       }
       if (c.ask) {
         sendSkinRows();
-        if (modernNote) {
-          emitWindowEvent("modernDialog", { kind: "toast", text: modernNote });
-          modernNote = "";
-        }
+        // (an update found before the skin's window was up: its button there)
+        if (updateAvailable) emitWindowEvent("modernUpdate", { version: updateAvailable });
       }
+      // that button pressed
+      if (c.update) checkForUpdates();
     });
     const face = subscribeToWindowEvent("modernFace", (on) => (modernOn = on));
     return () => {
@@ -370,9 +370,9 @@
       const update = await check();
       if (update) {
         updateAvailable = update.version;
-        // the pill is on this window: under a modern skin, a note says it
-        modernNote = `Spotiamp+ ${update.version} is out: right-click, Help, Check for updates`;
-        if (modernOn) emitWindowEvent("modernDialog", { kind: "toast", text: modernNote });
+        // the pill is on this window: under a modern skin, the skin's window
+        // shows it (and asks for it again once it's up, skinPlaylistCommand ask)
+        if (modernOn) emitWindowEvent("modernUpdate", { version: update.version });
       }
     } catch {
       /* offline or check failed — stay quiet, the menu still works */
@@ -1832,7 +1832,8 @@
         });
       }
     }
-    const painted = await paintPe({ face: peFace(), size: 12, w, h, rows, colors: peColors() });
+    // (at the screen's pixels, shown at the list's size: sharp at 125 %)
+    const painted = await paintPe({ face: peFace(), size: 12, w, h, rows, colors: peColors(), scale: screenScale() });
     if (!painted) return;
     if (painted.rowH !== peRowH) {
       // the font's own height: the list's rows follow, then again

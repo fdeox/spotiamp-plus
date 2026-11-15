@@ -332,8 +332,10 @@ export default class Group extends Movable {
     //TODO: allow move/resize if has ._image
     // (Spotiamp+: as Wasabi, a group with move="1" takes the press that moves
     // its window, where nothing in it takes the press itself; a layout too,
-    // Layout.ts)
-    this._div.style.pointerEvents = this._movable && !this._isLayout ? "auto" : "none";
+    // Layout.ts. One with sysregion="1" is only as big as the shape of what's
+    // in it (Wasabi's region), not its whole box: MMD3's player lies over its
+    // drawers' buttons, which stick out past its shape)
+    this._div.style.pointerEvents = this._movable && !this._isLayout && !this._sysregion ? "auto" : "none";
     this._renderBackground();
     this.appendChildrenDiv();
     if (this._autowidthsource) {

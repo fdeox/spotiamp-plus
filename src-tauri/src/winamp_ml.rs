@@ -53,6 +53,14 @@ pub struct MlPaint {
     pub h: i32,
     pub fonts: Vec<MlFont>,
     pub ops: Vec<MlOp>,
+    /// screen pixels per pixel of the page (a screen at 125 %): laid out the
+    /// same, drawn that much bigger by Windows itself, so the text is sharp
+    #[serde(default = "one_f")]
+    pub scale: f32,
+}
+
+fn one_f() -> f32 {
+    1.0
 }
 
 /// The painted area: [w, h] as little-endian i32 then RGBA, top row first;
@@ -138,19 +146,25 @@ pub fn paint(p: &MlPaint) -> Option<MlPainted> {
     use windows::Win32::Foundation::{COLORREF, RECT};
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DIB_RGB_COLORS,
-        DRAW_TEXT_FORMAT, DT_NOPREFIX, DeleteDC, DeleteObject, DrawTextW, FillRect, GdiFlush, HGDIOBJ,
-        IntersectClipRect, RestoreDC, SaveDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+        DRAW_TEXT_FORMAT, DT_NOPREFIX, DeleteDC, DeleteObject, DrawTextW, FillRect, GM_ADVANCED, GdiFlush, HGDIOBJ,
+        IntersectClipRect, RestoreDC, SaveDC, SelectObject, SetBkMode, SetGraphicsMode, SetTextColor, SetWorldTransform,
+        TRANSPARENT, XFORM,
     };
 
     if p.w <= 0 || p.h <= 0 || p.w > 8192 || p.h > 8192 || p.fonts.is_empty() || p.fonts.len() > 8 {
         return None;
     }
     let rgb = |c: [u8; 3]| COLORREF(c[0] as u32 | (c[1] as u32) << 8 | (c[2] as u32) << 16);
+    // the bitmap's pixels, k to one of the page's
+    let k = if p.scale.is_finite() { p.scale.clamp(0.5, 4.0) } else { 1.0 };
+    let scaled = (k - 1.0).abs() >= 0.01;
+    let (bw, bh) = if scaled { ((p.w as f32 * k).round() as i32, (p.h as f32 * k).round() as i32) } else { (p.w, p.h) };
+    let to_px = |v: i32| if scaled { (v as f32 * k).round() as i32 } else { v };
     let info = BITMAPINFO {
         bmiHeader: BITMAPINFOHEADER {
             biSize: size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: p.w,
-            biHeight: -p.h,
+            biWidth: bw,
+            biHeight: -bh,
             biPlanes: 1,
             biBitCount: 32,
             biCompression: BI_RGB.0,
@@ -169,6 +183,12 @@ pub fn paint(p: &MlPaint) -> Option<MlPainted> {
             return None;
         };
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
+        // (at a scale, Windows draws the fills and the text that much
+        // bigger: where the page laid them, the letters drawn at the size)
+        if scaled {
+            let _ = SetGraphicsMode(dc, GM_ADVANCED);
+            let _ = SetWorldTransform(dc, &XFORM { eM11: k, eM12: 0.0, eM21: 0.0, eM22: k, eDx: 0.0, eDy: 0.0 });
+        }
         let fonts: Vec<_> = p.fonts.iter().map(gdi::font).collect();
         let old_font = SelectObject(dc, HGDIOBJ(fonts[0].0));
         let fill = |x: i32, y: i32, w: i32, h: i32, c: [u8; 3]| {
@@ -191,21 +211,18 @@ pub fn paint(p: &MlPaint) -> Option<MlPainted> {
                         continue;
                     }
                     let _ = GdiFlush();
-                    for row in 0..*h {
-                        let ty = y + row;
-                        if ty < 0 || ty >= p.h {
-                            continue;
-                        }
-                        for col in 0..*w {
-                            let tx = x + col;
-                            if tx < 0 || tx >= p.w {
-                                continue;
-                            }
+                    // (its pixels on the bitmap's: each one k across at a scale)
+                    let (x0, y0, x1, y1) = (to_px(*x), to_px(*y), to_px(x + w), to_px(y + h));
+                    let (dw, dh) = ((x1 - x0).max(1), (y1 - y0).max(1));
+                    for ty in y0.max(0)..y1.min(bh) {
+                        let row = ((ty - y0) * h / dh).min(h - 1);
+                        for tx in x0.max(0)..x1.min(bw) {
+                            let col = ((tx - x0) * w / dw).min(w - 1);
                             let s = ((row * w + col) * 4) as usize;
                             if data[s + 3] == 0 {
                                 continue;
                             }
-                            let t = ((ty * p.w + tx) * 4) as usize;
+                            let t = ((ty * bw + tx) * 4) as usize;
                             *px.add(t) = data[s + 2];
                             *px.add(t + 1) = data[s + 1];
                             *px.add(t + 2) = data[s];
@@ -234,7 +251,7 @@ pub fn paint(p: &MlPaint) -> Option<MlPainted> {
             }
         }
         let _ = GdiFlush();
-        let src = std::slice::from_raw_parts(bits as *const u8, (p.w * p.h * 4) as usize);
+        let src = std::slice::from_raw_parts(bits as *const u8, (bw * bh * 4) as usize);
         let mut rgba = Vec::with_capacity(src.len());
         for px in src.chunks_exact(4) {
             let (r, g, b) = (px[2], px[1], px[0]);
@@ -248,7 +265,7 @@ pub fn paint(p: &MlPaint) -> Option<MlPainted> {
         }
         let _ = DeleteObject(HGDIOBJ(bitmap.0));
         let _ = DeleteDC(dc);
-        Some(MlPainted { w: p.w, h: p.h, rgba })
+        Some(MlPainted { w: bw, h: bh, rgba })
     }
 }
 
@@ -329,11 +346,18 @@ mod tests {
             h: 10,
             fonts: vec![arial()],
             ops: vec![MlOp::Fill { x: 0, y: 0, w: 10, h: 10, c: [1, 2, 3] }],
+            scale: 1.0,
         };
         let out = paint(&p).expect("painted");
         assert_eq!(&out.rgba[0..4], &[1, 2, 3, 255]);
         let right = ((5 * 20 + 15) * 4) as usize;
         assert_eq!(out.rgba[right + 3], 0);
+        // at 125 %: a quarter bigger, the fill too
+        let big = paint(&MlPaint { scale: 1.25, ..p }).expect("painted");
+        assert_eq!((big.w, big.h), (25, 13));
+        let at = |x: i32, y: i32| ((y * 25 + x) * 4) as usize;
+        assert_eq!(&big.rgba[at(11, 5)..at(11, 5) + 4], &[1, 2, 3, 255]);
+        assert_eq!(big.rgba[at(14, 5) + 3], 0);
     }
 
     #[test]
@@ -346,6 +370,7 @@ mod tests {
                 MlOp::Fill { x: 0, y: 0, w: 60, h: 16, c: [0, 0, 0] },
                 MlOp::Text { x: 0, y: 0, w: 60, h: 16, t: "Audio".into(), c: [0, 255, 0], f: 0x24, font: 0, clip: None },
             ],
+            scale: 1.0,
         };
         let out = paint(&p).expect("painted");
         assert!(out.rgba.chunks_exact(4).any(|px| px[1] > 128 && px[3] == 255));

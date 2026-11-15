@@ -99,8 +99,9 @@ buttons, the seek bar and volume, the equalizer, the playlist, the album art
 and the visualizers. Spotiamp+'s windows go where Winamp put its own. The
 Library opens inside the skin's Media Library (in Big Bento it fills the main
 window), the visualizer in the skin's visualizer window, and the lyrics and the
-rest in the skin's own frame, in its colours. Lala sits on top of whichever
-skin you wear.
+rest in the skin's own frame, in its colours. The windows dock to each other
+and to the screen's edges as in Winamp 5, and the main window takes the ones
+docked to it along. Lala sits on top of whichever skin you wear.
 
 Find them in the Skin Museum's *Modern* tab, or load one with *Skins, Load a
 modern skin (.wal)*. Picking a classic skin brings the classic windows back.

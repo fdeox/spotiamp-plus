@@ -8,6 +8,7 @@ import { UIRoot } from "../../UIRoot";
 import PopupMenu from "./PopupMenu";
 import { forEachMenuItem, IMenuItem } from "./MenuItem";
 import { findAction } from "./menuWa5actions";
+import { HOST } from "../../host";
 
 // > A layout is a special kind of group, which shown inside a container. Each
 // > layout represents an appearance for that window. Layouts give you the ability
@@ -76,6 +77,9 @@ export default class Layout extends Group {
     this._handleMoving(e);
   };
 
+  // Spotiamp+: Winamp's nodock="1": no window docks to it, it moves alone
+  _noDock: boolean = false;
+
   setXmlAttr(key: string, value: string): boolean {
     if (key.toLowerCase() === "move") this._moveOff = !Utils.toBool(value);
     if (super.setXmlAttr(key, value)) {
@@ -84,6 +88,23 @@ export default class Layout extends Group {
     switch (key) {
       case "desktopalpha":
         this._desktopAlpha = Utils.toBool(value);
+        break;
+      case "nodock":
+        this._noDock = Utils.toBool(value);
+        break;
+      // (Spotiamp+: how far in from its edges the window docks, as its
+      // script's snapAdjust sets it)
+      case "snapadjustleft":
+        this._snap.left = Number(value) || 0;
+        break;
+      case "snapadjusttop":
+        this._snap.top = Number(value) || 0;
+        break;
+      case "snapadjustright":
+        this._snap.right = Number(value) || 0;
+        break;
+      case "snapadjustbottom":
+        this._snap.bottom = Number(value) || 0;
         break;
       default:
         return false;
@@ -168,22 +189,34 @@ export default class Layout extends Group {
   }
 
   snapadjust(left: number, top: number, right: number, bottom: number) {
-    this._snap.left = left;
-    this._snap.top = top;
-    this._snap.right = right;
-    this._snap.bottom = bottom;
+    this._snap.left = Number(left) || 0;
+    this._snap.top = Number(top) || 0;
+    this._snap.right = Number(right) || 0;
+    this._snap.bottom = Number(bottom) || 0;
+    this._uiRoot.vm.dispatch(this, "onsnapadjustchanged", []);
   }
 
+  // Spotiamp+: as Wasabi, around a size change the script makes: the
+  // windows docked to its bottom and right follow the new edge
   beforeredock() {
-    // TODO:
+    HOST.beforeRedock(this._parent);
   }
 
   redock() {
-    // TODO:
+    HOST.redock(this._parent);
   }
 
+  getsnapadjustleft(): number {
+    return this._snap.left;
+  }
+  getsnapadjusttop(): number {
+    return this._snap.top;
+  }
+  getsnapadjustright(): number {
+    return this._snap.right;
+  }
   getsnapadjustbottom(): number {
-    return unimplemented(100);
+    return this._snap.bottom;
   }
 
   clienttoscreenh(h: number): number {
@@ -295,6 +328,20 @@ export default class Layout extends Group {
           top = bottom - this._minimumHeight * k;
         }
       }
+      // (Spotiamp+: as Wasabi, the edges being moved dock to the screen's
+      // and the other windows' within the docking distance)
+      const way = { left: !!(this._canResize & LEFT), top: !!(this._canResize & TOP), right: !!(this._canResize & RIGHT), bottom: !!(this._canResize & BOTTOM) };
+      const d = HOST.dockResize(this._parent, { left, top, right: left + width, bottom: top + height }, way);
+      if (way.right) width = clampW(d.right - left);
+      if (way.bottom) height = clampH(d.bottom - top);
+      if (way.left) {
+        width = clampW(right - d.left);
+        left = right - width;
+      }
+      if (way.top) {
+        height = clampH(bottom - d.top);
+        top = bottom - height;
+      }
       this._resizingDiv.style.cssText = `
         width: ${px(width)};
         height: ${px(height)};
@@ -327,18 +374,22 @@ export default class Layout extends Group {
       this._movingStartX = container._x;
       this._movingStartY = container._y;
       this.bringtofront();
+      // (Spotiamp+: docking, as Wasabi's WindowTracker: HOST)
+      HOST.dockStart(container);
     } else if (dx == CURSOR && dy == CURSOR) {
     } else if (cmd == "move") {
       if (!this._moving) {
         return;
       }
-      container.setLocation(this._movingStartX + dx, this._movingStartY + dy);
+      const at = HOST.dockMove(container, this._movingStartX + dx, this._movingStartY + dy);
+      container.setLocation(at.x, at.y);
     } else if (cmd == "final") {
       if (!this._moving) {
         return;
       }
       this._invalidateSize();
       this._moving = false;
+      HOST.dockEnd(container);
     }
   }
 

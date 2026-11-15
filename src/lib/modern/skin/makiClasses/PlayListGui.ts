@@ -2,6 +2,7 @@
 import Group from "./Group";
 import { lengthText, paintPe, rowName, winampPeAvailable } from "../winampPe";
 import { bitmapCanvas, drawWasabiButton } from "../wasabiPaint";
+import { sharpPainted } from "./Text";
 
 /**
  * Spotiamp+: Winamp 5's playlist editor as a modern skin showed it. Winamp
@@ -406,9 +407,14 @@ export default class PlayListGui extends Group {
       }
       return rows;
     };
+    // (Spotiamp+: drawn at the screen's pixels, its window's scale, so its
+    // text is sharp on a screen at 125 %; its pictures blown up as before)
+    const holder = this._div.closest("[data-sp-scale]") as HTMLElement | null;
+    const k = Math.round((Number(holder?.dataset.spScale) || 1) * (window.devicePixelRatio || 1) * 100) / 100;
+    sharpPainted.add(this);
     let rowsImage: HTMLCanvasElement | null = null;
     if (listW > 0 && listH > 0 && winampPeAvailable()) {
-      const ask = () => paintPe({ face: PE_FONT, size: PE_FONTSIZE, w: listW, h: listH, rows: rowsFor(this._numSongs + 2), colors: look.colors });
+      const ask = () => paintPe({ face: PE_FONT, size: PE_FONTSIZE, w: listW, h: listH, rows: rowsFor(this._numSongs + 2), colors: look.colors, scale: k });
       let painted = await ask();
       if (painted && painted.rowH !== this._rowH) {
         // the font's own height (Windows'): again with the rows that fit
@@ -429,10 +435,11 @@ export default class PlayListGui extends Group {
 
     // the whole place, made off screen, then shown at once
     const out = document.createElement("canvas");
-    out.width = w;
-    out.height = h;
+    out.width = Math.round(w * k);
+    out.height = Math.round(h * k);
     const ctx = out.getContext("2d");
     ctx.imageSmoothingEnabled = false;
+    ctx.scale(out.width / w, out.height / h);
     ctx.translate(-OFF_L, -OFF_T);
     const blit = (dx: number, dy: number, bw: number, bh: number, sx: number, sy: number, sw = bw, sh = bh) => {
       if (bw > 0 && bh > 0 && sw > 0 && sh > 0) ctx.drawImage(look.plbm, sx, sy, sw, sh, dx, dy, bw, bh);
@@ -451,14 +458,19 @@ export default class PlayListGui extends Group {
       blit(W - 20, yp, 5, rest, 31, 42, 5, 29);
       blit(W - 7, yp, 7, rest, 44, 42, 7, 29);
     }
-    if (rowsImage) ctx.drawImage(rowsImage, 12, 20);
+    if (rowsImage) ctx.drawImage(rowsImage, 12, 20, listW, listH);
     this._paintSlider(blit, W, H, this._capture === "vs");
     const show = this._canvas;
-    if (show.width !== w) show.width = w;
-    if (show.height !== h) show.height = h;
+    if (show.width !== out.width) show.width = out.width;
+    if (show.height !== out.height) show.height = out.height;
     show.style.width = `${w}px`;
     show.style.height = `${h}px`;
     show.getContext("2d").drawImage(out, 0, 0);
+  }
+
+  // Spotiamp+: drawn again when its window's scale changes (routes/modern)
+  _sharpRepaint() {
+    this._schedule();
   }
 
   /** draw_pe_vslide: the track, 29 px at a time, and the button on it */

@@ -487,6 +487,8 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     // letters only when they're there (some skins leave the cells blank).
     // One of the bundled skins reads it from the app's own copy, so a fix to
     // it (Spotiamp+'s letters, in 0.7.7) reaches a skin unpacked before.
+    // A skin without one (most 2.x skins) gets one made from its playlist's
+    // frame (wsz_gen.rs), so the windows don't fall back to Winamp's blue.
     if let Some(sheet) = files
         .read("MAIN.BMP")
         .and_then(|main| bundled_twin(&main))
@@ -494,7 +496,12 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
         .or_else(|| files.read("GEN.BMP"))
         .and_then(|b| image::load_from_memory(&b).ok())
         .map(|img| img.to_rgb8())
-        && gen_titlebar_drawn(&sheet)
+        .filter(gen_titlebar_drawn)
+        .or_else(|| {
+            let pledit = files.read("PLEDIT.BMP").and_then(|b| image::load_from_memory(&b).ok())?.to_rgb8();
+            let txt = files.read("PLEDIT.TXT").map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+            crate::wsz_gen::from_pledit(&pledit, pledit_colour(&txt, "current"), pledit_colour(&txt, "normal"))
+        })
     {
         let mut png = Vec::new();
         if image::DynamicImage::ImageRgb8(sheet.clone())
@@ -682,6 +689,17 @@ pub fn get_custom_skin() -> Result<HashMap<String, String>, String> {
     Ok(sprites)
 }
 
+/// A colour PLEDIT.TXT gives (Normal=#00FF00 and the like), by its key
+fn pledit_colour(text: &str, key: &str) -> Option<[u8; 3]> {
+    text.lines().find_map(|line| {
+        let (k, v) = line.split_once('=')?;
+        if !k.trim().eq_ignore_ascii_case(key) {
+            return None;
+        }
+        hex_rgb(v.trim().trim_matches('"').get(..7)?)
+    })
+}
+
 fn hex_rgb(value: &str) -> Option<[u8; 3]> {
     let hex = value.strip_prefix('#')?;
     if hex.len() != 6 {
@@ -692,7 +710,7 @@ fn hex_rgb(value: &str) -> Option<[u8; 3]> {
 }
 
 /// WCAG contrast ratio between two colours (1 = none, 21 = black on white).
-fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+pub(crate) fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
     let luminance = |c: [u8; 3]| {
         let lin = |v: u8| {
             let s = v as f64 / 255.0;
@@ -772,7 +790,7 @@ fn gen_titlebar_drawn(sheet: &image::RgbImage) -> bool {
 /// as "x:width" pairs. They start at x=1, each ended by a column in the
 /// colour at x=0 (as webamp reads them). None when the row doesn't hold 26
 /// sensible letters, or when the cells are blank (all the same picture).
-fn gen_letters(sheet: &image::RgbImage, y: u32) -> Option<String> {
+pub(crate) fn gen_letters(sheet: &image::RgbImage, y: u32) -> Option<String> {
     if sheet.height() < y + 7 {
         return None;
     }

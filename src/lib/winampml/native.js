@@ -29,16 +29,28 @@ export function inApp() {
 }
 
 /**
- * Paints an area: what no op covers stays see-through.
- * @param {number} w @param {number} h @param {MlFont[]} fonts @param {MlOp[]} ops
+ * Screen pixels per pixel of the page: the screen's scale (125 %) times
+ * Spotiamp+'s own (Ctrl+D, the CSS zoom common.svelte.js puts on). What
+ * Windows paints at it is sharp instead of blown up.
+ */
+export function screenScale() {
+  if (typeof window === "undefined") return 1;
+  const zoom = Number(getComputedStyle(document.body).getPropertyValue("--app-zoom")) || 1;
+  return Math.round((window.devicePixelRatio || 1) * zoom * 100) / 100;
+}
+
+/**
+ * Paints an area: what no op covers stays see-through. At a scale the
+ * picture is that many times the size (laid out the same).
+ * @param {number} w @param {number} h @param {MlFont[]} fonts @param {MlOp[]} ops @param {number} [scale]
  * @returns {Promise<ImageData | null>}
  */
-export async function paint(w, h, fonts, ops) {
+export async function paint(w, h, fonts, ops, scale = 1) {
   if (!inApp() || w <= 0 || h <= 0) return null;
   /** @type {ArrayBuffer | null} */
   let buffer = null;
   try {
-    buffer = await invoke("winamp_ml_paint", { paint: { w, h, fonts, ops } });
+    buffer = await invoke("winamp_ml_paint", { paint: { w, h, fonts, ops, scale } });
   } catch {
     return null;
   }
@@ -46,8 +58,12 @@ export async function paint(w, h, fonts, ops) {
   const view = new DataView(buffer);
   const pw = view.getInt32(0, true);
   const ph = view.getInt32(4, true);
-  if (pw !== w || ph !== h || buffer.byteLength < 8 + w * h * 4) return null;
-  return new ImageData(new Uint8ClampedArray(buffer, 8, w * h * 4), w, h);
+  const sharp = Math.abs(scale - 1) >= 0.01;
+  const ew = sharp ? Math.round(w * scale) : w;
+  const eh = sharp ? Math.round(h * scale) : h;
+  // (a pixel apart from Rust's rounding is fine)
+  if (pw <= 0 || ph <= 0 || Math.abs(pw - ew) > 1 || Math.abs(ph - eh) > 1 || buffer.byteLength < 8 + pw * ph * 4) return null;
+  return new ImageData(new Uint8ClampedArray(buffer, 8, pw * ph * 4), pw, ph);
 }
 
 /** @type {Map<string, number[]>} */

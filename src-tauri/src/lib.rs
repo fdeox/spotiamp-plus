@@ -60,6 +60,7 @@ pub mod spotify;
 mod visualizer;
 mod webapi;
 mod wsz;
+mod wsz_gen;
 
 #[derive(Debug, Error)]
 #[allow(clippy::enum_variant_names)]
@@ -843,6 +844,8 @@ pub fn run() {
             modern_window::modern_ready,
             modern_window::modern_set_region,
             modern_window::modern_window_rects,
+            modern_window::modern_app_windows,
+            modern_window::modern_move_app_windows,
             modern_window::modern_main_rect,
             modern_window::modern_set_slots,
             modern_window::modern_embedded,

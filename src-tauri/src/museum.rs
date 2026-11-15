@@ -438,12 +438,13 @@ async fn modern_shot(path: &str) -> Result<Arc<Vec<u8>>, String> {
         return Err("broken zip file".into());
     }
     let (_, mut part, _) = fetch_range(&client, &url, &format!("bytes={start}-{}", (start + guess).min(total) - 1)).await?;
-    if let Some(needed) = local_data_end(&part, &entry) {
-        if part.len() < needed && start + needed as u64 <= total {
-            let from = start + part.len() as u64;
-            let (_, rest, _) = fetch_range(&client, &url, &format!("bytes={from}-{}", start + needed as u64 - 1)).await?;
-            part.extend_from_slice(&rest);
-        }
+    if let Some(needed) = local_data_end(&part, &entry)
+        && part.len() < needed
+        && start + needed as u64 <= total
+    {
+        let from = start + part.len() as u64;
+        let (_, rest, _) = fetch_range(&client, &url, &format!("bytes={from}-{}", start + needed as u64 - 1)).await?;
+        part.extend_from_slice(&rest);
     }
     let bytes = Arc::new(read_entry(&part, &entry)?);
     if let Ok(mut shots) = SHOTS.lock() {

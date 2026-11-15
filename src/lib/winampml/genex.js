@@ -364,10 +364,43 @@ export function toCanvas(img) {
   return c;
 }
 
+/** a mix of two colours, t of the way from a to b @param {number[]} a @param {number[]} b @param {number} t */
+const mix = (a, b, t) => a.map((v, k) => Math.round(v + (b[k] - v) * t));
+
+/**
+ * Winamp's grey parts (buttons, scrollbar arrows and thumbs) in another
+ * colour: the button's face takes `face`, darker and lighter greys darker
+ * and lighter shades of it. The colour pixels along the top and the sheet's
+ * "nothing here" cyan stay.
+ * @param {HTMLCanvasElement} sheet @param {number[]} face
+ */
+function tintParts(sheet, face) {
+  const ctx = ctxOf(sheet);
+  const data = ctx.getImageData(0, 0, sheet.width, sheet.height);
+  const d = data.data;
+  // the base sheet's button face, (189, 206, 214)
+  const lf = 201.8;
+  for (let y = 0; y < sheet.height; y++) {
+    // (row 0 past the button: the colour pixels)
+    for (let x = 0; x < (y === 0 ? 47 : sheet.width); x++) {
+      const i = (y * sheet.width + x) * 4;
+      if (d[i] === 0 && d[i + 1] === 198 && d[i + 2] === 255) continue;
+      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      for (let k = 0; k < 3; k++) {
+        d[i + k] = l <= lf ? Math.round((face[k] * l) / lf) : Math.round(face[k] + ((255 - face[k]) * (l - lf)) / (255 - lf));
+      }
+    }
+  }
+  ctx.putImageData(data, 0, 0);
+}
+
 /**
  * The classic skin's sheet: its own GENEX.BMP (--skin-genex), else Winamp's
  * (the base skin's, with 5.666's colours); Spotiamp+'s built-in colourings
- * put their colours and buttons on Winamp's.
+ * put their colours and buttons on Winamp's. A skin from disk without one
+ * (most 2.x skins) has its playlist's colours put on it (wsz.rs takes them
+ * from PLEDIT.TXT) and Winamp's grey parts in its frame's colour, as its
+ * windows' frame is made from its playlist's (wsz_gen.rs).
  * @returns {Promise<Genex>}
  */
 export async function classicGenex() {
@@ -379,8 +412,15 @@ export async function classicGenex() {
   const base = await loadImage(BASE_SHEET);
   const sheet = base ? toCanvas(base) : canvasOf(130, 75);
   writeColors(sheet, BASE_5666);
-  // a built-in colouring (amber, cherry, emerald): its colours and buttons
-  if (document.body.dataset.skin && document.body.dataset.skin !== "custom") {
+  const kind = document.body.dataset.skin;
+  // (the button's face as the skin's frame colour makes it: wsz.rs's
+  // button_label_colour picks the label to read on it)
+  const frame = kind === "custom" ? parseColor(getComputedStyle(document.body).getPropertyValue("--skin-titlebarcolor")) : null;
+  const face = frame ? mix(frame, [255, 255, 255], 0.18) : null;
+  if (face) tintParts(sheet, face);
+  // a built-in colouring (amber, cherry, emerald), or a skin from disk
+  // without its own sheet: its colours and buttons
+  if (kind) {
     const style = getComputedStyle(document.body);
     /** @type {Record<string, typeof COLOR_NAMES[number][]>} */
     const vars = {
@@ -401,6 +441,18 @@ export async function classicGenex() {
       if (c) for (const n of names) colors[n] = c;
     }
     if (colors.selcolor && colors.wndbg) colors.iselbarbg = colors.selcolor.map((v, k) => (v >> 1) + ((colors.wndbg ?? [0, 0, 0])[k] >> 1));
+    // the list's header and the scrollbar's track in the skin's colours too
+    // (Winamp's navy ones stood out on every other skin)
+    if (face && colors.wndbg) {
+      const hdr = colors.hdrbg ?? colors.wndbg;
+      colors.hdrtop = mix(hdr, [255, 255, 255], 0.3);
+      colors.hdrmid = mix(hdr, [0, 0, 0], 0.3);
+      colors.hdrbot = mix(hdr, [0, 0, 0], 0.6);
+      colors.hdrempty = colors.wndbg;
+      colors.sbfg = colors.sbbg = mix(colors.wndbg, face, 0.25);
+      colors.sbinvfg = colors.sbinvbg = mix(colors.wndbg, face, 0.5);
+      colors.sbdead = colors.wndbg;
+    }
     writeColors(sheet, colors);
     for (const [v, y] of /** @type {[string, number][]} */ ([["--skin-genexbtn", 0], ["--skin-genexbtnp", 15]])) {
       const url = cssImageUrl(v);

@@ -9,7 +9,7 @@
 // tab, fainter, at the right. Drawn in the window (its text by Windows,
 // native.js); a menu that can't fit beside the mouse is moved in. Read for
 // Winamp's behaviour; none of its code is used.
-import { DT, measure, metrics, paint } from "./native.js";
+import { DT, measure, metrics, paint, screenScale } from "./native.js";
 import { blend } from "./widgets.js";
 
 /**
@@ -344,8 +344,13 @@ export class SkinnedMenu {
       f(left + 22, r.y, 1, r.h, c.separator);
     });
     const seq = ++level.seq;
-    const image = await paint(w, h, [look.font], ops);
+    // (at the screen's pixels, shown at its own size: sharp at 125 %)
+    const image = await paint(w, h, [look.font], ops, screenScale());
     if (seq !== level.seq) return;
+    if (image && (level.canvas.width !== image.width || level.canvas.height !== image.height)) {
+      level.canvas.width = image.width;
+      level.canvas.height = image.height;
+    }
     const ctx = level.canvas.getContext("2d");
     if (ctx && image) ctx.putImageData(image, 0, 0);
   }

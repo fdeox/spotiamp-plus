@@ -67,6 +67,15 @@ pub struct Paint {
     /// without the extension): a few fonts were drawn a size bigger
     #[serde(default)]
     pub ft_name: String,
+    /// screen pixels per pixel of the widget (a skin drawn a quarter bigger
+    /// on a screen at 125 %): the text is drawn that much bigger, sharp,
+    /// rather than drawn small and blown up
+    #[serde(default = "one_f")]
+    pub scale: f32,
+}
+
+fn one_f() -> f32 {
+    1.0
 }
 
 /// How Winamp measured and drew a text, GDI's or FreeType's way: what the
@@ -273,7 +282,7 @@ mod gdi {
     impl Font {
         pub fn new(p: &Paint) -> Option<Font> {
             let face: Vec<u16> = p.face.encode_utf16().chain(std::iter::once(0)).collect();
-            let height = mul_div(p.size, 72, 96);
+            let height = (mul_div(p.size, 72, 96) as f32 * p.scale).round() as i32;
             let quality = if !p.antialias { NONANTIALIASED_QUALITY } else { CLEARTYPE_QUALITY };
             let _ = ANTIALIASED_QUALITY; // (Winamp's choice before Windows XP)
             unsafe {
@@ -530,9 +539,37 @@ impl Buffer {
 }
 
 /// Paint a text as Winamp's Text widget does (onBufferPaint), with the pen
-/// Winamp drew that skin's text with.
+/// Winamp drew that skin's text with. At a scale (a screen at 125 %) it's
+/// laid out as Winamp would have, then drawn that much bigger: the buffer
+/// is the scale times the widget's, the widths given are the widget's.
 #[cfg(windows)]
 pub fn paint(p: &Paint) -> Option<Painted> {
+    let k = if p.scale.is_finite() { p.scale.clamp(0.5, 4.0) } else { 1.0 };
+    if (k - 1.0).abs() < 0.01 {
+        return paint_at(&Paint { scale: 1.0, ..p.clone() });
+    }
+    let laid = paint_at(&Paint { scale: 1.0, ..p.clone() })?;
+    let s = |v: i32| (v as f32 * k).round() as i32;
+    let big = Paint {
+        scale: k,
+        w: s(laid.w),
+        h: s(laid.h),
+        lpadding: s(p.lpadding),
+        rpadding: s(p.rpadding),
+        offsetx: s(p.offsetx),
+        offsety: s(p.offsety),
+        shadow: p.shadow.map(|sh| Shadow { x: s(sh.x), y: s(sh.y), ..sh }),
+        time: p.time.map(|t| TimeLayout { colon: if t.colon == -1 { -1 } else { s(t.colon) }, ..t }),
+        ..p.clone()
+    };
+    let mut painted = paint_at(&big)?;
+    painted.text_w = laid.text_w;
+    painted.suggested = laid.suggested;
+    Some(painted)
+}
+
+#[cfg(windows)]
+fn paint_at(p: &Paint) -> Option<Painted> {
     if p.renderer == "freetype" {
         #[cfg(feature = "freetype")]
         return ft::with_font(p, |font| lay_out(font, p));
@@ -804,7 +841,7 @@ mod ft {
         let face = faces.faces.get(&key)?.0;
         unsafe {
             let size = tweak_size(&name, p.size);
-            let height = ((size as i64 * 64 * 72) as f64 / 96.0).round() as f::FT_F26Dot6;
+            let height = ((size as i64 * 64 * 72) as f64 / 96.0 * p.scale as f64).round() as f::FT_F26Dot6;
             f::FT_Set_Char_Size(face, 0, height, 0, 0);
         }
         let font = Font { face, bold: p.bold, italic: p.italic, antialias: p.antialias };

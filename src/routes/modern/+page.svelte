@@ -15,6 +15,8 @@
   import AUDIO_PLAYER from "$lib/modern/skin/AudioPlayer";
   import { HOST } from "$lib/modern/host";
   import { buildLook } from "$lib/modern/look.js";
+  import { createDocking } from "$lib/modern/docking.js";
+  import { repaintTextsIn } from "$lib/modern/skin/makiClasses/Text";
   import { ensurePlaylistWindow, playlistContainer } from "$lib/modern/pleditFrame.js";
   import { frameInsets, paintFrame, setFrameActive, wireFrame } from "$lib/modern-look.js";
   import { invoke } from "@tauri-apps/api/core";
@@ -118,6 +120,19 @@
         div.style.transformOrigin = "0 0";
         div.style.transform = want;
       }
+      // at a scale between whole ones (125 %) the skin's pictures smoothed:
+      // they're made at twice their pixels (Bitmap.ts), so they come out
+      // sharp, without every fourth pixel twice as wide as the rest
+      const smooth = Math.abs(scale - Math.round(scale)) > 0.01;
+      if ((div.dataset.spSmooth === "1") !== smooth) {
+        if (smooth) div.dataset.spSmooth = "1";
+        else delete div.dataset.spSmooth;
+      }
+      // the texts Windows paints, painted at that scale (sharp, not blown up)
+      if (div.dataset.spScale !== String(scale)) {
+        div.dataset.spScale = String(scale);
+        repaintTextsIn(div);
+      }
     }
   }
 
@@ -211,9 +226,14 @@
       if (id === "main" || (c._placedBySkin && !onMain)) continue;
       const others = containers().filter((o) => o !== c && o.getVisible() && settled.has(o.getId()));
       const anchor = others.find((o) => o.getId() === "main") ?? others[0];
-      const bottom = Math.max(...others.map((o) => rectOf(o)?.bottom ?? -Infinity));
-      if (anchor && Number.isFinite(bottom)) {
-        c.setLocation(anchor._x, Math.round(bottom));
+      // (docked under them, by the edges Winamp docked by: a window's
+      // snapAdjust leaves out a see-through part, Winamp Modern's room for
+      // its drawer)
+      const bottom = Math.max(...others.map((o) => docking.dockRect(o)?.bottom ?? -Infinity));
+      const own = docking.dockRect(c);
+      const at = anchor ? docking.dockRect(anchor) : null;
+      if (anchor && own && at && Number.isFinite(bottom)) {
+        c.setLocation(Math.round(c._x + at.left - own.left), Math.round(c._y + bottom - own.top));
         keepOnScreens([c], true);
       }
     }
@@ -262,6 +282,41 @@
       if (!seen) c.setLocation(first.x + 60, first.y + 60);
     }
   }
+
+  // ---- Winamp's docking ($lib/modern/docking.js) ----
+
+  /** The work area of the screen a rect is mostly on. @param {{ left: number, top: number, right: number, bottom: number }} r */
+  function workAreaOf(r) {
+    /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
+    let best = null;
+    let most = -1;
+    for (const s of screens) {
+      const left = s.work_x ?? s.x;
+      const top = s.work_y ?? s.y;
+      const right = left + (s.work_width ?? s.width);
+      const bottom = top + (s.work_height ?? s.height);
+      const area = Math.max(0, Math.min(r.right, right) - Math.max(r.left, left)) * Math.max(0, Math.min(r.bottom, bottom) - Math.max(r.top, top));
+      if (area > most) {
+        most = area;
+        best = { left, top, right, bottom };
+      }
+    }
+    return best;
+  }
+  const docking = createDocking({
+    containers,
+    rectOf,
+    workAreaOf,
+    appWindows: () => /** @type {Promise<[string, [number, number, number, number]][]>} */ (invoke("modern_app_windows")),
+    moveAppWindows: (moves) => invoke("modern_move_app_windows", { moves }),
+  });
+  HOST.dockStart = docking.start;
+  HOST.dockMove = docking.move;
+  HOST.dockEnd = docking.end;
+  HOST.dockResize = docking.resize;
+  HOST.beforeRedock = docking.beforeRedock;
+  HOST.redock = docking.redock;
+  let appsAsked = 0;
 
   // ---- Winamp's Media Library and visualizer, in the skin ----
   // The skin's places for them (windowholders and components, marked by the
@@ -382,6 +437,7 @@
     if (!uiRoot) return;
     if (!pointerDown) placeNewcomers();
     fitToScreens();
+    placeUpdate();
     /** @type {[number, number, number, number][]} */
     const rects = [];
     for (const c of containers()) {
@@ -390,7 +446,7 @@
     }
     // the engine's own pop-ups (drop-down lists and the like), and Spotiamp+'s
     // boxes and notes, too
-    for (const el of document.querySelectorAll(".popup, .dropdown-list, .sp-dialog, .sp-toast")) {
+    for (const el of document.querySelectorAll(".popup, .dropdown-list, .sp-dialog, .sp-toast, .sp-update")) {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) rects.push([Math.floor(r.left), Math.floor(r.top), Math.ceil(r.width), Math.ceil(r.height)]);
     }
@@ -401,10 +457,11 @@
     /** @type {[number, number, number, number] | null} */
     let main = null;
     for (const c of containers()) {
-      const r = rectOf(c);
+      // (by the edges Winamp docked by, its snapAdjust's see-through part left out)
+      const r = docking.dockRect(c);
       if (!r) continue;
       /** @type {[number, number, number, number]} */
-      const box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+      const box = [Math.round(r.left), Math.round(r.top), Math.round(r.right - r.left), Math.round(r.bottom - r.top)];
       windows.push(box);
       if (c.getId() === "main") main = box;
     }
@@ -417,6 +474,11 @@
       invoke("modern_set_region", { rects, windows, main, moving: pointerDown }).catch(() => {});
     }
     sendSlots();
+    // where Spotiamp+'s own windows are, for docking, now and then
+    if (!pointerDown && performance.now() - appsAsked > 900) {
+      appsAsked = performance.now();
+      docking.refreshApps();
+    }
     if (!pointerDown) {
       const placed = JSON.stringify(containers().map((c) => [c._x, c._y, c.getVisible()]));
       if (placed !== lastSaved) {
@@ -614,6 +676,54 @@
   let dialogFrame = $state();
   /** @type {HTMLDivElement | undefined} */
   let dialogList = $state();
+
+  // ---- a new version's button ----
+  /** the version out, once the hidden playlist found it @type {string | null} */
+  let updateVersion = $state(null);
+  /** where its button is: a corner by the main window that's clear of the skin's windows @type {{ x: number, y: number, scale: number, right: boolean, below: boolean } | null} */
+  let updateAt = $state(null);
+  function placeUpdate() {
+    if (!updateVersion) {
+      updateAt = null;
+      return;
+    }
+    const { box, screen, scale } = overMain();
+    if (!box) {
+      updateAt = null;
+      return;
+    }
+    const w = 64 * scale;
+    const h = 16 * scale;
+    const gap = 3 * scale;
+    const others = containers()
+      .map((c) => rectOf(c))
+      .filter((r) => r && (r.left !== box.left || r.top !== box.top));
+    const work = screen
+      ? { left: screen.work_x ?? screen.x, top: screen.work_y ?? screen.y, right: (screen.work_x ?? screen.x) + (screen.work_width ?? screen.width), bottom: (screen.work_y ?? screen.y) + (screen.work_height ?? screen.height) }
+      : null;
+    const spots = [
+      { right: true, below: true },
+      { right: true, below: false },
+      { right: false, below: true },
+      { right: false, below: false },
+    ];
+    let pick = spots[0];
+    for (const s of spots) {
+      const left = s.right ? box.right - w : box.left;
+      const top = s.below ? box.bottom + gap : box.top - gap - h;
+      const free = !others.some((r) => r && left < r.right && left + w > r.left && top < r.bottom && top + h > r.top);
+      const fits = !work || (left >= work.left && top >= work.top && left + w <= work.right && top + h <= work.bottom);
+      if (free && fits) {
+        pick = s;
+        break;
+      }
+    }
+    const x = Math.round(pick.right ? box.right : box.left);
+    const y = Math.round(pick.below ? box.bottom + gap : box.top - gap - h);
+    if (!updateAt || updateAt.x !== x || updateAt.y !== y || updateAt.scale !== scale || updateAt.right !== pick.right) {
+      updateAt = { x, y, scale, ...pick };
+    }
+  }
 
   /** Where to put something over the skin's main window: its box, its screen and scale. */
   function overMain() {
@@ -895,11 +1005,18 @@
         else if (d.kind === "card") copyCard(d.text ?? "");
         else openDialog(d.kind);
       });
+      // a new version out: its button by the skin's main window, as the
+      // classic playlist has it on its title bar
+      const updates = subscribeToWindowEvent("modernUpdate", (u) => {
+        updateVersion = u.version || null;
+        tick().then(updateRegion);
+      });
       const eqChanged = listen("eqChanged", (e) => applyEq(e.payload));
       cleanups.push(
         () => state.then((u) => u()),
         () => rows.then((u) => u()),
         () => dialogs.then((u) => u()),
+        () => updates.then((u) => u()),
         () => eqChanged.then((u) => u()),
       );
       emitWindowEvent("skinPlaylistCommand", { ask: true });
@@ -1097,6 +1214,20 @@
   </div>
 {/if}
 
+{#if updateVersion && updateAt}
+  <button
+    class="sp-update"
+    style:left="{updateAt.x}px"
+    style:top="{updateAt.y}px"
+    style:transform-origin={updateAt.right ? "100% 0" : "0 0"}
+    style:transform="{updateAt.right ? 'translateX(-100%) ' : ''}scale({updateAt.scale})"
+    title="Spotiamp+ {updateVersion} is available: click to update"
+    onclick={() => emitWindowEvent("skinPlaylistCommand", { update: true })}
+  >
+    ⬆ v{updateVersion}
+  </button>
+{/if}
+
 <style>
   :global(html),
   :global(body) {
@@ -1113,6 +1244,15 @@
      unless the skin names its own */
   :global(body *) {
     cursor: default;
+  }
+  /* a window at a scale between whole ones: its pictures smoothed from
+     their doubled pixels (fitToScreens); what's drawn on canvases at its
+     own pixels (the visualizer, the EQ's curve) stays as it was */
+  :global([data-sp-smooth]) {
+    image-rendering: auto;
+  }
+  :global([data-sp-smooth] canvas) {
+    image-rendering: pixelated;
   }
 
   /* Spotiamp+'s boxes in the skin's frame, and its notes */
@@ -1193,5 +1333,36 @@
     overflow: hidden;
     text-overflow: ellipsis;
     pointer-events: none;
+  }
+  /* the classic playlist's update pill (routes/playlist), by the skin's main window */
+  .sp-update {
+    position: absolute;
+    z-index: 12;
+    height: 16px;
+    padding: 0 6px;
+    font: 10px monospace;
+    line-height: 14px;
+    white-space: nowrap;
+    color: #ffe08a;
+    background: linear-gradient(#5a4a1a, #2e2510);
+    border: 1px solid #000;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: spUpdatePulse 2.4s ease-in-out infinite;
+  }
+  .sp-update:hover {
+    color: #fff6d8;
+  }
+  @keyframes spUpdatePulse {
+    0%,
+    100% {
+      box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    50% {
+      box-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.18),
+        0 0 6px -1px rgba(255, 216, 120, 0.75);
+    }
   }
 </style>

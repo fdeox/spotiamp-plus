@@ -182,8 +182,28 @@ export default class Bitmap {
     this._setAsBackground(div, "disabled-");
   }
 
-  async getGammaTransformedUrl(uiRoot: UIRoot): Promise<string> {
-    const buildCssProp = (url: string) => `  ${this.getCSSVar()}: url(${url});`;
+  async getGammaTransformedUrl(uiRoot: UIRoot, sharp: boolean = true): Promise<string> {
+    // (Spotiamp+: a picture of `k` times its pixels, said to be for a screen
+    // of that many (image-set), shows at its own size)
+    const buildCssProp = (url: string, k: number = 1) =>
+      k > 1 ? `  ${this.getCSSVar()}: image-set(url(${url}) ${k}x);` : `  ${this.getCSSVar()}: url(${url});`;
+    // Spotiamp+: the picture with each pixel made 2 x 2, shown at its own
+    // size: on a screen at 125 % the skin's window smooths it (routes/modern)
+    // from those, so its pixels come out evenly wide with soft edges only
+    // where they meet, instead of every fourth one twice as wide (Winamp at
+    // 125 % was Windows' blur). Not a big background (memory), nor where
+    // its pixels are counted (border-image).
+    const asCss = (c: HTMLCanvasElement): string => {
+      if (!sharp || !c.width || !c.height || c.width * c.height > 1_000_000) return buildCssProp(c.toDataURL());
+      const d = document.createElement("canvas");
+      d.width = c.width * 2;
+      d.height = c.height * 2;
+      const dctx = d.getContext("2d");
+      if (!dctx) return buildCssProp(c.toDataURL());
+      dctx.imageSmoothingEnabled = false;
+      dctx.drawImage(c, 0, 0, d.width, d.height);
+      return buildCssProp(d.toDataURL(), 2);
+    };
     const img = this.getImg();
     if (!img) {
       console.warn(`Bitmap/font ${this.getId()} has no img. skipped.`);
@@ -194,23 +214,15 @@ export default class Bitmap {
     const gammaGroup = uiRoot._getGammaGroup(groupId);
     // (Spotiamp+: the picture in these colours made once: a skin switching
     // its colours, or switching to the same, doesn't redo all of them)
-    const key = `${gammaGroup.key()}|${this.getCSSVar()}`;
+    const key = `${gammaGroup.key()}|${this.getCSSVar()}|${sharp}`;
     if (this._cssCache?.key === key) return this._cssCache.prop;
     let prop: string;
     if (gammaGroup.isIdentity()) {
       // all zero (boost too): Winamp leaves it as it is
-      // return bitmap.getCanvas().toDataURL();
-      const url = await this.toDataURL(uiRoot);
-      prop = buildCssProp(url);
+      // (an animated GIF as it is: its frames aren't on a canvas)
+      prop = this._file.endsWith(".gif") ? buildCssProp(await this.toDataURL(uiRoot)) : asCss(this.getCanvas());
     } else {
-      const url = gammaGroup.transformImage(
-        img as HTMLImageElement,
-        this._x,
-        this._y,
-        this._w,
-        this._h
-      );
-      prop = buildCssProp(url);
+      prop = asCss(gammaGroup.transformCanvas(img as HTMLImageElement, this._x, this._y, this._w, this._h));
     }
     this._cssCache = { key, prop };
     return prop;

@@ -6,6 +6,10 @@
 
 const nothing = () => {};
 
+export type DockRect = { left: number; top: number; right: number; bottom: number };
+/** the edges a window is being sized by */
+export type DockWay = { left: boolean; top: boolean; right: boolean; bottom: boolean };
+
 /** A screen as modern_window.rs tells it, in the page's pixels. */
 export type Screen = {
   x: number;
@@ -40,6 +44,17 @@ export const HOST = {
   screens: [] as Screen[],
   /** where the skin's main window is (page pixels), for "this screen" */
   mainSpot: (() => null) as () => { x: number; y: number } | null,
+  // Winamp's docking (routes/modern, $lib/modern/docking.js): a skin window
+  // dragged by the user (Layout.setMoving), and one whose size a script or a
+  // layout switch is about to change (beforeRedock / redock)
+  dockStart: nothing as (container: any) => void,
+  /** where a window dragged to (x, y) (its container's spot) lands, docked */
+  dockMove: ((_container: any, x: number, y: number) => ({ x, y })) as (container: any, x: number, y: number) => { x: number; y: number },
+  dockEnd: nothing as (container: any) => void,
+  /** a window being sized (its outline, page pixels): where its moving edges dock */
+  dockResize: ((_container: any, r: DockRect, _way: DockWay) => r) as (container: any, r: DockRect, way: DockWay) => DockRect,
+  beforeRedock: nothing as (container: any) => void,
+  redock: nothing as (container: any) => void,
 };
 
 /**

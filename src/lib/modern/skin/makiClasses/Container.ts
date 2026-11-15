@@ -4,6 +4,7 @@ import { assert, num, px, removeAllChildNodes, toBool } from "../../utils";
 import Layout from "./Layout";
 import XmlObj from "../XmlObj";
 import Group from "./Group";
+import { HOST } from "../../host";
 
 // > A container is a top level object and it basically represents a window.
 // > Nothing holds a container. It is an object that holds multiple related
@@ -310,10 +311,16 @@ export default class Container extends XmlObj {
     this._uiRoot.vm.dispatch(this, "onswitchtolayout", [
       { type: "OBJECT", value: layout },
     ]);
+    // (Spotiamp+: as Wasabi's layoutChanged, the windows docked to its
+    // bottom and right follow the new layout's edges: a shade under the
+    // player brings the playlist up with it)
+    const changes = this._visible && this._activeLayout && this._activeLayout !== layout;
+    if (changes) HOST.beforeRedock(this);
     this._clearCurrentLayout();
     this._activeLayout = layout;
     this._renderLayout();
     this._tellLayoutShown();
+    if (changes) HOST.redock(this);
   }
 
   dispatchAction(

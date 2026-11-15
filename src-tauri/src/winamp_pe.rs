@@ -12,7 +12,7 @@
 use serde::Deserialize;
 
 /// A row as the playlist gives it.
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct PeRow {
     /// as shown: "<number>. <title>"
     pub name: String,
@@ -45,6 +45,15 @@ pub struct PePaint {
     pub rows: Vec<PeRow>,
     /// normal text, the playing row's text, background, selected background
     pub colors: [[u8; 3]; 4],
+    /// screen pixels per pixel of the list (its window drawn a quarter
+    /// bigger on a screen at 125 %): laid out as Winamp did, drawn that much
+    /// bigger by Windows itself, so the text is sharp
+    #[serde(default = "one_f")]
+    pub scale: f32,
+}
+
+fn one_f() -> f32 {
+    1.0
 }
 
 /// The painted list, opaque RGBA top row first, with the row height (the
@@ -82,8 +91,9 @@ pub fn paint(p: &PePaint) -> Option<PePainted> {
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS, CreateCompatibleDC, CreateDIBSection, CreateFontW,
         CreateSolidBrush, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DRAFT_QUALITY, DRAW_TEXT_FORMAT, DT_CALCRECT,
         DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW,
-        FF_DONTCARE, FW_NORMAL, GdiFlush, GetStockObject, GetTextMetricsW, HBRUSH, HDC, HGDIOBJ, NULL_PEN,
-        OUT_DEFAULT_PRECIS, Rectangle, SelectObject, SetBkColor, SetTextColor, SetViewportOrgEx, TEXTMETRICW,
+        FF_DONTCARE, FW_NORMAL, GM_ADVANCED, GdiFlush, GetStockObject, GetTextMetricsW, HBRUSH, HDC, HGDIOBJ,
+        NULL_PEN, OUT_DEFAULT_PRECIS, Rectangle, SelectObject, SetBkColor, SetGraphicsMode, SetTextColor,
+        SetViewportOrgEx, SetWorldTransform, TEXTMETRICW, XFORM,
     };
     use windows::core::PCWSTR;
 
@@ -94,11 +104,15 @@ pub fn paint(p: &PePaint) -> Option<PePainted> {
     // the window Winamp drew in
     let width = p.w + 32;
     let height = p.h + 58;
+    // ...and the bitmap's pixels, k to one of the list's
+    let k = if p.scale.is_finite() { p.scale.clamp(0.5, 4.0) } else { 1.0 };
+    let scaled = (k - 1.0).abs() >= 0.01;
+    let (bw, bh) = if scaled { ((p.w as f32 * k).round() as i32, (p.h as f32 * k).round() as i32) } else { (p.w, p.h) };
     let info = BITMAPINFO {
         bmiHeader: BITMAPINFOHEADER {
             biSize: size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: p.w,
-            biHeight: -p.h,
+            biWidth: bw,
+            biHeight: -bh,
             biPlanes: 1,
             biBitCount: 32,
             biCompression: BI_RGB.0,
@@ -139,8 +153,16 @@ pub fn paint(p: &PePaint) -> Option<PePainted> {
         let mut tm = TEXTMETRICW::default();
         let _ = GetTextMetricsW(dc, &mut tm);
         let row_h = tm.tmHeight.max(1);
-        // the window's own coordinates from here on
-        let _ = SetViewportOrgEx(dc, -12, -20, None);
+        // the window's own coordinates from here on (at a scale, Windows
+        // draws all of it that much bigger: the rows where Winamp had them,
+        // the text drawn at the bigger size)
+        if scaled {
+            let _ = SetGraphicsMode(dc, GM_ADVANCED);
+            let _ = SetWorldTransform(dc, &XFORM { eM11: k, eM12: 0.0, eM21: 0.0, eM22: k, eDx: 0.0, eDy: 0.0 });
+            let _ = SetViewportOrgEx(dc, (-12.0 * k).round() as i32, (-20.0 * k).round() as i32, None);
+        } else {
+            let _ = SetViewportOrgEx(dc, -12, -20, None);
+        }
         let normbrush = CreateSolidBrush(rgb(p.colors[2]));
         let selbrush = CreateSolidBrush(rgb(p.colors[3]));
         let null_pen = GetStockObject(NULL_PEN);
@@ -196,7 +218,7 @@ pub fn paint(p: &PePaint) -> Option<PePainted> {
             song(dc, pos, " ", -1, 0, None);
         }
         let _ = GdiFlush();
-        let src = std::slice::from_raw_parts(bits as *const u8, (p.w * p.h * 4) as usize);
+        let src = std::slice::from_raw_parts(bits as *const u8, (bw * bh * 4) as usize);
         let mut rgba = Vec::with_capacity(src.len());
         for px in src.chunks_exact(4) {
             rgba.extend_from_slice(&[px[2], px[1], px[0], 255]);
@@ -208,7 +230,7 @@ pub fn paint(p: &PePaint) -> Option<PePainted> {
         let _ = DeleteObject(HGDIOBJ(selbrush.0));
         let _ = DeleteObject(HGDIOBJ(bitmap.0));
         let _ = DeleteDC(dc);
-        Some(PePainted { w: p.w, h: p.h, row_h, rows: num_songs.max(0), rgba })
+        Some(PePainted { w: bw, h: bh, row_h, rows: num_songs.max(0), rgba })
     }
 }
 
@@ -381,11 +403,17 @@ mod tests {
             h: 99,
             rows: vec![PeRow { name: "1. A".into(), time: 211, sel: 2, fg: None }],
             colors: [[255, 255, 255], [0, 255, 0], [0, 0, 0], [0, 0, 198]],
+            scale: 1.0,
         };
         let painted = paint(&p).expect("painted");
         assert_eq!((painted.w, painted.h), (407, 99));
         assert!(painted.row_h > 0);
         assert_eq!(painted.rows, (99 - 2) / painted.row_h);
         assert_eq!(painted.rgba.len(), 407 * 99 * 4);
+        // at 125 %: the same rows, laid out the same, in a bigger picture
+        let big = paint(&PePaint { scale: 1.25, rows: p.rows.clone(), face: p.face.clone(), ..p }).expect("painted");
+        assert_eq!((big.w, big.h), (509, 124));
+        assert_eq!((big.row_h, big.rows), (painted.row_h, painted.rows));
+        assert_eq!(big.rgba.len(), 509 * 124 * 4);
     }
 }

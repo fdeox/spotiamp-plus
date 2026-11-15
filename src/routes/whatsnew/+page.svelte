@@ -13,6 +13,13 @@
   // version really has; a version without an entry just shows the keys.
   /** @type {Record<string, string[]>} */
   const NOTES = {
+    "0.7.13": [
+      "<b>Modern skins' windows dock</b> 🧲 as in Winamp 5: they snap to each other and to the edges of the screen, and dragging the main window takes everything docked to it along, Spotiamp+'s own windows (the Library, lyrics, album art...) too. Hold Alt to move them all, Shift to move one alone. A window that changes size (its shade, say) brings the ones docked under it along, and its edges snap when you size it.",
+      "<b>Sharp text on screens set to 125 %</b> ✨ A modern skin's text, the playlist's rows and the Library are written at the screen's own pixels, as Windows writes them, instead of written small and blown up. The skin's pictures there come out even too: no more letters and logos with some pixels twice as wide as the rest.",
+      "<b>Classic skins without Winamp's window frame</b> (most of the old .wsz ones): Spotiamp+'s windows now wear a frame made from the skin's own playlist, its title in a colour that reads, and the Library takes the skin's colours, instead of Winamp's plain blue frame.",
+      "<b>MMD3's drawers open again</b>: the equalizer, visualizer and the rest slide out to the right as they should.",
+      "<b>A new version shows in modern skins too</b>: its button sits by the skin's main window, as it does on the classic playlist.",
+    ],
     "0.7.12": [
       "<b>Modern skins' windows can be dragged</b> 🖱️ by their title bars and wherever the skin lets them, as in Winamp, and sized from their corners, on screens set to 125 % too.",
     ],

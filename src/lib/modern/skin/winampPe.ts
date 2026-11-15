@@ -16,6 +16,9 @@ export type PePaint = {
   rows: PeRow[];
   /** normal text, the playing row's, background, selected background */
   colors: [number, number, number][];
+  /** screen pixels per pixel of the list (a screen at 125 %): the picture
+   *  comes back that many times the size, laid out the same */
+  scale?: number;
 };
 
 export type PePainted = { w: number; h: number; rowH: number; rows: number; data: Uint8ClampedArray };

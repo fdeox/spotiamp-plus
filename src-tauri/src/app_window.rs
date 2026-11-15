@@ -971,13 +971,22 @@ fn move_together(
     pos: PhysicalPosition<i32>,
     moves: &[(WebviewWindow, PhysicalPosition<i32>)],
 ) -> bool {
+    let all: Vec<_> = std::iter::once((player.clone(), pos)).chain(moves.iter().cloned()).collect();
+    move_windows_together(&all)
+}
+
+/// Windows moved in one DeferWindowPos batch, all in one paint (a modern
+/// skin's window taking Spotiamp+'s docked ones along, too); false (nothing
+/// moved) if Windows turns it down.
+#[cfg(target_os = "windows")]
+pub fn move_windows_together(moves: &[(WebviewWindow, PhysicalPosition<i32>)]) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
         BeginDeferWindowPos, DeferWindowPos, EndDeferWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
     };
-    let all: Vec<_> = std::iter::once((player, pos))
-        .chain(moves.iter().map(|(w, p)| (w, *p)))
-        .filter_map(|(w, p)| w.hwnd().ok().map(|h| (h, p)))
-        .collect();
+    if moves.is_empty() {
+        return true;
+    }
+    let all: Vec<_> = moves.iter().filter_map(|(w, p)| w.hwnd().ok().map(|h| (h, *p))).collect();
     let Ok(mut batch) = (unsafe { BeginDeferWindowPos(all.len() as i32) }) else {
         return false;
     };

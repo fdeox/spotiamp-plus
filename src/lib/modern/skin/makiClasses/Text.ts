@@ -16,6 +16,18 @@ import {
 import Timer from "./Timer";
 import { paintText, systemFace, wasabiTextAvailable } from "../wasabiText";
 
+// Spotiamp+: what Windows paints (these texts, the playlist editor's rows),
+// so what's in a window drawn at a new scale (moved onto a screen at 125 %,
+// Ctrl+D) is painted again for it (_sharpRepaint)
+export const sharpPainted: Set<any> = new Set();
+const gdiTexts = sharpPainted;
+export function repaintTextsIn(root: Element) {
+  for (const t of sharpPainted) {
+    if (!t._div?.isConnected) sharpPainted.delete(t);
+    else if (root.contains(t._div)) t._sharpRepaint();
+  }
+}
+
 // http://wiki.winamp.com/wiki/XML_GUI_Objects#.3Ctext.2F.3E_.26_.3CWasabi:Text.2F.3E
 export default class Text extends GuiObj {
   static GUID = "efaa867241fa310ea985dcb74bcb5b52";
@@ -182,7 +194,10 @@ export default class Text extends GuiObj {
       this._gdiShow(null);
       return;
     }
+    gdiTexts.add(this);
+    const scale = this._gdiScale();
     const painted = await paintText({
+      scale,
       face,
       size: this._fontSizeSkin,
       bold: this._bold ? 1 : 0,
@@ -206,7 +221,7 @@ export default class Text extends GuiObj {
       ...this._ftFont(face),
     });
     if (seq !== this._gdiSeq) return;
-    this._gdiShow(painted);
+    this._gdiShow(painted, scale);
     if (painted) {
       this._gdiAuto = { text, w: painted.suggested };
       if (this._autoWidthTold != null && this._autoWidthTold !== painted.suggested) {
@@ -218,7 +233,9 @@ export default class Text extends GuiObj {
 
   // the painted text at the box's corner (a ticker moves it), the browser's
   // hidden; nothing painted: the browser's back
-  _gdiShow(painted: { w: number; h: number; textW: number; suggested: number; data: Uint8ClampedArray } | null) {
+  // (Spotiamp+: painted at `scale` screen pixels to one of its own, shown
+  // at its own size: sharp on a screen at 125 %)
+  _gdiShow(painted: { w: number; h: number; textW: number; suggested: number; data: Uint8ClampedArray } | null, scale: number = 1) {
     if (!painted) {
       delete this._div.dataset.gdi;
       this._gdiCanvas?.remove();
@@ -235,16 +252,31 @@ export default class Text extends GuiObj {
     if (canvas.width !== painted.w) canvas.width = painted.w;
     if (canvas.height !== painted.h) canvas.height = painted.h;
     canvas.getContext("2d").putImageData(new ImageData(painted.data, painted.w, painted.h), 0, 0);
+    const w = painted.w / scale;
+    canvas.style.width = px(w);
+    canvas.style.height = px(painted.h / scale);
     canvas.style.left = this._textWrapper.style.left || "0px";
     this._div.dataset.gdi = "1";
     if (!this._wGiven) this._div.style.width = px(painted.suggested);
     if (this._ticker != "off") {
-      this._textFullWidth = painted.w;
+      this._textFullWidth = w;
       // (cur_len: the text and, when it fit them, its paddings)
       const pads = (this._lpadding ?? 0) + (this._rpadding ?? 0);
-      this._tickLen = painted.textW + (painted.textW <= painted.w - 2 - pads ? pads : 0);
-      this._div.style.setProperty("--full-width", px(painted.w));
+      this._tickLen = painted.textW + (painted.textW <= w - 2 - pads ? pads : 0);
+      this._div.style.setProperty("--full-width", px(w));
     }
+  }
+
+  _sharpRepaint() {
+    this._gdiSchedule();
+  }
+
+  // Spotiamp+: screen pixels per pixel of its own: its window's scale (the
+  // modern page marks it, routes/modern fitToScreens) times the page's
+  _gdiScale(): number {
+    const holder = this._div.closest("[data-sp-scale]") as HTMLElement | null;
+    const k = (Number(holder?.dataset.spScale) || 1) * (window.devicePixelRatio || 1);
+    return Math.round(k * 100) / 100;
   }
 
   // Spotiamp+: the skin (or a script) gave it a height; else it's its own,
