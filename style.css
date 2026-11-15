@@ -211,7 +211,7 @@ h3 { margin: 0 0 8px; font-size: 19px; }
 }
 .chip:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
 .chip.on { color: var(--text); background: rgba(255, 101, 18, 0.12); border-color: rgba(255, 101, 18, 0.45); }
-.skin-view { margin: 0; padding: 14px; background: #050506; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5); }
+.skin-view { grid-column: 2; margin: 0; padding: 14px; background: #050506; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5); }
 .skin-view img { border-radius: 8px; transition: opacity 0.25s ease; }
 .skin-view img.fading { opacity: 0.25; }
 .credit { grid-column: 2; margin: 0; color: var(--muted); font-size: 13px; }
@@ -347,7 +347,7 @@ footer .small { font-size: 13px; opacity: 0.8; }
   .screen:hover { transform: none; }
   .skin-picker { grid-template-columns: 1fr; }
   .chips { flex-direction: row; flex-wrap: wrap; }
-  .credit { grid-column: 1; }
+  .skin-view, .credit { grid-column: 1; }
   .split { grid-template-columns: 1fr; gap: 28px; }
   .cards, .cards.three, .cards.four { grid-template-columns: 1fr 1fr; }
   .bento { grid-template-columns: 1fr 1fr; }
